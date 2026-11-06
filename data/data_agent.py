@@ -1,8 +1,8 @@
 """[1] Data agent. Owner: Person 2. No LLM.
 
 Input:  ISIN list (data/etf_universe.csv)
-Output: clean prices in the Prices format (date, ticker, close_eur),
-        plus returns, volatility, drawdowns and correlations.
+Output: ETF mapping (ISIN -> Yahoo ticker), clean prices in the Prices format
+        (date, ticker, close_eur), plus returns, volatility, drawdowns and correlations.
 
 Source: yfinance, EUR listing preferred.
 Fallback: another listing of the same ETF + FX conversion, or a manual export

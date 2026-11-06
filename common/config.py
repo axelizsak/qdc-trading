@@ -28,8 +28,9 @@ TRADING_DAYS = [
 ]
 
 # --- Agents ------------------------------------------------------------------
-# Agents whose scores the Portfolio Manager combines (Σ weights = 1).
-SIGNAL_AGENTS = ["technical", "macro_news", "quant_ml"]
+# Signal sources the Portfolio Manager combines, one weight each (Σ weights = 1).
+# The Technical agent emits two: a deterministic score and an LLM-interpreted one.
+SIGNAL_AGENTS = ["technical_det", "technical_llm", "macro_news"]
 
 # --- LLM ---------------------------------------------------------------------
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")

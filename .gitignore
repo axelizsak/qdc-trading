@@ -1,5 +1,6 @@
 # Secrets
 .env
+anthropic_api_key.*
 .streamlit/secrets.toml
 
 # Python

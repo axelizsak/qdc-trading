@@ -1,4 +1,4 @@
-"""[5] Portfolio Manager. Owner: Person 3. LLM: yes.
+"""[4] Portfolio Manager. Owner: Person 3. LLM: yes.
 
 Input:  all signals + agent weights + lessons journal
 Output: target weights (Portfolio format) + investment memo.

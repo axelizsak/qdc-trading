@@ -1,4 +1,4 @@
-"""[6] Risk Manager. Owner: Person 2. No LLM.
+"""[5] Risk Manager. Owner: Person 3. No LLM.
 
 Input:  target weights (Portfolio format) + current holdings, cash and prices
 Output: valid orders (Orders format). It controls concentration and excess
