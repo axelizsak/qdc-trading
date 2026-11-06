@@ -1,1 +1,1 @@
-"""Common data and agent: ETF universe and mapping, price fetching, features, mock data."""
+"""Data agent, ETF universe and mapping, competition rules (config), shared data formats (schemas), mock data."""

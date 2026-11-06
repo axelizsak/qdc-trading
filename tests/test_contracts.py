@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from agents.portfolio import combine_scores
-from common.schemas import validate_orders, validate_portfolio
+from data.schemas import validate_orders, validate_portfolio
 from data.mock import mock_prices, mock_signals
 from data.universe import load_universe
 

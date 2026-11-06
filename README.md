@@ -72,8 +72,7 @@ There is no separate Quant/ML agent. The ML models are in a shared library (`ml_
 
 ```
 qdc-trading/
-  common/      Competition rules (config.py) and shared data formats (schemas.py)
-  data/        Data agent, ETF universe, Yahoo mapping, mock data
+  data/        Data agent, ETF mapping, competition rules (config.py), shared data formats (schemas.py), mock data
   agents/      technical, macro_news, portfolio, risk
   ml_library/  Shared ML models (linear regression, random forest, gradient boosting, ARIMA)
   backtest/    Common walk-forward backtest + metrics (same metrics for every model)
@@ -86,7 +85,7 @@ qdc-trading/
 
 ## Shared data formats
 
-These were fixed on day 1 and are defined in `common/schemas.py`. Build your module against mock data (`python -m data.mock`) so that nobody has to wait for anyone else.
+These were fixed on day 1 and are defined in `data/schemas.py`. Build your module against mock data (`python -m data.mock`) so that nobody has to wait for anyone else.
 
 | Table | Columns |
 |---|---|
@@ -97,7 +96,7 @@ These were fixed on day 1 and are defined in `common/schemas.py`. Build your mod
 
 `ticker` is always the Belfius short name from `data/etf_universe.csv` (e.g. `WORLD`, `NASDAQ 3X`), never the Yahoo symbol.
 
-`agent` is one of `technical_det`, `technical_llm` or `macro_news` (see `SIGNAL_AGENTS` in `common/config.py`). The Technical agent writes two rows per ETF, so the Portfolio Manager gives the deterministic score and the LLM score separate weights, and the review loop can tell whether the LLM layer adds value.
+`agent` is one of `technical_det`, `technical_llm` or `macro_news` (see `SIGNAL_AGENTS` in `data/config.py`). The Technical agent writes two rows per ETF, so the Portfolio Manager gives the deterministic score and the LLM score separate weights, and the review loop can tell whether the LLM layer adds value.
 
 ## Setup
 

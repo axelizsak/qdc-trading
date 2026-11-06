@@ -9,7 +9,7 @@ from datetime import date
 
 import pandas as pd
 
-from common.config import MAX_ORDERS_PER_DAY  # noqa: F401
+from data.config import MAX_ORDERS_PER_DAY  # noqa: F401
 
 
 def run(target: pd.DataFrame, holdings: pd.DataFrame, cash_eur: float,

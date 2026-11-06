@@ -1,7 +1,7 @@
 """The 50-ETF universe defined by Belfius (session of 27 Oct 2026)."""
 import pandas as pd
 
-from common.config import UNIVERSE_CSV
+from data.config import UNIVERSE_CSV
 
 
 def load_universe() -> pd.DataFrame:

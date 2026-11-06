@@ -5,8 +5,8 @@ Usage:  python -m data.mock   (writes CSVs to data/mock/, which is gitignored)
 import numpy as np
 import pandas as pd
 
-from common.config import DATA_DIR, SIGNAL_AGENTS
-from common.schemas import validate_prices, validate_signals
+from data.config import DATA_DIR, SIGNAL_AGENTS
+from data.schemas import validate_prices, validate_signals
 from data.universe import tickers
 
 
