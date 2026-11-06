@@ -1,0 +1,123 @@
+# QDC Trading — ReBel Agentic AI Challenge
+
+Multi-agent system for the QTEM Data Challenge (Fall 2026, Belfius × QuantumBlack).
+The agents analyse the 50-ETF universe and propose trades. A human approves every order before it is submitted.
+
+## The competition
+
+- **Capital:** €10,000 per team, no transaction costs, sufficient cash required.
+- **Trading days:** Mon 7, Thu 10, Mon 14, Thu 17, Mon 21 December 2026.
+- **Orders:** max 5 per trading day (side, units, ticker), submitted through the Belfius form.
+- **Grading:** performance **and** methodology, critical thinking towards agent outputs, and re-assessment of the model during the trading window.
+
+| Date | Deliverable |
+|---|---|
+| 22 Nov 2026, 23:59 | Mid-term report (analyses + code) |
+| 7–23 Dec 2026 | Trading window |
+| 16 Jan 2027, 23:59 | Final report + team organisation annex (the Belfius deck says 17 Jan) |
+
+> **To confirm with Belfius:** one slide says orders fill at the *previous day's* closing price, another says the *closing price of the trading day itself*.
+
+## How it works
+
+Each agent gives every ETF a score in [-1, 1]. The Portfolio Manager combines them with one weight per agent:
+
+```
+final_score(ETF) = Σ w_agent × score_agent(ETF)      with Σ w_agent = 1
+```
+
+After each trading day, the review loop compares each agent's prediction with the realised return.
+Agents that were right gain weight. Lessons go into a journal that the agents read before the next decision.
+Every update is logged in `logs/`, and that log is our evidence of model re-assessment.
+
+```
+            yfinance / web search
+                     |
+               [1] DATA AGENT
+                     |
+        +------------+------------+
+        |            |            |
+  [2] TECHNICAL [3] MACRO/NEWS [4] QUANT/ML
+        |            |            |
+        +------------+------------+
+                     |   signals
+          [5] PORTFOLIO MANAGER
+                     |   target weights
+             [6] RISK MANAGER
+                     |   orders
+         HUMAN APPROVAL (Streamlit)
+                     |
+          Order log -> Belfius form
+                     |
+     REVIEW LOOP (after each trading day)
+                     |
+   updates agent weights + lessons journal
+```
+
+**Rule:** use code for calculations, and the LLM only where judgement is needed.
+
+| # | Agent | Module | Input | Output | LLM? |
+|---|---|---|---|---|---|
+| 1 | Data | `data/data_agent.py` | ISIN list | Clean prices, returns, volatility, drawdowns, correlations | No |
+| 2 | Technical | `agents/technical.py` | Prices | Signal per ETF (moving averages, momentum, breakouts) | No |
+| 3 | Macro / News | `agents/macro_news.py` | Web search | Macro summary + signal per theme | Yes |
+| 4 | Quant / ML | `agents/quant_ml.py` | Prices + features | Best model per ETF from the library, forecast signal | Selection only |
+| 5 | Portfolio Manager | `agents/portfolio.py` | All signals + lessons journal | Target weights + investment memo | Yes |
+| 6 | Risk Manager | `agents/risk.py` | Target weights + portfolio | Valid orders (concentration, cash, 5-order limit) | No |
+
+## Repository layout
+
+```
+qdc-trading/
+  common/      Competition rules (config.py) and shared data formats (schemas.py)
+  data/        Data agent, ETF universe, Yahoo mapping, mock data
+  agents/      technical, macro_news, quant_ml, portfolio, risk
+  graph/       LangGraph orchestration + review loop
+  app/         Streamlit interface (human approval)
+  logs/        orders, signals, agent weights, lessons journal
+  tests/
+  .env.example
+```
+
+## Shared data formats
+
+These were fixed on day 1 and are defined in `common/schemas.py`. Build your module against mock data (`python -m data.mock`) so that nobody has to wait for anyone else.
+
+| Table | Columns |
+|---|---|
+| Prices | `date, ticker, close_eur` |
+| Signals | `ticker, date, agent, score [-1,1], confidence [0,1], rationale` |
+| Portfolio | `ticker, target_weight` |
+| Orders | `date, side, ticker, units` (matches the Belfius form) |
+
+`ticker` is always the Belfius short name from `data/etf_universe.csv` (e.g. `WORLD`, `NASDAQ 3X`), never the Yahoo symbol.
+
+## Setup
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env      # add your ANTHROPIC_API_KEY. Never commit .env
+pytest
+```
+
+Check which ETFs are available on Yahoo Finance:
+
+```bash
+python data/check_etfs_yfinance.py   # writes data/etf_yahoo_map.csv
+```
+
+## Work split
+
+| Person | Scope |
+|---|---|
+| Axel | Macro / News agent · repo management · LangGraph integration · Streamlit interface |
+| Person 2 | Data agent · ETF mapping and fallbacks · Technical agent · Risk Manager |
+| Person 3 | Quant / ML agent · Portfolio Manager · review loop |
+
+## Working together
+
+- Use one branch per feature and open a pull request into `main`.
+- Never commit `.env` or API keys.
+- Commit everything in `logs/`, because it is graded evidence.

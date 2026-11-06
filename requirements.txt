@@ -1,0 +1,10 @@
+pandas
+numpy
+yfinance
+anthropic
+langgraph
+scikit-learn
+statsmodels
+streamlit
+python-dotenv
+pytest
