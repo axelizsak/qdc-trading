@@ -23,6 +23,8 @@ SOURCE_REGISTRY = ["source", "kind", "factors", "status", "first_seen", "n_uses"
 # logs/orders.csv: each proposed order with the human decision, plus orders the human added.
 ORDER_LOG = ["date", "ticker", "ai_side", "ai_units", "decision", "side", "units", "reason"]
 INCIDENTS = ["date", "step", "error"]
+# data/macro_exposure.csv: how much each ETF moves with each macro factor (before leverage).
+MACRO_EXPOSURE = ["ticker", "multiplier", *MACRO_FACTORS]
 
 SIDES = {"BUY", "SELL"}
 EVIDENCE_KINDS = {"number", "text", "exploration"}
@@ -216,4 +218,16 @@ def validate_incidents(df: pd.DataFrame) -> pd.DataFrame:
     _require_columns(df, INCIDENTS, "incidents")
     _require_text(df, "step", "incidents")
     _require_text(df, "error", "incidents")
+    return df
+
+
+def validate_macro_exposure(df: pd.DataFrame) -> pd.DataFrame:
+    """Exposure of each ETF to each factor in [-1, 1]; multiplier = leverage (negative for inverse ETFs)."""
+    _require_columns(df, MACRO_EXPOSURE, "macro_exposure")
+    _require_unique(df, ["ticker"], "macro_exposure")
+    for factor in MACRO_FACTORS:
+        _require_between(df, factor, -1, 1, "macro_exposure")
+    multiplier = pd.to_numeric(df["multiplier"], errors="coerce")
+    if multiplier.isna().any() or (multiplier == 0).any():
+        raise ValueError("macro_exposure: multiplier must be a non-zero number")
     return df

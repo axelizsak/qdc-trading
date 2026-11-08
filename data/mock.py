@@ -8,6 +8,7 @@ import pandas as pd
 from data.config import DATA_DIR, MACRO_FACTORS, SIGNAL_AGENTS
 from data.schemas import (
     LIST_SEP,
+    MACRO_EXPOSURE,
     ORDER_LOG,
     STARTER_FEATURES,
     validate_agent_weights,
@@ -15,6 +16,7 @@ from data.schemas import (
     validate_features,
     validate_holdings,
     validate_incidents,
+    validate_macro_exposure,
     validate_macro_views,
     validate_order_log,
     validate_orders,
@@ -179,6 +181,15 @@ def mock_source_registry() -> pd.DataFrame:
     return validate_source_registry(pd.DataFrame(rows))
 
 
+def mock_macro_exposure(seed: int = 0) -> pd.DataFrame:
+    """Random exposures for every ETF, no leverage. Format: Macro exposure."""
+    rng = np.random.default_rng(seed)
+    df = pd.DataFrame(rng.uniform(-1, 1, size=(len(tickers()), len(MACRO_FACTORS))).round(2), columns=MACRO_FACTORS)
+    df.insert(0, "multiplier", 1.0)
+    df.insert(0, "ticker", tickers())
+    return validate_macro_exposure(df[MACRO_EXPOSURE])
+
+
 MOCKS = {
     "prices": mock_prices,
     "signals": mock_signals,
@@ -192,6 +203,7 @@ MOCKS = {
     "evidence": mock_evidence,
     "macro_views": mock_macro_views,
     "source_registry": mock_source_registry,
+    "macro_exposure": mock_macro_exposure,
 }
 
 
