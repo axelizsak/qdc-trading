@@ -66,3 +66,45 @@ MACRO_FACTORS = [
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 LLM_FAST = os.getenv("CLAUDE_MODEL_FAST", "claude-haiku-5-5")  # summaries
 LLM_REASONING = os.getenv("CLAUDE_MODEL_REASONING", "claude-sonnet-5-5")  # reasoning
+
+# --- Macro / News agent ---------------------------------------------------------
+# What +1 means for each factor. A macro view's direction in [-1, 1] follows this sign.
+MACRO_FACTOR_MEANING = {
+    "ecb_rates": "ECB more hawkish, euro rates higher",
+    "fed_us_rates": "Fed more hawkish, US rates higher",
+    "inflation": "inflation rising",
+    "growth_recession": "growth stronger (-1 = recession)",
+    "eurusd": "euro stronger against the dollar",
+    "oil": "oil price higher",
+    "energy_weather": "European energy and gas prices higher (cold weather, low storage, supply cuts)",
+    "gold_silver": "gold and silver higher",
+    "copper_metals": "copper and strategic metals higher",
+    "uranium": "uranium higher",
+    "geopolitics_defence": "geopolitical tension and defence spending rising",
+    "china_em": "China and emerging markets outlook improving",
+    "tech_ai_semis": "AI and semiconductor cycle strengthening",
+    "crypto": "crypto prices higher",
+    "risk_appetite": "risk-on (investors buying risk)",
+}
+MACRO_EXPOSURE_CSV = DATA_DIR / "macro_exposure.csv"
+
+# Web tools. Haiku 5.5 takes the basic web search; dynamic filtering (_20260209) needs Sonnet/Opus.
+WEB_SEARCH_TOOL_FAST = "web_search_20250305"
+WEB_SEARCH_TOOL_REASONING = "web_search_20260209"
+WEB_FETCH_TOOL_REASONING = "web_fetch_20260209"
+MACRO_SEARCHES_PER_TOPIC = 3  # web searches per Haiku call (one call per topic)
+MACRO_EXPLORE_SEARCHES = 6  # exploration budget (Sonnet)
+MACRO_EXPLORE_FETCHES = 4
+
+# Source registry: a source needs this many graded uses before its status can change.
+SOURCE_MIN_USES = 3
+SOURCE_PROMOTE_HIT_RATE = 0.6  # testing source at or above: proposed to Axel as regular
+SOURCE_DROP_HIT_RATE = 0.4  # any source below: dropped
+
+# USD per million tokens (prompts up to 100K tokens) and per web search, for the cost of a run.
+# Check https://platform.claude.com/docs/en/about-claude/pricing before relying on them.
+LLM_PRICES_USD = {
+    "claude-haiku-5-5": {"input": 0.10, "output": 0.50},
+    "claude-sonnet-5-5": {"input": 2.00, "output": 10.00},
+}
+WEB_SEARCH_USD = 0.01

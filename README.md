@@ -101,6 +101,7 @@ These were fixed on day 1 and are defined in `data/schemas.py`. Build your modul
 | Source registry | `source, kind, factors, status [active\|testing\|dropped], first_seen, n_uses, hit_rate` |
 | Order log | `date, ticker, ai_side, ai_units, decision [approved\|modified\|rejected\|added], side, units, reason` |
 | Incidents | `date, step, error` |
+| Macro exposure | `ticker, multiplier, <one column per macro factor>` (`data/macro_exposure.csv`, a proposal for the team to review) |
 
 `factor` is one of `MACRO_FACTORS` in `data/config.py`. List columns (`sources`, `factors`) are `;`-joined strings.
 
@@ -123,6 +124,12 @@ Run a trading day. The pipeline pauses before human approval, then resumes with 
 ```bash
 python -m graph.pipeline --date 2026-12-07                # agents run, orders proposed, pause
 python -m graph.pipeline --date 2026-12-07 --approve-all  # resume, write the order log
+```
+
+Run the Macro/News agent every business day. Claude is the only key it needs:
+
+```bash
+python -m agents.macro_news               # today: report in logs/macro/<date>.md, with the cost of the run
 ```
 
 Each step uses its mock while its switch in `USE_MOCK` (`data/config.py`) is on. Runs on mocks write to `logs/mock/`, which is not committed.
