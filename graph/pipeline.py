@@ -396,6 +396,18 @@ def _pending(graph, cfg: RunnableConfig) -> dict | None:
     return snapshot.interrupts[0].value if snapshot.interrupts else None
 
 
+def day_status(as_of: date, logs: Path | None = None) -> tuple[str, dict, dict | None]:
+    """Read-only: ("not started" | "waiting for approval" | "done", saved state, pause payload or None)."""
+    logs = Path(logs) if logs else default_logs_dir()
+    with open_graph(logs) as graph:
+        snapshot = graph.get_state(thread(as_of, logs))
+    if not snapshot.values:
+        return "not started", {}, None
+    if snapshot.interrupts:
+        return "waiting for approval", snapshot.values, snapshot.interrupts[0].value
+    return "done", snapshot.values, None
+
+
 def run_day(as_of: date, logs: Path | None = None, rerun: bool = False) -> dict | None:
     """Run a day up to the approval pause and return what the human must review.
 

@@ -132,6 +132,12 @@ Run the Macro/News agent every business day. Claude is the only key it needs:
 python -m agents.macro_news               # today: report in logs/macro/<date>.md, with the cost of the run
 ```
 
+Open the cockpit (run the day, read the signals and macro views, approve orders, follow the portfolio):
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
 Each step uses its mock while its switch in `USE_MOCK` (`data/config.py`) is on. Runs on mocks write to `logs/mock/`, which is not committed.
 
 Check which ETFs are available on Yahoo Finance:
