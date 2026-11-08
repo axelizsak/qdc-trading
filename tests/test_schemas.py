@@ -93,3 +93,15 @@ def test_source_registry_rejects_bad_rows():
         schemas.validate_source_registry(df.assign(n_uses=-1))
     with pytest.raises(ValueError, match="duplicate"):
         schemas.validate_source_registry(pd.concat([df, df.head(1)]))
+
+
+def test_order_log_rejects_bad_rows():
+    df = schemas.validate_order_log(MOCKS["order_log"]())
+    with pytest.raises(ValueError, match="reason"):
+        schemas.validate_order_log(df.assign(reason=""))
+    with pytest.raises(ValueError, match="match the AI suggestion"):
+        schemas.validate_order_log(df.assign(units=df["units"].where(df["decision"] != "approved", 99)))
+    six = pd.DataFrame({"date": "2026-12-07", "ticker": [f"T{i}" for i in range(6)], "ai_side": "BUY",
+                        "ai_units": 1, "decision": "approved", "side": "BUY", "units": 1, "reason": ""})
+    with pytest.raises(ValueError, match="at most"):
+        schemas.validate_order_log(six)

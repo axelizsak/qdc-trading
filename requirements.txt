@@ -3,6 +3,7 @@ numpy
 yfinance
 anthropic
 langgraph
+langgraph-checkpoint-sqlite
 scikit-learn
 statsmodels
 streamlit

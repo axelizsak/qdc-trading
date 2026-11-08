@@ -8,12 +8,17 @@ import pandas as pd
 from data.config import DATA_DIR, MACRO_FACTORS, SIGNAL_AGENTS
 from data.schemas import (
     LIST_SEP,
+    ORDER_LOG,
     STARTER_FEATURES,
     validate_agent_weights,
     validate_evidence,
     validate_features,
     validate_holdings,
+    validate_incidents,
     validate_macro_views,
+    validate_order_log,
+    validate_orders,
+    validate_portfolio,
     validate_prices,
     validate_signals,
     validate_source_registry,
@@ -34,8 +39,8 @@ def mock_prices(days: int = 260, end: str = "2026-11-30", seed: int = 0) -> pd.D
     return validate_prices(pd.concat(frames, ignore_index=True))
 
 
-def mock_signals(as_of: str = "2026-11-30", seed: int = 0) -> pd.DataFrame:
-    """Random scores for every (agent, ETF). Format: Signals."""
+def mock_signals(as_of: str = "2026-11-30", seed: int = 0, agents: list[str] | None = None) -> pd.DataFrame:
+    """Random scores for every (agent, ETF), for all SIGNAL_AGENTS or only `agents`. Format: Signals."""
     rng = np.random.default_rng(seed)
     rows = [
         {
@@ -46,10 +51,49 @@ def mock_signals(as_of: str = "2026-11-30", seed: int = 0) -> pd.DataFrame:
             "confidence": round(float(rng.uniform(0, 1)), 3),
             "rationale": "mock",
         }
-        for agent in SIGNAL_AGENTS
+        for agent in (agents or SIGNAL_AGENTS)
         for t in tickers()
     ]
     return validate_signals(pd.DataFrame(rows))
+
+
+def mock_portfolio(n: int = 5, seed: int = 0) -> pd.DataFrame:
+    """A few target weights summing to 0.9, the rest in cash. Format: Portfolio."""
+    rng = np.random.default_rng(seed)
+    picked = rng.choice(tickers(), size=n, replace=False)
+    weights = (0.9 * rng.dirichlet(np.ones(n))).round(4)
+    return validate_portfolio(pd.DataFrame({"ticker": picked, "target_weight": weights}))
+
+
+def mock_orders(as_of: str = "2026-12-07", n: int = 3, seed: int = 0) -> pd.DataFrame:
+    """A few BUY orders. Format: Orders."""
+    rng = np.random.default_rng(seed)
+    picked = rng.choice(tickers(), size=n, replace=False)
+    return validate_orders(pd.DataFrame({
+        "date": pd.Timestamp(as_of).date(),
+        "side": "BUY",
+        "ticker": picked,
+        "units": rng.integers(1, 20, size=n),
+    }))
+
+
+def mock_order_log(as_of: str = "2026-12-07") -> pd.DataFrame:
+    """One order per human decision. Format: Order log."""
+    day = pd.Timestamp(as_of).date()
+    rows = [
+        (day, "WORLD", "BUY", 10, "approved", "BUY", 10, ""),
+        (day, "GOLD", "BUY", 8, "modified", "BUY", 4, "mock: halve the size, gold already ran up"),
+        (day, "BITCOIN", "BUY", 2, "rejected", np.nan, np.nan, "mock: too volatile before the Fed"),
+        (day, "DEFENSE", np.nan, np.nan, "added", "BUY", 5, "mock: human conviction"),
+    ]
+    return validate_order_log(pd.DataFrame(rows, columns=ORDER_LOG))
+
+
+def mock_incidents(as_of: str = "2026-12-07") -> pd.DataFrame:
+    """One failed step. Format: Incidents."""
+    return validate_incidents(pd.DataFrame([
+        {"date": pd.Timestamp(as_of).date(), "step": "macro_news", "error": "mock: API timeout"},
+    ]))
 
 
 def mock_holdings(n: int = 4, seed: int = 0) -> pd.DataFrame:
@@ -138,6 +182,10 @@ def mock_source_registry() -> pd.DataFrame:
 MOCKS = {
     "prices": mock_prices,
     "signals": mock_signals,
+    "portfolio": mock_portfolio,
+    "orders": mock_orders,
+    "order_log": mock_order_log,
+    "incidents": mock_incidents,
     "holdings": mock_holdings,
     "features": mock_features,
     "agent_weights": mock_agent_weights,

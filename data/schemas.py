@@ -8,7 +8,7 @@ strings joined with LIST_SEP, so they survive a round trip through CSV.
 import numpy as np
 import pandas as pd
 
-from data.config import MACRO_FACTORS, SIGNAL_AGENTS
+from data.config import MACRO_FACTORS, MAX_ORDERS_PER_DAY, SIGNAL_AGENTS
 
 PRICES = ["date", "ticker", "close_eur"]
 SIGNALS = ["ticker", "date", "agent", "score", "confidence", "rationale"]
@@ -20,10 +20,14 @@ AGENT_WEIGHTS = ["date", "agent", "weight", "hit_rate"]
 EVIDENCE = ["date", "factor", "source", "kind", "value", "summary", "url"]
 MACRO_VIEWS = ["date", "factor", "direction", "confidence", "rationale", "counter_argument", "sources"]
 SOURCE_REGISTRY = ["source", "kind", "factors", "status", "first_seen", "n_uses", "hit_rate"]
+# logs/orders.csv: each proposed order with the human decision, plus orders the human added.
+ORDER_LOG = ["date", "ticker", "ai_side", "ai_units", "decision", "side", "units", "reason"]
+INCIDENTS = ["date", "step", "error"]
 
 SIDES = {"BUY", "SELL"}
 EVIDENCE_KINDS = {"number", "text", "exploration"}
 SOURCE_STATUSES = {"active", "testing", "dropped"}
+DECISIONS = {"approved", "modified", "rejected", "added"}
 LIST_SEP = ";"
 
 # Proposed starting set of features, to validate with the data agent's owner. Not enforced.
@@ -173,4 +177,43 @@ def validate_source_registry(df: pd.DataFrame) -> pd.DataFrame:
     if (pd.to_numeric(df["n_uses"], errors="coerce").fillna(-1) < 0).any():
         raise ValueError("source_registry: n_uses must be >= 0")
     _require_between(df, "hit_rate", 0, 1, "source_registry", allow_missing=True)
+    return df
+
+
+def validate_order_log(df: pd.DataFrame) -> pd.DataFrame:
+    """AI suggestion (ai_side, ai_units) next to the human decision and the final order (side, units).
+
+    approved: final order = AI suggestion. modified: final order differs, reason required.
+    rejected: no final order, reason required. added: no AI suggestion, reason required.
+    """
+    _require_columns(df, ORDER_LOG, "order_log")
+    _require_in(df, "decision", DECISIONS, "order_log")
+    _require_unique(df, ["date", "ticker"], "order_log")
+    proposed = df["decision"] != "added"
+    executed = df["decision"] != "rejected"
+    if not (df.loc[proposed, "ai_side"].isin(SIDES).all()
+            and (pd.to_numeric(df.loc[proposed, "ai_units"], errors="coerce") > 0).all()):
+        raise ValueError("order_log: proposed orders need an ai_side and ai_units > 0")
+    if df.loc[~proposed, ["ai_side", "ai_units"]].notna().any().any():
+        raise ValueError("order_log: added orders have no AI suggestion")
+    if not (df.loc[executed, "side"].isin(SIDES).all()
+            and (pd.to_numeric(df.loc[executed, "units"], errors="coerce") > 0).all()):
+        raise ValueError("order_log: executed orders need a side and units > 0")
+    if df.loc[~executed, ["side", "units"]].notna().any().any():
+        raise ValueError("order_log: rejected orders have no side or units")
+    approved = df[df["decision"] == "approved"]
+    if not ((approved["side"] == approved["ai_side"]).all()
+            and (approved["units"].astype(float) == approved["ai_units"].astype(float)).all()):
+        raise ValueError("order_log: approved orders must match the AI suggestion")
+    _require_text(df[df["decision"] != "approved"], "reason", "order_log")
+    if (df[executed].groupby("date").size() > MAX_ORDERS_PER_DAY).any():
+        raise ValueError(f"order_log: at most {MAX_ORDERS_PER_DAY} executed orders per day")
+    return df
+
+
+def validate_incidents(df: pd.DataFrame) -> pd.DataFrame:
+    """A pipeline step that failed and was replaced by its fallback."""
+    _require_columns(df, INCIDENTS, "incidents")
+    _require_text(df, "step", "incidents")
+    _require_text(df, "error", "incidents")
     return df

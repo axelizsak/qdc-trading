@@ -20,3 +20,7 @@ data/cache/
 
 # Claude Code (personal settings)
 .claude/settings.local.json
+
+# Pipeline runs on mocks, and saved graph state
+logs/mock/
+logs/checkpoints.sqlite*
