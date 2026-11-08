@@ -14,12 +14,9 @@ from app import ui  # noqa: E402
 
 st.set_page_config(page_title="QDC Terminal", page_icon=":material/candlestick_chart:", layout="wide")
 navigation = st.navigation([
-    st.Page("views/today.py", title="Day", icon=":material/today:", default=True),
-    st.Page("views/signals.py", title="Signals", icon=":material/grid_view:"),
-    st.Page("views/macro.py", title="Macro", icon=":material/public:"),
+    st.Page("views/home.py", title="Portfolio", icon=":material/show_chart:", default=True),
     st.Page("views/orders.py", title="Orders", icon=":material/fact_check:"),
-    st.Page("views/portfolio.py", title="Portfolio", icon=":material/account_balance_wallet:"),
-    st.Page("views/learning.py", title="Learning", icon=":material/school:"),
+    st.Page("views/research.py", title="Research", icon=":material/insights:"),
 ], position="top")
 ui.header()
 navigation.run()

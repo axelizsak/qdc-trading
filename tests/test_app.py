@@ -12,7 +12,7 @@ from graph import pipeline
 
 APP = str(Path(__file__).resolve().parent.parent / "app" / "streamlit_app.py")
 DAY = date(2026, 12, 7)
-PAGES = ["today", "signals", "macro", "orders", "portfolio", "learning"]
+PAGES = ["home", "orders", "research"]
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def open_page(name: str) -> AppTest:
     at = AppTest.from_file(APP, default_timeout=60)
     at.session_state["as_of"] = DAY
     at.run()
-    if name != "today":
+    if name != "home":
         at.switch_page(f"views/{name}.py").run()
     assert not at.exception, at.exception
     return at
@@ -42,8 +42,8 @@ def test_page_runs_on_a_paused_day(logs, name):
     open_page(name)
 
 
-def test_today_runs_the_day_until_the_pause(logs):
-    at = open_page("today")
+def test_home_runs_the_day_until_the_pause(logs):
+    at = open_page("home")
     next(b for b in at.button if b.label == "Run the day").click().run()
     assert not at.exception
     assert pipeline.day_status(DAY, logs)[0] == "waiting for approval"
@@ -61,5 +61,5 @@ def test_approval_writes_the_order_log_and_offers_the_export(logs):
     assert pipeline.day_status(DAY, logs)[0] == "done"
     assert any(">Approved<" in m.value for m in at.markdown)  # the page now shows the log and the export
 
-    portfolio = open_page("portfolio")
-    assert any(">Positions<" in m.value for m in portfolio.markdown)
+    home = open_page("home")
+    assert any(">vs WORLD<" in m.value for m in home.markdown)

@@ -30,7 +30,7 @@ def belfius_export(log: pd.DataFrame) -> bytes:
 if status == "not started":
     ui.kpis([("Status", "Not started"), ("Orders", "—")])
     st.write("")
-    st.page_link("views/today.py", label="Run the day first: it pauses here for your approval",
+    st.page_link("views/home.py", label="Run the day first: it pauses here for your approval",
                  icon=":material/arrow_back:")
     st.stop()
 
