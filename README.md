@@ -93,6 +93,14 @@ These were fixed on day 1 and are defined in `data/schemas.py`. Build your modul
 | Signals | `ticker, date, agent, score [-1,1], confidence [0,1], rationale` |
 | Portfolio | `ticker, target_weight` |
 | Orders | `date, side, ticker, units` (matches the Belfius form) |
+| Holdings | `ticker, units` (cash is tracked separately) |
+| Features | `date, ticker, feature, value` (long format; starter set in `STARTER_FEATURES`, to validate) |
+| Agent weights | `date, agent, weight, hit_rate` (weights sum to 1 per date) |
+| Evidence | `date, factor, source, kind [number\|text\|exploration], value, summary, url` |
+| Macro views | `date, factor, direction [-1,1], confidence, rationale, counter_argument, sources` |
+| Source registry | `source, kind, factors, status [active\|testing\|dropped], first_seen, n_uses, hit_rate` |
+
+`factor` is one of `MACRO_FACTORS` in `data/config.py`. List columns (`sources`, `factors`) are `;`-joined strings.
 
 `ticker` is always the Belfius short name from `data/etf_universe.csv` (e.g. `WORLD`, `NASDAQ 3X`), never the Yahoo symbol.
 

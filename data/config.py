@@ -32,6 +32,25 @@ TRADING_DAYS = [
 # The Technical agent emits two: a deterministic score and an LLM-interpreted one.
 SIGNAL_AGENTS = ["technical_det", "technical_llm", "macro_news"]
 
+# Factors the Macro/News agent forms a view on (one macro_view per factor and day).
+MACRO_FACTORS = [
+    "ecb_rates",
+    "fed_us_rates",
+    "inflation",
+    "growth_recession",
+    "eurusd",
+    "oil",
+    "energy_weather",
+    "gold_silver",
+    "copper_metals",
+    "uranium",
+    "geopolitics_defence",
+    "china_em",
+    "tech_ai_semis",
+    "crypto",
+    "risk_appetite",
+]
+
 # --- LLM ---------------------------------------------------------------------
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 LLM_FAST = os.getenv("CLAUDE_MODEL_FAST", "claude-haiku-5-5")  # summaries
