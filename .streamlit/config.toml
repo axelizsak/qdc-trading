@@ -1,32 +1,29 @@
-# Cockpit theme. Light and dark use the same hues, each stepped for its own background.
-# Chart palettes come from a colour-blind-validated reference palette.
+# Cockpit theme: black terminal, amber accent, one fixed dark theme.
+# Data colours are the colour-blind-validated dark steps (blue = up/buy, red = down/sell).
 
 [browser]
 gatherUsageStats = false
 
 [theme]
-font = "sans-serif"
-baseRadius = "medium"
+base = "dark"
+primaryColor = "#ffa31a"
+backgroundColor = "#000000"
+secondaryBackgroundColor = "#0e0e0e"
+textColor = "#e6e3dc"
+borderColor = "#232323"
+linkColor = "#ffb547"
+font = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap, sans-serif"
+headingFont = "IBM Plex Mono:https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap, monospace"
+codeFont = "IBM Plex Mono:https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap, monospace"
+baseRadius = "small"
 showWidgetBorder = true
-
-[theme.light]
-primaryColor = "#2a78d6"
-backgroundColor = "#fcfcfb"
-secondaryBackgroundColor = "#f2f1ed"
-textColor = "#0b0b0b"
-borderColor = "#e1e0d9"
-linkColor = "#256abf"
-chartCategoricalColors = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
-chartSequentialColors = ["#cde2fb", "#b7d3f6", "#9ec5f4", "#86b6ef", "#6da7ec", "#5598e7", "#3987e5", "#2a78d6", "#256abf", "#1c5cab"]
-chartDivergingColors = ["#c63c3b", "#e34948", "#ee8f8e", "#f5c4c3", "#f0efec", "#b7d3f6", "#6da7ec", "#2a78d6", "#1c5cab"]
-
-[theme.dark]
-primaryColor = "#3987e5"
-backgroundColor = "#1a1a19"
-secondaryBackgroundColor = "#262624"
-textColor = "#f0efec"
-borderColor = "#2c2c2a"
-linkColor = "#6da7ec"
+dataframeBorderColor = "#1c1c1c"
+dataframeHeaderBackgroundColor = "#0b0b0b"
+orangeColor = "#ffa31a"
+codeTextColor = "#d8d5ce"
+codeBackgroundColor = "#161616"
+greenColor = "#22c55e"
+redColor = "#ef5b5b"
 chartCategoricalColors = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"]
-chartSequentialColors = ["#104281", "#184f95", "#1c5cab", "#256abf", "#2a78d6", "#3987e5", "#5598e7", "#6da7ec", "#86b6ef", "#9ec5f4"]
-chartDivergingColors = ["#e66767", "#c95453", "#8f3f3e", "#5a3231", "#383835", "#1c3f6b", "#1c5cab", "#3987e5", "#86b6ef"]
+chartDivergingColors = ["#e66767", "#c95453", "#8f3f3e", "#4a2a29", "#2b2b2b", "#1c3157", "#1c5cab", "#3987e5", "#86b6ef"]
+chartSequentialColors = ["#0d2440", "#104281", "#184f95", "#1c5cab", "#256abf", "#2a78d6", "#3987e5", "#5598e7", "#6da7ec", "#86b6ef"]

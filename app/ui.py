@@ -1,5 +1,6 @@
-"""Shared page context: trading day, log folders, colour tokens, small display helpers."""
+"""Shared look and context of the cockpit: terminal styling, header, key figures, pipeline strip."""
 from datetime import date
+from html import escape
 from pathlib import Path
 
 import streamlit as st
@@ -8,14 +9,56 @@ from data import config as settings
 from graph import pipeline
 
 STEPS = ["data", "technical", "macro_news", "portfolio", "risk"]
-
-# Colour tokens per mode (validated reference palette); text always uses the theme's own ink.
-TOKENS = {
-    "light": {"series": ["#2a78d6", "#eb6834", "#1baf7a"], "negative": "#e34948", "positive": "#2a78d6",
-              "neutral": "#f0efec", "rule": "#898781", "ink": "#52514e"},
-    "dark": {"series": ["#3987e5", "#d95926", "#199e70"], "negative": "#e66767", "positive": "#3987e5",
-             "neutral": "#383835", "rule": "#898781", "ink": "#c3c2b7"},
+STEP_LABELS = {"data": "Data", "technical": "Technical", "macro_news": "Macro / News", "portfolio": "Portfolio",
+               "risk": "Risk"}
+FACTOR_LABELS = {
+    "ecb_rates": "ECB rates", "fed_us_rates": "Fed / US rates", "inflation": "Inflation",
+    "growth_recession": "Growth", "eurusd": "EUR / USD", "oil": "Oil", "energy_weather": "Energy & weather",
+    "gold_silver": "Gold & silver", "copper_metals": "Copper & metals", "uranium": "Uranium",
+    "geopolitics_defence": "Geopolitics", "china_em": "China & EM", "tech_ai_semis": "Tech, AI & semis",
+    "crypto": "Crypto", "risk_appetite": "Risk appetite",
 }
+
+# Terminal palette. Data colours: validated dark steps; amber is for interface accents only.
+T = {
+    "ink": "#e6e3dc", "muted": "#8a877f", "line": "#232323", "panel": "#0b0b0b", "amber": "#ffa31a",
+    "positive": "#3987e5", "negative": "#e66767", "neutral": "#2b2b2b", "rule": "#5a5852",
+    "up": "#22c55e", "down": "#ef5b5b", "series": ["#3987e5", "#d95926", "#199e70"],
+}
+MONO = "'IBM Plex Mono', ui-monospace, monospace"
+
+CSS = f"""
+<style>
+.block-container {{padding-top: 3.2rem; max-width: 1280px;}}
+.qdc-bar {{display:flex; align-items:baseline; gap:14px; font-family:{MONO}; font-size:.78rem;
+  letter-spacing:.1em; text-transform:uppercase; color:{T['muted']};}}
+.qdc-bar .brand {{color:{T['amber']}; font-weight:600; letter-spacing:.16em;}}
+.qdc-bar .sep {{color:{T['rule']};}}
+.qdc-bar .hot {{color:{T['amber']};}}
+.qdc-title {{font-family:{MONO}; font-size:1.55rem; font-weight:500; color:{T['ink']}; margin:.6rem 0 .1rem;}}
+.qdc-sub {{color:{T['muted']}; font-size:.92rem; margin-bottom:1.1rem;}}
+.qdc-label {{font-family:{MONO}; color:{T['amber']}; font-size:.72rem; letter-spacing:.16em; text-transform:uppercase;
+  border-bottom:1px solid {T['line']}; padding-bottom:6px; margin:1.9rem 0 .8rem;}}
+.qdc-label span {{color:{T['muted']}; letter-spacing:.06em; text-transform:none; font-family:inherit; margin-left:10px;}}
+.qdc-kpis {{display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:1px; background:{T['line']};
+  border:1px solid {T['line']}; border-radius:4px; overflow:hidden;}}
+.qdc-kpi {{background:{T['panel']}; padding:14px 16px 13px;}}
+.qdc-kpi .l {{font-family:{MONO}; font-size:.66rem; letter-spacing:.14em; text-transform:uppercase; color:{T['muted']};}}
+.qdc-kpi .v {{font-size:1.6rem; font-weight:500; color:{T['ink']}; margin-top:6px; line-height:1.15;}}
+.qdc-kpi .v.hot {{color:{T['amber']};}}
+.qdc-kpi .d {{font-family:{MONO}; font-size:.74rem; margin-top:5px; color:{T['muted']};}}
+.qdc-kpi .d.up {{color:{T['up']};}} .qdc-kpi .d.down {{color:{T['down']};}}
+.qdc-pipe {{display:flex; align-items:stretch; gap:6px; flex-wrap:wrap;}}
+.qdc-step {{flex:1; min-width:118px; border:1px solid {T['line']}; border-radius:4px; padding:10px 12px; background:{T['panel']};}}
+.qdc-step .n {{font-family:{MONO}; font-size:.74rem; letter-spacing:.1em; text-transform:uppercase; color:{T['ink']};}}
+.qdc-step .m {{font-size:.72rem; color:{T['muted']}; margin-top:3px;}}
+.qdc-step .s {{font-family:{MONO}; font-size:.72rem; margin-top:8px;}}
+.qdc-arrow {{align-self:center; color:{T['rule']}; font-family:{MONO};}}
+.ok {{color:{T['up']};}} .fail {{color:{T['down']};}} .idle {{color:{T['muted']};}} .wait {{color:{T['amber']};}}
+.qdc-note {{font-family:{MONO}; font-size:.7rem; letter-spacing:.08em; color:{T['muted']}; text-transform:uppercase;}}
+.qdc-note b {{color:{T['amber']}; font-weight:500;}}
+</style>
+"""
 
 
 def default_day() -> date:
@@ -39,22 +82,79 @@ def macro_logs() -> Path:
 
 
 def tokens() -> dict:
-    theme = getattr(st.context, "theme", None)
-    return TOKENS["dark" if theme is not None and theme.type == "dark" else "light"]
+    return T
+
+
+def html(markup: str) -> None:
+    st.markdown(markup, unsafe_allow_html=True)
+
+
+def header() -> None:
+    """Top bar on every page: brand, trading day and its status, mock mode, date picker."""
+    html(CSS)
+    st.session_state.setdefault("as_of", default_day())
+    left, right = st.columns([5, 1], vertical_alignment="center")
+    with right:
+        st.date_input("Trading day", key="as_of", format="YYYY-MM-DD", label_visibility="collapsed",
+                      help="Trading days: " + ", ".join(d.strftime("%d %b") for d in settings.TRADING_DAYS))
+    day = as_of()
+    status, state, pending = pipeline.day_status(day, pipeline_logs())
+    orders = len(pending["proposed_orders"]) if pending else len(state.get("proposed_orders", []))
+    parts = [f"<span class='brand'>QDC ▸ Terminal</span>", f"{day:%a %d %b %Y}"]
+    if day not in settings.TRADING_DAYS:
+        parts.append("not a trading day")
+    parts.append(f"<span class='hot'>{status}</span>" if status == "waiting for approval" else status)
+    if status != "not started":
+        parts.append(f"{orders} order{'s' if orders != 1 else ''}")
+    if any(settings.USE_MOCK.values()):
+        parts.append("mock mode")
+    with left:
+        html("<div class='qdc-bar'>" + " <span class='sep'>│</span> ".join(parts) + "</div>")
+
+
+def page(title: str, question: str) -> None:
+    html(f"<div class='qdc-title'>{escape(title)}</div><div class='qdc-sub'>{escape(question)}</div>")
+
+
+def label(text: str, aside: str = "") -> None:
+    html(f"<div class='qdc-label'>{escape(text)}" + (f"<span>{escape(aside)}</span>" if aside else "") + "</div>")
+
+
+def kpis(items: list[tuple]) -> None:
+    """Key figures in one row. Each item: (label, value, delta text or None, 'up'|'down'|'hot'|None)."""
+    cells = []
+    for item in items:
+        name, value, delta, tone = (list(item) + [None, None])[:4]
+        value_cls = "v hot" if tone == "hot" else "v"
+        delta_html = f"<div class='d {tone or ''}'>{escape(delta)}</div>" if delta else ""
+        cells.append(f"<div class='qdc-kpi'><div class='l'>{escape(name)}</div>"
+                     f"<div class='{value_cls}'>{escape(str(value))}</div>{delta_html}</div>")
+    html("<div class='qdc-kpis'>" + "".join(cells) + "</div>")
+
+
+def pipeline_strip(status: str, incidents: list[dict]) -> None:
+    """The day's steps left to right, each with its mode and its state."""
+    failed = {i["step"]: i["error"] for i in incidents}
+
+    def step(name: str, mode: str, state: str, cls: str) -> str:
+        return (f"<div class='qdc-step'><div class='n'>{escape(name)}</div><div class='m'>{mode}</div>"
+                f"<div class='s {cls}'>{state}</div></div>")
+
+    cells = []
+    for key in STEPS:
+        mode = "mock" if settings.USE_MOCK[key] else "real"
+        if status == "not started":
+            cells.append(step(STEP_LABELS[key], mode, "○ not run", "idle"))
+        elif key in failed:
+            cells.append(step(STEP_LABELS[key], mode, "✕ failed", "fail"))
+        else:
+            cells.append(step(STEP_LABELS[key], mode, "● ok", "ok"))
+    approval = {"not started": ("○ not run", "idle"), "waiting for approval": ("◐ waiting for you", "wait"),
+                "done": ("● approved", "ok")}[status]
+    cells.append(step("Approval", "human", *approval))
+    html("<div class='qdc-pipe'>" + "<div class='qdc-arrow'>›</div>".join(cells) + "</div>")
 
 
 def mock_note(is_mock: bool, what: str = "No real data yet") -> None:
     if is_mock:
-        st.caption(f":gray-badge[:material/science: mock data] {what}: showing mock data.")
-
-
-def sidebar() -> None:
-    st.session_state.setdefault("as_of", default_day())
-    with st.sidebar:
-        st.date_input("Trading day", key="as_of", format="YYYY-MM-DD",
-                      help="Trading days: " + ", ".join(d.strftime("%d %b") for d in settings.TRADING_DAYS))
-        mocks = [s for s in STEPS if settings.USE_MOCK[s]]
-        folder = pipeline_logs()
-        shown = folder.relative_to(settings.ROOT) if folder.is_relative_to(settings.ROOT) else folder
-        st.caption(f"Pipeline logs: `{shown}/`")
-        st.caption("Steps on mocks: " + (", ".join(mocks) if mocks else "none"))
+        html(f"<div class='qdc-note'><b>mock data</b> · {escape(what)}</div>")
