@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from agents import macro_llm, macro_news
-from agents.macro_sources import _common, collect_all, market_stress, polymarket
+from agents.macro_sources import _common, cftc_cot, collect_all, funding_rates, market_stress, polymarket, stablecoins
 from data import config as settings
 from data.config import MACRO_FACTORS
 from data.schemas import validate_macro_exposure, validate_signals, validate_source_registry
@@ -204,3 +204,43 @@ def test_polymarket_keeps_open_informative_markets():
     assert [r["value"] for r in rows] == [0.3]
     assert "+5 pts over a week" in rows[0]["summary"]
 
+
+
+# --- v2 sources ------------------------------------------------------------------------------
+
+def test_ordinal():
+    assert [_common.ordinal(n) for n in (1, 2, 3, 11, 12, 22, 73, 100)] == \
+        ["1st", "2nd", "3rd", "11th", "12th", "22nd", "73rd", "100th"]
+
+
+def test_cftc_cot_measures_net_positioning():
+    weeks = pd.date_range(end="2026-12-01", periods=40, freq="W-TUE")
+    payload = [{"cftc_contract_market_code": "088691", "report_date_as_yyyy_mm_dd": f"{d:%Y-%m-%d}T00:00:00.000",
+                "open_interest_all": "100000", "noncomm_positions_long_all": str(50000 + i * 100),
+                "noncomm_positions_short_all": "10000"} for i, d in enumerate(weeks)]
+    rows = cftc_cot.collect(DAY, http=_http(lambda request: httpx.Response(200, json=payload)))
+    assert len(rows) == 1 and rows[0]["factor"] == "gold_silver"
+    assert rows[0]["value"] == pytest.approx(0.439)
+    assert "net long 43,900 gold" in rows[0]["summary"] and "weekly change +100" in rows[0]["summary"]
+
+
+def test_stablecoin_supply_growth():
+    start = int(pd.Timestamp("2025-06-01", tz="UTC").timestamp())
+    payload = [{"date": str(start + i * 86400), "totalCirculatingUSD": {"peggedUSD": 2e11 * (1.001 ** i)}}
+               for i in range(500)]
+    rows = stablecoins.collect(DAY, http=_http(lambda request: httpx.Response(200, json=payload)))
+    assert rows[0]["factor"] == "crypto" and rows[0]["value"] == pytest.approx(1.001 ** 30 - 1)
+
+
+def test_funding_rates_are_annualised():
+    payload = [{"fundingRate": "0.0001"} for _ in range(120)]
+    rows = funding_rates.collect(DAY, http=_http(lambda request: httpx.Response(200, json=payload)))
+    assert len(rows) == 2 and rows[0]["value"] == pytest.approx(0.0001 * 3 * 365)
+
+
+def test_x_posts_are_searched_on_x_only(tmp_path):
+    client = FakeClaude()
+    macro_news.run(DAY, "", tmp_path, client, {"stress": _number_collector})
+    restricted = [c for c in client.calls if c.get("tools") and c["tools"][0].get("allowed_domains")]
+    assert len(restricted) == 1 and restricted[0]["tools"][0]["allowed_domains"] == ["x.com"]
+    assert "posts" in restricted[0]["messages"][0]["content"]

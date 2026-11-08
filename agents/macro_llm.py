@@ -110,7 +110,24 @@ CROSS_TOPICS = {
                    "with the 5-year average, and the latest TTF gas price.",
     "attention": "Signs of hype or panic in public attention this week (search trends, social media, retail "
                  "flows) around uranium, bitcoin, quantum computing, defence stocks or recession.",
+    # v2 (2026-11-08), see logs/source_changes.csv
+    "tsmc_revenue": "TSMC's latest monthly revenue release (published around the 10th of each month): amount, "
+                    "month-on-month and year-on-year change, and how it compares with expectations.",
+    "korea_exports": "South Korea's latest export figures, including the first-20-days data (published around the "
+                     "21st) and semiconductor exports, year on year.",
+    "btc_etf_flows": "Daily net flows into and out of US spot Bitcoin ETFs over the past week, in total and for the "
+                     "largest funds.",
+    "gold_flows": "Central bank gold purchases (latest World Gold Council figures) and gold ETF flows over the "
+                  "past weeks.",
+    "uranium_market": "Uranium spot and term prices this week, and purchases by the Sprott Physical Uranium Trust.",
+    "fda_calendar": "FDA decision dates (PDUFA) and advisory committee meetings between today and 23 December 2026 "
+                    "for large biotech companies, and the most notable FDA decisions of the past week.",
+    "container_freight": "The latest container freight indices (Drewry World Container Index, Freightos FBX, "
+                         "SCFI): level and weekly change, and what drives them.",
+    "x_posts": "Notable posts this week from economists, central bankers, fund managers and market analysts about "
+               "rates, inflation, energy, metals, AI or crypto.",
 }
+TOPIC_DOMAINS = {"x_posts": ["x.com"]}  # X has no free read API and may not be scraped: web search only
 SEARCH_SYSTEM = """You research news for a student team that trades 50 European-listed ETFs over the next few trading days. Today is {today}.
 Search the web for facts published in the last 7 days on the topic you are given. Report facts with their numbers and dates, and analysts' views as attributed facts. Add no forecast of your own. {untrusted}
 Answer with only a JSON object in a ```json block:
@@ -126,11 +143,13 @@ def search_topics() -> dict[str, tuple[str, str]]:
     return topics
 
 
-def news_search(client, usage: Usage, as_of: date, source: str, topic: str) -> list[dict]:
+def news_search(client, usage: Usage, as_of: date, source: str, topic: str,
+                domains: list[str] | None = None) -> list[dict]:
     system = SEARCH_SYSTEM.format(today=as_of.isoformat(), untrusted=UNTRUSTED, factors=", ".join(MACRO_FACTORS))
-    text = ask(client, usage, settings.LLM_FAST, system, f"Topic: {topic}",
-               tools=[{"type": settings.WEB_SEARCH_TOOL_FAST, "name": "web_search",
-                       "max_uses": settings.MACRO_SEARCHES_PER_TOPIC}],
+    tool = {"type": settings.WEB_SEARCH_TOOL_FAST, "name": "web_search", "max_uses": settings.MACRO_SEARCHES_PER_TOPIC}
+    if domains:
+        tool["allowed_domains"] = domains
+    text = ask(client, usage, settings.LLM_FAST, system, f"Topic: {topic}", tools=[tool],
                output_config={"effort": "medium"})
     return [evidence(as_of, f["factor"], source, "text", f"[{f.get('date', 'undated')}] {f['summary']}",
                      url=f.get("url", ""))
@@ -141,7 +160,7 @@ def news_search(client, usage: Usage, as_of: date, source: str, topic: str) -> l
 def search_all(client, usage: Usage, as_of: date) -> tuple[list[dict], dict[str, str]]:
     rows, failures = [], {}
     with ThreadPoolExecutor(max_workers=6) as pool:
-        jobs = {topic: pool.submit(news_search, client, usage, as_of, source, text)
+        jobs = {topic: pool.submit(news_search, client, usage, as_of, source, text, TOPIC_DOMAINS.get(topic))
                 for topic, (source, text) in search_topics().items()}
         for topic, job in jobs.items():
             try:

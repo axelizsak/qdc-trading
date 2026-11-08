@@ -23,6 +23,7 @@ from data.schemas import (
     validate_portfolio,
     validate_prices,
     validate_signals,
+    validate_source_changes,
     validate_source_registry,
 )
 from data.universe import tickers
@@ -190,6 +191,14 @@ def mock_macro_exposure(seed: int = 0) -> pd.DataFrame:
     return validate_macro_exposure(df[MACRO_EXPOSURE])
 
 
+def mock_source_changes() -> pd.DataFrame:
+    """One added and one removed source. Format: Source changes."""
+    return validate_source_changes(pd.DataFrame([
+        {"date": "2026-11-20", "source": "mock_new_source", "change": "added", "note": "mock: proposed by exploration"},
+        {"date": "2026-11-27", "source": "mock_dropped_source", "change": "removed", "note": "mock: wrong too often"},
+    ]))
+
+
 MOCKS = {
     "prices": mock_prices,
     "signals": mock_signals,
@@ -204,6 +213,7 @@ MOCKS = {
     "macro_views": mock_macro_views,
     "source_registry": mock_source_registry,
     "macro_exposure": mock_macro_exposure,
+    "source_changes": mock_source_changes,
 }
 
 

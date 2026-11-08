@@ -11,13 +11,17 @@ from datetime import date
 
 import pandas as pd
 
-from agents.macro_sources import market_stress, open_meteo, polymarket
+from agents.macro_sources import cftc_cot, funding_rates, market_stress, open_meteo, polymarket, stablecoins
 from data.schemas import EVIDENCE, validate_evidence
 
 COLLECTORS = {
     "market_stress": market_stress.collect,
     "polymarket": polymarket.collect,
     "open_meteo": open_meteo.collect,
+    # v2 (2026-11-08), see logs/source_changes.csv
+    "cftc_cot": cftc_cot.collect,
+    "stablecoins": stablecoins.collect,
+    "funding_rates": funding_rates.collect,
 }
 
 

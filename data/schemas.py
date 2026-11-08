@@ -23,6 +23,8 @@ SOURCE_REGISTRY = ["source", "kind", "factors", "status", "first_seen", "n_uses"
 # logs/orders.csv: each proposed order with the human decision, plus orders the human added.
 ORDER_LOG = ["date", "ticker", "ai_side", "ai_units", "decision", "side", "units", "reason"]
 INCIDENTS = ["date", "step", "error"]
+# logs/source_changes.csv: when a Macro/News source was added or removed, for before/after comparisons.
+SOURCE_CHANGES = ["date", "source", "change", "note"]
 # data/macro_exposure.csv: how much each ETF moves with each macro factor (before leverage).
 MACRO_EXPOSURE = ["ticker", "multiplier", *MACRO_FACTORS]
 
@@ -30,6 +32,7 @@ SIDES = {"BUY", "SELL"}
 EVIDENCE_KINDS = {"number", "text", "exploration"}
 SOURCE_STATUSES = {"active", "testing", "dropped"}
 DECISIONS = {"approved", "modified", "rejected", "added"}
+SOURCE_CHANGE_KINDS = {"added", "removed"}
 LIST_SEP = ";"
 
 # Proposed starting set of features, to validate with the data agent's owner. Not enforced.
@@ -230,4 +233,13 @@ def validate_macro_exposure(df: pd.DataFrame) -> pd.DataFrame:
     multiplier = pd.to_numeric(df["multiplier"], errors="coerce")
     if multiplier.isna().any() or (multiplier == 0).any():
         raise ValueError("macro_exposure: multiplier must be a non-zero number")
+    return df
+
+
+def validate_source_changes(df: pd.DataFrame) -> pd.DataFrame:
+    """Dated log of the sources added to or removed from the Macro/News agent."""
+    _require_columns(df, SOURCE_CHANGES, "source_changes")
+    _require_in(df, "change", SOURCE_CHANGE_KINDS, "source_changes")
+    _require_text(df, "source", "source_changes")
+    _require_unique(df, ["date", "source", "change"], "source_changes")
     return df
