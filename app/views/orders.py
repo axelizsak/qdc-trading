@@ -15,9 +15,9 @@ from graph import pipeline
 DECISION = {"Approve": "approved", "Modify": "modified", "Reject": "rejected"}
 
 as_of, logs = ui.as_of(), ui.pipeline_logs()
-st.title("Orders")
 status, state, pending = pipeline.day_status(as_of, logs)
 universe = load_universe()
+ui.page("Orders", "Approve, change or reject what the agents propose. Nothing is traded without you.")
 
 
 def belfius_export(log: pd.DataFrame) -> bytes:
@@ -28,15 +28,19 @@ def belfius_export(log: pd.DataFrame) -> bytes:
 
 
 if status == "not started":
-    st.info(f"{as_of} has not run yet. Run it from the Today page; it pauses here for your approval.")
-    st.page_link("views/today.py", label="Go to Today", icon=":material/today:")
+    ui.kpis([("Status", "Not started"), ("Orders", "—")])
+    st.write("")
+    st.page_link("views/today.py", label="Run the day first: it pauses here for your approval",
+                 icon=":material/arrow_back:")
     st.stop()
 
 if status == "done":
     log = data.order_log(logs)
     day_log = log[log["date"].astype(str) == as_of.isoformat()] if log is not None else pd.DataFrame()
-    st.success(f"{as_of} is approved: {int((day_log['decision'] != 'rejected').sum())} orders to submit.",
-               icon=":material/task_alt:")
+    executed = day_log[day_log["decision"] != "rejected"] if len(day_log) else day_log
+    ui.kpis([("Status", "Approved", None, "up"), ("Orders to submit", len(executed)),
+             ("Changed by you", int((day_log["decision"] != "approved").sum()) if len(day_log) else 0)])
+    ui.label("Order log", "AI suggestion next to your decision")
     st.dataframe(day_log, hide_index=True, width="stretch")
     st.download_button("Export for the Belfius form", belfius_export(day_log), f"orders_{as_of}.csv", "text/csv",
                        icon=":material/download:", type="primary")
@@ -48,14 +52,17 @@ prices, _ = data.day_prices(as_of, state)
 close = data.last_close(prices, as_of)
 held = {h["ticker"]: float(h["units"]) for h in state.get("holdings", [])}
 cash = float(state.get("cash_eur", settings.START_CAPITAL_EUR))
+figures = st.empty()
 
 for incident in pending["incidents"]:
     st.warning(f"{incident['step']} failed and was replaced by its fallback: {incident['error']}",
                icon=":material/error:")
-with st.expander("Investment memo", expanded=True):
+
+ui.label("Investment memo", "the Portfolio Manager's reasoning")
+with st.container(border=True):
     st.markdown(pending["memo"])
 
-st.subheader("Proposed orders")
+ui.label("Proposed orders", "change the decision, side or units · a reason is required to modify or reject")
 editor = proposed.rename(columns={"side": "ai_side", "units": "ai_units"})[["ticker", "ai_side", "ai_units"]]
 editor = editor.assign(decision="Approve", side=editor["ai_side"], units=editor["ai_units"], reason="")
 edited = st.data_editor(
@@ -65,23 +72,23 @@ edited = st.data_editor(
         "ai_side": st.column_config.TextColumn("AI side"),
         "ai_units": st.column_config.NumberColumn("AI units"),
         "decision": st.column_config.SelectboxColumn("Decision", options=list(DECISION), required=True),
-        "side": st.column_config.SelectboxColumn("Side", options=["BUY", "SELL"], help="Used when you modify"),
-        "units": st.column_config.NumberColumn("Units", min_value=1, step=1, help="Used when you modify"),
-        "reason": st.column_config.TextColumn("Reason", help="Required to modify or reject"),
-    },
-)
-st.caption("Add your own orders (a reason is required):")
-added = st.data_editor(
-    pd.DataFrame({"ticker": pd.Series(dtype=str), "side": pd.Series(dtype=str), "units": pd.Series(dtype=float),
-                  "reason": pd.Series(dtype=str)}),
-    num_rows="dynamic", hide_index=True, width="stretch", key="added",
-    column_config={
-        "ticker": st.column_config.SelectboxColumn("ETF", options=universe["ticker"].tolist()),
         "side": st.column_config.SelectboxColumn("Side", options=["BUY", "SELL"]),
         "units": st.column_config.NumberColumn("Units", min_value=1, step=1),
         "reason": st.column_config.TextColumn("Reason"),
     },
 )
+with st.expander("Add an order of your own"):
+    added = st.data_editor(
+        pd.DataFrame({"ticker": pd.Series(dtype=str), "side": pd.Series(dtype=str),
+                      "units": pd.Series(dtype=float), "reason": pd.Series(dtype=str)}),
+        num_rows="dynamic", hide_index=True, width="stretch", key="added",
+        column_config={
+            "ticker": st.column_config.SelectboxColumn("ETF", options=universe["ticker"].tolist()),
+            "side": st.column_config.SelectboxColumn("Side", options=["BUY", "SELL"]),
+            "units": st.column_config.NumberColumn("Units", min_value=1, step=1),
+            "reason": st.column_config.TextColumn("Reason (required)"),
+        },
+    )
 
 decisions = []
 for row in edited.itertuples():
@@ -107,12 +114,13 @@ except (ValueError, KeyError, TypeError) as exc:
     if not problems:  # reasons are reported above in plain words
         problems.append(str(exc).removeprefix("order_log: "))
 
+executed_count, cash_after = 0, cash
 if log is not None:
     executed = log[log["decision"] != "rejected"]
+    executed_count = len(executed)
     units = executed["units"].astype(float)
     px = executed["ticker"].map(close)
-    signed_cost = (units * px).where(executed["side"] == "BUY", -(units * px))
-    cash_after = cash - float(signed_cost.sum())
+    cash_after = cash - float((units * px).where(executed["side"] == "BUY", -(units * px)).sum())
     for row in executed[executed["side"] == "SELL"].itertuples():
         if float(row.units) > held.get(row.ticker, 0):
             problems.append(f"Selling {row.units:g} {row.ticker}, but only {held.get(row.ticker, 0):g} held")
@@ -120,16 +128,20 @@ if log is not None:
         problems.append("No price for " + ", ".join(executed.loc[px.isna(), "ticker"]))
     if cash_after < 0:
         problems.append(f"Not enough cash: the orders need €{-cash_after:,.0f} more than available")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Orders to submit", f"{len(executed)} / {settings.MAX_ORDERS_PER_DAY}")
-    c2.metric("Cash now", f"€{cash:,.0f}")
-    change = cash_after - cash
-    c3.metric("Cash after (at last close)", f"€{cash_after:,.0f}",
-              delta=f"{'-' if change < 0 else '+'}€{abs(change):,.0f}", delta_color="off")
 
+change = cash_after - cash
+with figures.container():
+    ui.kpis([
+        ("Status", "Waiting for you", None, "hot"),
+        ("Orders to submit", f"{executed_count} / {settings.MAX_ORDERS_PER_DAY}"),
+        ("Cash now", f"€{cash:,.0f}"),
+        ("Cash after", f"€{cash_after:,.0f}", f"{'−' if change < 0 else '+'}€{abs(change):,.0f} at last close"),
+        ("Checks", "OK" if not problems else f"{len(problems)} to fix", None, None if not problems else "down"),
+    ])
+
+ui.label("Approve")
 for problem in problems:
     st.error(problem, icon=":material/block:")
-
 if st.button("Approve and write the order log", type="primary", disabled=bool(problems), key="submit",
              icon=":material/check:"):
     pipeline.resume_day(as_of, decisions, logs)

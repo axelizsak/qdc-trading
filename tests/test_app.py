@@ -59,7 +59,7 @@ def test_approval_writes_the_order_log_and_offers_the_export(logs):
     assert sorted(log["ticker"]) == sorted(o["ticker"] for o in pending["proposed_orders"])
     assert (log["decision"] == "approved").all()
     assert pipeline.day_status(DAY, logs)[0] == "done"
-    assert at.success  # the page now shows the approved orders and the Belfius export
+    assert any(">Approved<" in m.value for m in at.markdown)  # the page now shows the log and the export
 
     portfolio = open_page("portfolio")
-    assert any("Portfolio value" == m.label for m in portfolio.metric)
+    assert any(">Positions<" in m.value for m in portfolio.markdown)

@@ -1,40 +1,53 @@
-"""Learning: agent weights over time, hit rates of agents and sources, lessons journal."""
+"""Learning: how the system re-weights its agents and sources after each trading day."""
 import pandas as pd
 import streamlit as st
 
 from app import charts, data, ui
 
-st.title("Learning")
 logs = ui.macro_logs()
-
-st.subheader("Agent weights")
 weights, weights_mock = data.agent_weights(logs)
-ui.mock_note(weights_mock, "The review loop has not written logs/agent_weights.csv yet")
 weights = weights.assign(date=pd.to_datetime(weights["date"].astype(str)))
-st.altair_chart(charts.lines(weights, "date", "weight", "agent", ui.tokens(), "Weight", ".0%", zero_based=True),
-                width="stretch")
-
-st.subheader("Agent hit rates")
-graded = weights.dropna(subset=["hit_rate"])
-if graded.empty:
-    st.caption("No hit rate yet: it appears after the first review.")
-else:
-    latest = graded[graded["date"] == graded["date"].max()]
-    st.altair_chart(charts.hbars(latest, "hit_rate", "agent", ui.tokens(), ".0%",
-                                 tooltip=["agent", "weight", "hit_rate"], rule_at=0.5), width="stretch")
-with st.expander("Table view"):
-    st.dataframe(weights, hide_index=True, width="stretch")
-
-st.subheader("Source hit rates")
 registry, registry_mock = data.source_registry(logs)
-ui.mock_note(registry_mock, "No source registry yet")
-st.dataframe(registry.sort_values("hit_rate", ascending=False), hide_index=True, width="stretch",
-             column_config={"hit_rate": st.column_config.ProgressColumn("Hit rate", min_value=0, max_value=1,
-                                                                        format="percent")})
+graded_sources = registry[registry["n_uses"] > 0]
+graded_agents = weights.dropna(subset=["hit_rate"])
+latest = graded_agents[graded_agents["date"] == graded_agents["date"].max()] if len(graded_agents) else graded_agents
 
-st.subheader("Lessons journal")
+ui.page("Learning", "How the system re-weights its agents and sources after each trading day.")
+best = latest.loc[latest["hit_rate"].idxmax()] if len(latest) else None
+ui.kpis([
+    ("Reviews", weights["date"].nunique()),
+    ("Best agent", best["agent"] if best is not None else "—",
+     f"hit rate {best['hit_rate']:.0%}" if best is not None else None),
+    ("Graded sources", len(graded_sources), f"of {len(registry)}"),
+    ("Dropped sources", int((registry["status"] == "dropped").sum())),
+])
+
+ui.label("Agent weights", "share of each agent in the combined score")
+ui.mock_note(weights_mock, "the review loop has not written logs/agent_weights.csv yet")
+st.altair_chart(charts.lines(weights, "date", "weight", "agent", "weight", ".0%", zero_based=True), width="stretch")
+
+agents_col, sources_col = st.columns(2, gap="large")
+with agents_col:
+    ui.label("Agent hit rates", "latest review · line = 50%")
+    if latest.empty:
+        st.caption("Appears after the first review.")
+    else:
+        st.altair_chart(charts.hbars(latest, "hit_rate", "agent", ".0%", tooltip=["agent", "weight", "hit_rate"],
+                                     rule_at=0.5), width="stretch")
+with sources_col:
+    ui.label("Source hit rates", "line = 50%")
+    ui.mock_note(registry_mock, "no source registry yet")
+    if graded_sources.empty:
+        st.caption("Appears once the review loop has scored a trading day.")
+    else:
+        st.altair_chart(charts.hbars(graded_sources, "hit_rate", "source", ".0%",
+                                     tooltip=["source", "status", "n_uses", "hit_rate"], rule_at=0.5),
+                        width="stretch")
+
+ui.label("Lessons journal", "what the agents read before each decision")
 journal = data.lessons(logs)
 if journal:
-    st.markdown(journal)
+    with st.container(border=True):
+        st.markdown(journal)
 else:
-    st.caption("logs/lessons.md is empty. The review loop writes a lesson after each trading day.")
+    st.caption("Empty: the review loop writes a lesson after each trading day.")

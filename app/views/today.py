@@ -1,75 +1,63 @@
-"""Today: run or reload the trading day, status of each agent and each source, cost."""
-import pandas as pd
+"""Day: where the trading day stands and what to do next."""
 import streamlit as st
 
 from app import data, ui
-from data import config as settings
 from graph import pipeline
 
 as_of, logs = ui.as_of(), ui.pipeline_logs()
-st.title("Today")
-st.caption(f"Trading day {as_of:%A %d %B %Y}" + ("" if as_of in settings.TRADING_DAYS else " (not a competition day)"))
-
 status, state, pending = pipeline.day_status(as_of, logs)
 report = data.macro_report(as_of, ui.macro_logs(), logs)
 incidents = state.get("incidents", [])
+proposed = pending["proposed_orders"] if pending else state.get("proposed_orders", [])
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Day", status.capitalize())
-c2.metric("Orders proposed", len(pending["proposed_orders"]) if pending else len(state.get("proposed_orders", [])))
-c3.metric("Incidents", len(incidents))
-c4.metric("Macro run cost", data.macro_cost(report) or "n/a", help="From the Macro/News report of this day")
+ui.page("Day", "Where the trading day stands, and what to do next.")
+ui.kpis([
+    ("Status", status.capitalize(), None, "hot" if status == "waiting for approval" else None),
+    ("Orders proposed", len(proposed) if status != "not started" else "—"),
+    ("Incidents", len(incidents), "every step ran" if status != "not started" and not incidents else None,
+     "down" if incidents else None),
+    ("Macro run cost", data.macro_cost(report) or "—", "Claude API" if data.macro_cost(report) else None),
+])
 
-b1, b2, _ = st.columns([1, 1, 3])
-if b1.button("Run the day", type="primary", disabled=status != "not started", icon=":material/play_arrow:",
-             help="Runs every agent, then pauses for your approval on the Orders page"):
-    with st.spinner("Agents running..."):
-        pipeline.run_day(as_of, logs)
-    st.rerun()
-if b2.button("Run again", disabled=status == "not started", icon=":material/replay:",
-             help="Starts the day again. Signals already logged are read back, so the agents are not called again"):
-    with st.spinner("Running again from the logs..."):
-        pipeline.run_day(as_of, logs, rerun=True)
-    st.rerun()
-if status == "waiting for approval":
-    st.page_link("views/orders.py", label="Review the proposed orders", icon=":material/fact_check:")
+ui.label("Pipeline")
+ui.pipeline_strip(status, incidents)
+for incident in incidents:
+    st.error(f"{ui.STEP_LABELS[incident['step']]} failed and was replaced by its fallback: {incident['error']}")
 
-st.subheader("Agents")
-failed = {i["step"]: i["error"] for i in incidents}
-for step in ui.STEPS:
-    name, mode, state_col, detail = st.columns([2, 1, 1, 6])
-    name.markdown(f"**{step}**")
-    mode.markdown(":gray-badge[mock]" if settings.USE_MOCK[step] else ":blue-badge[real]")
-    if status == "not started":
-        state_col.markdown(":gray-badge[not run]")
-    elif step in failed:
-        state_col.markdown(":red-badge[:material/error: failed]")
-        detail.caption(failed[step])
+ui.label("Next step")
+if status == "not started":
+    if st.button("Run the day", type="primary", icon=":material/play_arrow:"):
+        with st.spinner("Agents running..."):
+            pipeline.run_day(as_of, logs)
+        st.rerun()
+    st.caption("Runs every agent, then pauses for your approval on the Orders page.")
+else:
+    go, again, _ = st.columns([2, 1, 3])
+    if status == "waiting for approval":
+        go.page_link("views/orders.py", label=f"Review the {len(proposed)} proposed orders",
+                     icon=":material/arrow_forward:")
     else:
-        state_col.markdown(":green-badge[:material/check: ok]")
+        go.page_link("views/orders.py", label="Approved · export for the Belfius form", icon=":material/task_alt:")
+    if again.button("Run again", icon=":material/replay:",
+                    help="Starts the day again. Signals already logged are read back: no new API calls"):
+        with st.spinner("Running again from the logs..."):
+            pipeline.run_day(as_of, logs, rerun=True)
+        st.rerun()
 
-st.subheader("Macro sources")
 registry, registry_mock = data.source_registry(ui.macro_logs())
-evidence, _ = data.evidence(ui.macro_logs())
-ui.mock_note(registry_mock, "No source registry yet")
-today_counts = evidence[evidence["date"].astype(str) == as_of.isoformat()].groupby("source").size()
-table = registry.assign(items_today=registry["source"].map(today_counts).fillna(0).astype(int))
-st.dataframe(
-    table[["source", "kind", "status", "items_today", "n_uses", "hit_rate", "factors", "first_seen"]],
-    hide_index=True, width="stretch",
-    column_config={
-        "status": st.column_config.TextColumn("Status", help="active, testing (on trial) or dropped"),
-        "items_today": st.column_config.NumberColumn("Items today"),
-        "n_uses": st.column_config.NumberColumn("Graded uses"),
-        "hit_rate": st.column_config.ProgressColumn("Hit rate", min_value=0, max_value=1, format="percent"),
-    },
-)
+counts = registry["status"].value_counts()
+ui.label("Macro sources", f"{len(registry)} sources · {counts.get('active', 0)} active · "
+                          f"{counts.get('testing', 0)} on trial · {counts.get('dropped', 0)} dropped")
+ui.mock_note(registry_mock, "no source registry yet")
+if report and "## Failed collectors and searches" in report:
+    st.warning("Some collectors or searches failed in this day's macro run:\n"
+               + report.split("## Failed collectors and searches")[1].strip())
+with st.expander("Source registry"):
+    st.dataframe(registry[["source", "kind", "status", "n_uses", "hit_rate", "factors", "first_seen"]],
+                 hide_index=True, width="stretch",
+                 column_config={"n_uses": st.column_config.NumberColumn("graded uses"),
+                                "hit_rate": st.column_config.ProgressColumn("hit rate", min_value=0, max_value=1,
+                                                                            format="percent")})
 if report:
-    failures = report.split("## Failed collectors and searches")
-    if len(failures) > 1:
-        st.warning("Failed collectors and searches in this day's macro run:\n" + failures[1].strip())
     with st.expander("Macro/News report of the day"):
         st.markdown(report)
-else:
-    st.caption("No Macro/News report for this day. Run `python -m agents.macro_news --date "
-               f"{as_of.isoformat()}`.")
