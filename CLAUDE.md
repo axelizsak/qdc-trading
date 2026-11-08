@@ -13,7 +13,7 @@ Rules for everyone working in this repo, people and Claude alike. Read `README.m
 
 ## Who owns what
 
-Work in your own modules. To build against someone else's, use the mocks in `data/mock.py`, never your own version of their logic.
+Work in your own modules. To build against someone else's, use the mocks in `data/mock.py`, never your own version of their logic. When your module works, set its switch in `USE_MOCK` (`data/config.py`) to `False`, so the pipeline calls it.
 
 | Owner | Modules |
 |---|---|

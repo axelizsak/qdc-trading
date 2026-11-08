@@ -32,6 +32,17 @@ TRADING_DAYS = [
 # The Technical agent emits two: a deterministic score and an LLM-interpreted one.
 SIGNAL_AGENTS = ["technical_det", "technical_llm", "macro_news"]
 
+# One switch per pipeline step (graph/pipeline.py). True = use the mock from data/mock.py.
+# Set your step to False once your real module works. While any step is on a mock,
+# the pipeline writes to logs/mock/ (gitignored) instead of logs/.
+USE_MOCK = {
+    "data": True,
+    "technical": True,
+    "macro_news": True,
+    "portfolio": True,
+    "risk": True,
+}
+
 # Factors the Macro/News agent forms a view on (one macro_view per factor and day).
 MACRO_FACTORS = [
     "ecb_rates",
