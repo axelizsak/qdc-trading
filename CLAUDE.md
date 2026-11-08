@@ -45,5 +45,6 @@ Work in your own modules. To build against someone else's, use the mocks in `dat
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python >= 3.11; CI uses 3.11
 .venv/bin/python -m pytest                                            # run the tests
+streamlit run app/streamlit_app.py                                    # the cockpit
 scripts/ship.sh "what you changed"                                    # or /ship in Claude Code
 ```
