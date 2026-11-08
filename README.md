@@ -124,8 +124,10 @@ python data/check_etfs_yfinance.py   # writes data/etf_yahoo_map.csv
 
 The split between Person 2 and Person 3 is still to be confirmed.
 
-## Working together
+## Contributing
 
-- Use one branch per feature and open a pull request into `main`.
-- Never commit `.env` or API keys.
-- Commit everything in `logs/`, because it is graded evidence.
+1. Never commit or push to `main`; a git hook refuses it. Only Axel merges pull requests.
+2. Ship with `/ship` in Claude Code, or `scripts/ship.sh "what you changed"`: it creates a branch, runs the tests, commits, pushes and opens a PR.
+3. Never edit files on github.com, and never commit `.env`, API keys or the Belfius/QuantumBlack documents.
+4. A new data format goes into `data/schemas.py` with a mock and a test, in the same PR.
+5. Commit everything in `logs/` (graded evidence). Full rules in `CLAUDE.md`.

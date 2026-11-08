@@ -1,0 +1,12 @@
+#!/bin/sh
+# Refuse any push to main. Work goes through a branch and a pull request.
+# Activated by scripts/ship.sh (git config core.hooksPath .githooks).
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    if [ "$remote_ref" = "refs/heads/main" ]; then
+        echo "Push to main refused. Ship your work on a branch instead:" >&2
+        echo "  scripts/ship.sh \"what you changed\"   (or /ship in Claude Code)" >&2
+        exit 1
+    fi
+done
+exit 0
