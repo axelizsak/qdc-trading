@@ -35,8 +35,15 @@ def context(series: pd.Series, lookback: int = 252) -> dict:
     }
 
 
+def ordinal(n: float) -> str:
+    """1 -> '1st', 22 -> '22nd', 73 -> '73rd', 11 -> '11th'."""
+    n = int(round(n))
+    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
 def describe(name: str, ctx: dict, unit: str = "", digits: int = 2) -> str:
     """'VIX/VIX3M = 0.92 (z +1.3, 85th percentile of the last 252 obs, 5-obs change +0.05)'."""
     chg = "" if np.isnan(ctx["chg_5"]) else f", 5-obs change {ctx['chg_5']:+.{digits}f}{unit}"
-    return (f"{name} = {ctx['last']:.{digits}f}{unit} (z {ctx['z']:+.1f}, {ctx['pct']:.0f}th percentile "
+    return (f"{name} = {ctx['last']:.{digits}f}{unit} (z {ctx['z']:+.1f}, {ordinal(ctx['pct'])} percentile "
             f"of the last {ctx['n']} obs{chg})")
