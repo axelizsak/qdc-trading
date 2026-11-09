@@ -17,9 +17,8 @@ How fetch_prices works:
   4. Put all ETFs on one business-day calendar. A missing day (holiday on one
      exchange) takes the previous close, for at most MAX_FILL_DAYS days.
   5. Rename to the Belfius ticker and return the Prices format.
-ETFs that cannot be priced are left out and reported in `last_report`.
+ETFs that cannot be priced are left out.
 """
-import logging
 from datetime import date, timedelta
 from typing import Callable
 
@@ -29,14 +28,8 @@ from data.config import DATA_DIR
 from data.schemas import validate_prices
 from data.universe import tickers
 
-log = logging.getLogger(__name__)
-
 YAHOO_MAP_CSV = DATA_DIR / "etf_yahoo_map.csv"
 MAX_FILL_DAYS = 3  # longest gap filled with the previous close (exchange holidays)
-JUMP_WARNING = 0.25  # a daily move above 25% is reported as a possible data error
-
-# Filled by every fetch_prices call: what was dropped or looks suspicious.
-last_report: dict = {}
 
 Downloader = Callable[[list[str], date, date], pd.DataFrame]
 
@@ -85,13 +78,9 @@ def fetch_prices(start: date, end: date, download: Downloader = yahoo_download) 
     calendar = pd.bdate_range(start, end)
     raw = raw.reindex(raw.index.union(calendar)).sort_index()
 
-    report = {"missing": [], "no_data": [], "jumps": []}
-    report["missing"] = sorted(set(tickers()) - set(ymap["ticker"]))
-
     columns = {}
     for row in ymap.itertuples():
         if row.yahoo_symbol not in raw.columns or raw[row.yahoo_symbol].dropna().empty:
-            report["no_data"].append(row.ticker)
             continue
         px = raw[row.yahoo_symbol].astype(float)
         if row.currency in ("GBp", "GBX"):
@@ -99,7 +88,6 @@ def fetch_prices(start: date, end: date, download: Downloader = yahoo_download) 
         if row.base_ccy != "EUR":
             fx = raw.get(_fx_symbol(row.base_ccy))
             if fx is None or fx.dropna().empty:
-                report["no_data"].append(row.ticker)
                 continue
             px = px / fx.ffill()  # price in EUR = price in CCY / (CCY per EUR)
         columns[row.ticker] = px
@@ -108,23 +96,12 @@ def fetch_prices(start: date, end: date, download: Downloader = yahoo_download) 
     wide = wide.ffill(limit=MAX_FILL_DAYS)
     wide = wide.where(wide > 0)
 
-    moves = wide.pct_change(fill_method=None).abs()
-    for t in wide.columns:
-        for d in moves.index[moves[t] > JUMP_WARNING]:
-            report["jumps"].append((t, d.date().isoformat(), round(float(moves.at[d, t]), 3)))
-
     prices = (wide.rename_axis("date").reset_index()
               .melt(id_vars="date", var_name="ticker", value_name="close_eur")
               .dropna(subset=["close_eur"]))
     prices["date"] = prices["date"].dt.date
     prices["close_eur"] = prices["close_eur"].round(4)
     prices = prices.sort_values(["ticker", "date"]).reset_index(drop=True)
-
-    last_report.clear()
-    last_report.update(report)
-    for key, items in report.items():
-        if items:
-            log.warning("data agent, %s: %s", key, items)
     return validate_prices(prices)
 
 
@@ -135,7 +112,6 @@ def compute_features(prices: pd.DataFrame) -> pd.DataFrame:
 
 if __name__ == "__main__":
     # Quick check on real data: python -m data.data_agent
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
     today = date.today()
     p = fetch_prices(today - timedelta(days=400), today)
     out = DATA_DIR / "cache" / f"prices_{today.isoformat()}.csv"
@@ -144,7 +120,5 @@ if __name__ == "__main__":
     summary = p.groupby("ticker").agg(first=("date", "min"), last=("date", "max"),
                                       days=("date", "size"), last_eur=("close_eur", "last"))
     print(summary.to_string())
-    print(f"\n{p['ticker'].nunique()} / 50 ETFs priced. Missing from the map: {last_report['missing']}")
-    print(f"No data: {last_report['no_data']}")
-    print(f"Daily moves > {JUMP_WARNING:.0%} to check: {last_report['jumps']}")
+    print(f"\n{p['ticker'].nunique()} / 50 ETFs priced. Not priced: {sorted(set(tickers()) - set(p['ticker']))}")
     print(f"Written to {out}")

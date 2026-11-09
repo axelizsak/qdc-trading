@@ -44,21 +44,10 @@ def test_fetch_prices_converts_to_eur_and_uses_belfius_tickers(yahoo_map):
     assert last["GOLD"] == pytest.approx(60 / 0.85, abs=1e-3)
 
 
-def test_fetch_prices_fills_holidays_and_reports_gaps(yahoo_map):
+def test_fetch_prices_fills_holidays_and_skips_unmapped_etfs(yahoo_map):
     p = data_agent.fetch_prices(date(2026, 11, 2), date(2026, 11, 13), download=fake_download)
     assert (p.groupby("ticker").size() == 10).all()  # 10 business days, holiday filled
-    assert "QUANTUM" in data_agent.last_report["missing"]
-    assert data_agent.last_report["no_data"] == []
-
-
-def test_fetch_prices_flags_suspicious_jumps(yahoo_map):
-    def jumpy(symbols, start, end):
-        df = fake_download(symbols, start, end)
-        df.iloc[5:, df.columns.get_loc("IWDA.AS")] = 200.0
-        return df
-
-    data_agent.fetch_prices(date(2026, 11, 2), date(2026, 11, 13), download=jumpy)
-    assert [j[0] for j in data_agent.last_report["jumps"]] == ["WORLD"]
+    assert "QUANTUM" not in set(p["ticker"])
 
 
 def test_missing_map_tells_you_to_run_the_check_script(tmp_path, monkeypatch):
