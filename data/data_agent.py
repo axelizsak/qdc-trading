@@ -31,6 +31,15 @@ from data.universe import tickers
 YAHOO_MAP_CSV = DATA_DIR / "etf_yahoo_map.csv"
 MAX_FILL_DAYS = 3  # longest gap filled with the previous close (exchange holidays)
 
+# Manual fixes for ETFs the ISIN search maps badly. They override etf_yahoo_map.csv.
+# Belfius ticker -> (Yahoo symbol, currency)
+MANUAL_SYMBOLS = {
+    "EURO STOXX 50": ("CSX5.AS", "EUR"),
+    "CHINA A": ("CNYA.AS", "EUR"),
+    "COPPER MINERS": ("4COP.DE", "EUR"),
+    "OVERNIGHT CASH": ("CSH2.PA", "EUR"),
+}
+
 Downloader = Callable[[list[str], date, date], pd.DataFrame]
 
 
@@ -40,7 +49,10 @@ def load_yahoo_map() -> pd.DataFrame:
         raise FileNotFoundError(
             f"{YAHOO_MAP_CSV.name} is missing: run `python data/check_etfs_yfinance.py` first")
     m = pd.read_csv(YAHOO_MAP_CSV).rename(columns={"name": "ticker"})
-    m = m.dropna(subset=["yahoo_symbol"])
+    m = m[~m["ticker"].isin(MANUAL_SYMBOLS)]
+    manual = pd.DataFrame([(t, sym, ccy) for t, (sym, ccy) in MANUAL_SYMBOLS.items()],
+                          columns=["ticker", "yahoo_symbol", "currency"])
+    m = pd.concat([m, manual], ignore_index=True).dropna(subset=["yahoo_symbol"])
     m["currency"] = m["currency"].fillna("EUR")
     return m[["ticker", "yahoo_symbol", "currency"]]
 

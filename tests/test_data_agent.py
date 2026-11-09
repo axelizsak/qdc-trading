@@ -17,6 +17,7 @@ def yahoo_map(tmp_path, monkeypatch):
         "currency": ["EUR", "USD", "GBp", None],
     }).to_csv(path, index=False)
     monkeypatch.setattr(data_agent, "YAHOO_MAP_CSV", path)
+    monkeypatch.setattr(data_agent, "MANUAL_SYMBOLS", {})
     return path
 
 
@@ -54,3 +55,11 @@ def test_missing_map_tells_you_to_run_the_check_script(tmp_path, monkeypatch):
     monkeypatch.setattr(data_agent, "YAHOO_MAP_CSV", tmp_path / "nope.csv")
     with pytest.raises(FileNotFoundError, match="check_etfs_yfinance"):
         data_agent.fetch_prices(date(2026, 11, 2), date(2026, 11, 13), download=fake_download)
+
+
+def test_manual_symbols_override_the_map(yahoo_map, monkeypatch):
+    monkeypatch.setattr(data_agent, "MANUAL_SYMBOLS", {"QUANTUM": ("QTUM.DE", "EUR"), "GOLD": ("4GLD.DE", "EUR")})
+    m = data_agent.load_yahoo_map().set_index("ticker")
+    assert m.loc["QUANTUM", "yahoo_symbol"] == "QTUM.DE"
+    assert m.loc["GOLD", "yahoo_symbol"] == "4GLD.DE"
+    assert m.index.is_unique
