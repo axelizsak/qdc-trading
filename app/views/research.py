@@ -100,6 +100,30 @@ with st.container(border=True):
     st.markdown(f"**Counter-argument** · {view['counter_argument']}")
     st.markdown("**Sources**\n" + source_links(view["sources"]))
 
+etf_views, etf_mock = data.etf_views(macro_logs)
+day_etf = etf_views[etf_views["date"].astype(str) == day]
+ui.label("ETF analysts", "one hedge-fund-style analyst per theme · blended 50/50 into the macro score")
+ui.mock_note(etf_mock, "no analyst run yet")
+if day_etf.empty:
+    st.caption("No analyst views in this run.")
+else:
+    theme_of = universe.set_index("ticker")["theme"]
+    ranked_etf = day_etf.assign(weight=day_etf["direction"].abs() * day_etf["confidence"]).sort_values(
+        "weight", ascending=False).set_index("ticker")
+    pick = st.selectbox("ETF analyst", ranked_etf.index.tolist(), label_visibility="collapsed",
+                        format_func=lambda t: f"Analyst · {t} {ranked_etf.loc[t, 'direction']:+.2f}")
+    etf_view = ranked_etf.loc[pick]
+    with st.container(border=True):
+        tone = "blue" if etf_view["direction"] >= 0 else "red"
+        st.markdown(f"#### {pick} :{tone}[{etf_view['direction']:+.2f}] "
+                    f"<span style='color:{ui.T['muted']};font-size:.8em'>confidence {etf_view['confidence']:.0%}</span>",
+                    unsafe_allow_html=True)
+        st.caption(f"{theme_of.get(pick, '')} analyst · for leveraged and inverse ETFs, the view is on the underlying")
+        st.markdown(etf_view["rationale"])
+        st.markdown(f"**Counter-argument** · {etf_view['counter_argument']}")
+        st.markdown("**Sources** · " + " · ".join(
+            f"[{i + 1}]({u})" for i, u in enumerate(split_list(etf_view["sources"])[:6])))
+
 found = day_evidence[day_evidence["kind"] == "exploration"]
 with st.expander(f"New sources on trial · {len(found)} found by free exploration"):
     if found.empty:

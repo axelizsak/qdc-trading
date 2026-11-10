@@ -105,3 +105,11 @@ def test_order_log_rejects_bad_rows():
                         "ai_units": 1, "decision": "approved", "side": "BUY", "units": 1, "reason": ""})
     with pytest.raises(ValueError, match="at most"):
         schemas.validate_order_log(six)
+
+
+def test_etf_views_rejects_bad_rows():
+    df = MOCKS["etf_views"]()
+    with pytest.raises(ValueError, match="direction"):
+        schemas.validate_etf_views(df.assign(direction=1.5))
+    with pytest.raises(ValueError, match="source"):
+        schemas.validate_etf_views(df.assign(sources=""))

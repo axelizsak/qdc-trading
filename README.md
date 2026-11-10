@@ -98,6 +98,7 @@ These were fixed on day 1 and are defined in `data/schemas.py`. Build your modul
 | Agent weights | `date, agent, weight, hit_rate` (weights sum to 1 per date) |
 | Evidence | `date, factor, source, kind [number\|text\|exploration], value, summary, url` |
 | Macro views | `date, factor, direction [-1,1], confidence, rationale, counter_argument, sources` |
+| ETF views | `date, ticker, direction [-1,1], confidence, rationale, counter_argument, sources` (theme analysts) |
 | Source registry | `source, kind, factors, status [active\|testing\|dropped], first_seen, n_uses, hit_rate` |
 | Order log | `date, ticker, ai_side, ai_units, decision [approved\|modified\|rejected\|added], side, units, reason` |
 | Incidents | `date, step, error` |

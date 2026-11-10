@@ -12,6 +12,7 @@ from data.schemas import (
     ORDER_LOG,
     STARTER_FEATURES,
     validate_agent_weights,
+    validate_etf_views,
     validate_evidence,
     validate_features,
     validate_holdings,
@@ -191,6 +192,17 @@ def mock_macro_exposure(seed: int = 0) -> pd.DataFrame:
     return validate_macro_exposure(df[MACRO_EXPOSURE])
 
 
+def mock_etf_views(as_of: str = "2026-11-30", seed: int = 0) -> pd.DataFrame:
+    """One random analyst view per ETF. Format: ETF views."""
+    rng = np.random.default_rng(seed)
+    day = pd.Timestamp(as_of).date()
+    return validate_etf_views(pd.DataFrame([
+        {"date": day, "ticker": t, "direction": round(float(rng.uniform(-1, 1)), 2),
+         "confidence": round(float(rng.uniform(0, 1)), 2), "rationale": "mock", "counter_argument": "mock",
+         "sources": "https://example.com/mock"} for t in tickers()
+    ]))
+
+
 def mock_source_changes() -> pd.DataFrame:
     """One added and one removed source. Format: Source changes."""
     return validate_source_changes(pd.DataFrame([
@@ -214,6 +226,7 @@ MOCKS = {
     "source_registry": mock_source_registry,
     "macro_exposure": mock_macro_exposure,
     "source_changes": mock_source_changes,
+    "etf_views": mock_etf_views,
 }
 
 

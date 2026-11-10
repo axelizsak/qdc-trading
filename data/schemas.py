@@ -23,6 +23,8 @@ SOURCE_REGISTRY = ["source", "kind", "factors", "status", "first_seen", "n_uses"
 # logs/orders.csv: each proposed order with the human decision, plus orders the human added.
 ORDER_LOG = ["date", "ticker", "ai_side", "ai_units", "decision", "side", "units", "reason"]
 INCIDENTS = ["date", "step", "error"]
+# logs/etf_views.csv: one view per ETF and day from the theme analysts (direction of the ETF or its underlying).
+ETF_VIEWS = ["date", "ticker", "direction", "confidence", "rationale", "counter_argument", "sources"]
 # logs/source_changes.csv: when a Macro/News source was added or removed, for before/after comparisons.
 SOURCE_CHANGES = ["date", "source", "change", "note"]
 # data/macro_exposure.csv: how much each ETF moves with each macro factor (before leverage).
@@ -242,4 +244,15 @@ def validate_source_changes(df: pd.DataFrame) -> pd.DataFrame:
     _require_in(df, "change", SOURCE_CHANGE_KINDS, "source_changes")
     _require_text(df, "source", "source_changes")
     _require_unique(df, ["date", "source", "change"], "source_changes")
+    return df
+
+
+def validate_etf_views(df: pd.DataFrame) -> pd.DataFrame:
+    """Theme analysts' views: direction in [-1, 1] (of the underlying for leveraged ETFs), with sources."""
+    _require_columns(df, ETF_VIEWS, "etf_views")
+    _require_between(df, "direction", -1, 1, "etf_views")
+    _require_between(df, "confidence", 0, 1, "etf_views")
+    if not df["sources"].map(split_list).map(bool).all():
+        raise ValueError("etf_views: every view needs at least one source")
+    _require_unique(df, ["date", "ticker"], "etf_views")
     return df

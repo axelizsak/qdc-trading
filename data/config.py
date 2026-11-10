@@ -95,6 +95,9 @@ WEB_FETCH_TOOL_REASONING = "web_fetch_20260209"
 MACRO_SEARCHES_PER_TOPIC = 3  # web searches per Haiku call (one call per topic)
 MACRO_EXPLORE_SEARCHES = 6  # exploration budget (Sonnet)
 MACRO_EXPLORE_FETCHES = 4
+# ETF analysts: one Sonnet "hedge-fund quant" per theme of the universe, who searches and scores its ETFs.
+MACRO_ANALYST_SEARCHES = 6  # web searches per theme
+MACRO_ANALYST_SHARE = 0.5  # macro_news score = (1 - share) x factor views + share x ETF analysts
 
 # Source registry: a source needs this many graded uses before its status can change.
 SOURCE_MIN_USES = 3

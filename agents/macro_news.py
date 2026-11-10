@@ -6,8 +6,10 @@ The code collects and calculates, the LLM judges:
 3. Sonnet explores freely for signals from new sources; those enter the registry "on trial".
 4. Sonnet reads all evidence and logs/lessons.md and gives one view per factor (agents/macro_llm.py).
 5. Code turns the views into one score per ETF with data/macro_exposure.csv. No LLM in this step.
+6. In parallel, 20 ETF analysts (one Sonnet "hedge-fund quant" per theme, agents/macro_analysts.py)
+   search the news and score their ETFs; code blends them in: score = 50% factors + 50% analysts.
 
-Writes to logs/: evidence.csv, macro_views.csv, source_registry.csv; the daily run below also writes
+Writes to logs/: evidence.csv, macro_views.csv, etf_views.csv, source_registry.csv; the daily run also writes
 macro/<date>.md and the day's macro_news rows of signals.csv (the pipeline does the same).
 
 Daily run (every business day):
@@ -24,7 +26,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from agents import macro_llm
+from agents import macro_analysts, macro_llm
 from agents.macro_sources import collect_all
 from data import config as settings
 from data.config import MACRO_FACTORS
@@ -49,8 +51,9 @@ def run(as_of: date, lessons: str = "", logs_dir: Path | None = None, client=Non
     on_trial = set(registry.loc[registry["status"] == "testing", "source"])
     dropped = set(registry.loc[registry["status"] == "dropped", "source"])
 
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    with ThreadPoolExecutor(max_workers=4) as pool:
         numbers = pool.submit(collect_all, as_of, collectors)
+        analysts = pool.submit(macro_analysts.analyse_all, client, usage, as_of)
         searches = pool.submit(macro_llm.search_all, client, usage, as_of)
         exploring = pool.submit(macro_llm.explore, client, usage, as_of, registry["source"].tolist(), _etf_list())
         ev_numbers, failures = numbers.result()
@@ -60,6 +63,8 @@ def run(as_of: date, lessons: str = "", logs_dir: Path | None = None, client=Non
             ev_explore = exploring.result()
         except Exception as exc:
             ev_explore, failures["exploration"] = [], f"{type(exc).__name__}: {exc}"
+        etf_views, analyst_failures = analysts.result()
+        failures.update(analyst_failures)
 
     frames = [f for f in (ev_numbers, pd.DataFrame(ev_search, columns=EVIDENCE),
                           pd.DataFrame(ev_explore, columns=EVIDENCE)) if len(f)]
@@ -69,12 +74,15 @@ def run(as_of: date, lessons: str = "", logs_dir: Path | None = None, client=Non
     ev = ev[~ev["source"].isin(dropped)].reset_index(drop=True)
 
     views = macro_llm.reason(client, usage, as_of, ev, lessons, on_trial)
-    signals = score_etfs(views, as_of)
+    exposure = load_exposure()
+    signals, comparison = macro_analysts.blend(score_etfs(views, as_of, exposure), etf_views, exposure)
 
     _save(logs / "evidence.csv", ev, as_of)
     _save(logs / "macro_views.csv", views, as_of)
+    if len(etf_views):
+        _save(logs / "etf_views.csv", etf_views, as_of)
     save_registry(logs, register_sources(registry, ev, as_of))
-    return render(as_of, views, ev, failures, usage), signals
+    return render(as_of, views, ev, failures, usage, etf_views, comparison), signals
 
 
 # --- Scores: views x exposure table, no LLM --------------------------------------------------
@@ -204,7 +212,8 @@ def _etf_list() -> str:
     return "\n".join(f"- {theme}: {', '.join(group['ticker'])}" for theme, group in universe.groupby("theme", sort=False))
 
 
-def render(as_of: date, views: pd.DataFrame, ev: pd.DataFrame, failures: dict[str, str], usage) -> str:
+def render(as_of: date, views: pd.DataFrame, ev: pd.DataFrame, failures: dict[str, str], usage,
+           etf_views: pd.DataFrame | None = None, comparison: pd.DataFrame | None = None) -> str:
     lines = [f"# Macro/News, {as_of}", "", f"Cost of this run: {usage.line()}", "",
              "## Views", "", "| Factor | Direction | Confidence | Sources |", "|---|---|---|---|"]
     lines += [f"| {v.factor} | {v.direction:+.2f} | {v.confidence:.2f} | {v.sources.replace(LIST_SEP, ', ')} |"
@@ -215,6 +224,17 @@ def render(as_of: date, views: pd.DataFrame, ev: pd.DataFrame, failures: dict[st
     for v in views.itertuples():
         lines += ["", f"### {v.factor} ({v.direction:+.2f}, confidence {v.confidence:.2f})", "", v.rationale,
                   "", f"Counter-argument: {v.counter_argument}"]
+    if etf_views is not None and comparison is not None and len(etf_views):
+        lines += ["", "## ETF analysts", "",
+                  f"{len(etf_views)} ETFs scored by the theme analysts. Final macro_news score = "
+                  f"{1 - settings.MACRO_ANALYST_SHARE:.0%} factor views + {settings.MACRO_ANALYST_SHARE:.0%} analyst "
+                  "(analyst view x leverage). Strongest final scores first.", "",
+                  "| ETF | Factors | Analyst | Final | Analyst rationale |", "|---|---|---|---|---|"]
+        rationale = etf_views.set_index("ticker")["rationale"]
+        for r in comparison.reindex(comparison["final"].abs().sort_values(ascending=False).index).itertuples():
+            analyst = "—" if pd.isna(r.analyst) else f"{r.analyst:+.2f}"
+            why = str(rationale.get(r.ticker, "")).replace("|", "/")[:140]
+            lines.append(f"| {r.ticker} | {r.factors:+.2f} | {analyst} | {r.final:+.2f} | {why} |")
     found = ev[ev["kind"] == "exploration"]
     lines += ["", "## Exploration findings (on trial)", ""]
     lines += [f"- {r.source} ({r.factor}): {r.summary} {r.url}".rstrip() for r in found.itertuples()] or ["None."]

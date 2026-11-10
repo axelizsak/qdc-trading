@@ -1,5 +1,6 @@
 """Macro/News agent without network: fake Claude client, fake HTTP, fake market data."""
 import json
+import re
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -8,12 +9,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from agents import macro_llm, macro_news
+from agents import macro_analysts, macro_llm, macro_news
 from agents.macro_sources import _common, cftc_cot, collect_all, funding_rates, market_stress, polymarket, stablecoins
 from data import config as settings
 from data.config import MACRO_FACTORS
 from data.schemas import validate_macro_exposure, validate_signals, validate_source_registry
-from data.universe import tickers
+from data.universe import load_universe, tickers
 
 DAY = date(2026, 12, 7)
 
@@ -39,6 +40,11 @@ class FakeClaude:
     def _create(self, **request):
         self.calls.append(request)
         tool_types = {t["type"] for t in request.get("tools", [])}
+        if "quant researcher" in request.get("system", ""):
+            tickers = re.findall(r"^- (.+?) · ", request["messages"][0]["content"], flags=re.M)
+            etfs = [{"ticker": t, "direction": self.direction, "confidence": 0.5, "rationale": f"{t} news",
+                     "counter_argument": "c", "sources": ["https://example.com/etf"]} for t in tickers]
+            return _response("```json\n" + json.dumps({"etfs": etfs}) + "\n```")
         if "format" in request.get("output_config", {}):
             views = [{"factor": f, "direction": self.direction, "confidence": 0.6, "rationale": "r",
                       "counter_argument": "c", "sources": ["web_news", "not_a_source"]} for f in MACRO_FACTORS]
@@ -244,3 +250,73 @@ def test_x_posts_are_searched_on_x_only(tmp_path):
     restricted = [c for c in client.calls if c.get("tools") and c["tools"][0].get("allowed_domains")]
     assert len(restricted) == 1 and restricted[0]["tools"][0]["allowed_domains"] == ["x.com"]
     assert "posts" in restricted[0]["messages"][0]["content"]
+
+
+# --- ETF analysts ----------------------------------------------------------------------------
+
+def test_run_blends_the_theme_analysts(tmp_path):
+    client = FakeClaude(direction=0.5)
+    summary, signals = macro_news.run(DAY, "", tmp_path, client, {"stress": _number_collector})
+
+    analyst_calls = [c for c in client.calls if "quant researcher" in c.get("system", "")]
+    assert len(analyst_calls) == 20  # one per theme of the universe
+    assert all(c["tools"][0]["type"] == settings.WEB_SEARCH_TOOL_REASONING and c["fallbacks"] == "default"
+               for c in analyst_calls)
+    assert any("judge the copper price itself" in c["messages"][0]["content"] for c in analyst_calls)
+    assert not any("NASDAQ 3X" in c["messages"][0]["content"] for c in analyst_calls)  # reuses NASDAQ's view
+    views = pd.read_csv(tmp_path / "etf_views.csv").set_index("ticker")
+    assert len(views) == 50
+    assert views.loc["NASDAQ 3X", "direction"] == views.loc["NASDAQ", "direction"]
+    assert views.loc["NASDAQ 3X", "rationale"].startswith("Same underlying as NASDAQ")
+    assert "## ETF analysts" in summary
+    validate_signals(signals)
+    assert signals["rationale"].str.contains("analyst").all()
+
+
+def test_blend_applies_leverage_and_keeps_factor_score_without_a_view():
+    exposure = macro_news.load_exposure()
+    factor = pd.DataFrame({"ticker": ["NASDAQ 3X", "STOXX SHORT", "WORLD"], "date": "2026-12-07",
+                           "agent": "macro_news", "score": [0.2, 0.2, 0.2], "confidence": [0.4, 0.4, 0.4],
+                           "rationale": "macro"})
+    views = pd.DataFrame({"date": "2026-12-07", "ticker": ["NASDAQ 3X", "STOXX SHORT"], "direction": [0.5, 0.5],
+                          "confidence": [0.8, 0.8], "rationale": "r", "counter_argument": "c",
+                          "sources": "https://example.com"})
+    blended, table = macro_analysts.blend(factor, views, exposure, share=0.5)
+    scores = blended.set_index("ticker")["score"]
+    assert scores["NASDAQ 3X"] == pytest.approx(0.5 * 0.2 + 0.5 * 1.0)  # 3 x 0.5 clipped to 1
+    assert scores["STOXX SHORT"] == pytest.approx(0.5 * 0.2 + 0.5 * -1.0)  # -2 x 0.5
+    assert scores["WORLD"] == pytest.approx(0.2)
+    assert table.set_index("ticker")["analyst"].isna()["WORLD"]
+
+
+def test_a_failing_analyst_is_reported_and_the_run_goes_on(tmp_path):
+    client = FakeClaude()
+    original = client._create
+
+    def flaky(**request):
+        if "Precious metals" in request.get("system", ""):
+            raise RuntimeError("search timeout")
+        return original(**request)
+
+    client.messages.create = client.beta.messages.create = flaky
+    summary, signals = macro_news.run(DAY, "", tmp_path, client, {"stress": _number_collector})
+    assert "analyst Precious metals: RuntimeError: search timeout" in summary
+    assert len(pd.read_csv(tmp_path / "etf_views.csv")) == 50 - 3  # GOLD, GOLD MINERS, SILVER MINERS
+
+
+def test_an_empty_analyst_answer_is_asked_again():
+    replies = iter([_response('```json\n{"etfs": []}\n```'), _response(
+        '```json\n{"etfs": [{"ticker": "GOLD", "direction": 0.3, "confidence": 0.5, "rationale": "r", '
+        '"counter_argument": "c", "sources": [{"url": "https://example.com/gold"}]}]}\n```')])
+    client = SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: next(replies))))
+    universe = load_universe()
+    rows = macro_analysts.analyse_theme(client, macro_llm.Usage(), DAY, "Precious metals",
+                                        universe[universe["ticker"] == "GOLD"])
+    assert [r["ticker"] for r in rows] == ["GOLD"] and rows[0]["sources"] == "https://example.com/gold"
+
+
+def test_every_theme_has_a_coverage_brief_in_its_prompt():
+    for theme in load_universe()["theme"].unique():
+        assert theme in macro_analysts.THEME_BRIEFS
+        prompt = macro_analysts.system_prompt(theme, DAY)
+        assert macro_analysts.THEME_BRIEFS[theme] in prompt and "2026-12-07" in prompt and "{" not in prompt.split("```json")[0]
