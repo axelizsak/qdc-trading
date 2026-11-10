@@ -313,3 +313,10 @@ def test_an_empty_analyst_answer_is_asked_again():
     rows = macro_analysts.analyse_theme(client, macro_llm.Usage(), DAY, "Precious metals",
                                         universe[universe["ticker"] == "GOLD"])
     assert [r["ticker"] for r in rows] == ["GOLD"] and rows[0]["sources"] == "https://example.com/gold"
+
+
+def test_every_theme_has_a_coverage_brief_in_its_prompt():
+    for theme in load_universe()["theme"].unique():
+        assert theme in macro_analysts.THEME_BRIEFS
+        prompt = macro_analysts.system_prompt(theme, DAY)
+        assert macro_analysts.THEME_BRIEFS[theme] in prompt and "2026-12-07" in prompt and "{" not in prompt.split("```json")[0]
