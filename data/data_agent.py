@@ -22,3 +22,5 @@ def fetch_prices(start: date, end: date) -> pd.DataFrame:
 def compute_features(prices: pd.DataFrame) -> pd.DataFrame:
     """Returns, volatility, drawdowns, correlations."""
     raise NotImplementedError
+
+#test
