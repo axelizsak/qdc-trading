@@ -9,7 +9,7 @@ import pandas as pd
 from data import config as settings
 from data import mock
 from data.schemas import (
-    PRICES, SIGNALS, validate_agent_weights, validate_evidence, validate_macro_views, validate_order_log,
+    PRICES, SIGNALS, validate_agent_weights, validate_etf_views, validate_evidence, validate_macro_views, validate_order_log,
     validate_prices, validate_signals, validate_source_registry,
 )
 from graph import pipeline
@@ -50,6 +50,11 @@ def macro_views(logs: Path) -> tuple[pd.DataFrame, bool]:
 def evidence(logs: Path) -> tuple[pd.DataFrame, bool]:
     ev = _csv(logs / "evidence.csv", validate_evidence)
     return (ev, False) if ev is not None and len(ev) else (mock.mock_evidence(), True)
+
+
+def etf_views(logs: Path) -> tuple[pd.DataFrame, bool]:
+    views = _csv(logs / "etf_views.csv", validate_etf_views)
+    return (views, False) if views is not None and len(views) else (mock.mock_etf_views(), True)
 
 
 def source_registry(logs: Path) -> tuple[pd.DataFrame, bool]:

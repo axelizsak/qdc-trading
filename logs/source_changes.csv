@@ -10,3 +10,4 @@ date,source,change,note
 2026-11-08,fda_calendar,added,"v2 Claude search topic: FDA decision calendar"
 2026-11-08,container_freight,added,"v2 Claude search topic: container freight indices"
 2026-11-08,x_posts,added,"v2 Claude search topic restricted to x.com (no free X API, no scraping)"
+2026-11-10,etf_analysts,added,"20 Sonnet theme analysts (hedge-fund quant prompt) score their ETFs from the news; blended 50/50 into macro_news"
