@@ -1,65 +1,84 @@
 """
-Vérifie que les 50 ETF du QDC (liste Belfius) sont disponibles sur yfinance.
+Trouve, pour chacun des 50 ETF du QDC, le symbole Yahoo sur la bourse de référence de Belfius
+(Xetra pour presque tous, Euronext Bruxelles pour BEL 20, Euronext Milan pour COPPER LVG
+et PALLADIUM LVG). C'est le cours de clôture de cette bourse qui sert à exécuter et valoriser
+les ordres.
+
 Usage :  python data/check_etfs_yfinance.py   (depuis la racine du repo)
-Sortie : data/etf_yahoo_map.csv (ticker Yahoo retenu par ISIN + statut)
+Sortie : data/etf_yahoo_map.csv (symbole Yahoo retenu par ETF + statut)
+
+Statuts :
+  OK            trouvé sur la bourse de référence, au moins 200 jours sur un an
+  PARTIEL       trouvé sur la bourse de référence, mais moins de 200 jours
+  AUTRE BOURSE  pas trouvé sur la bourse de référence : une autre cotation est retenue
+  INTROUVABLE   aucune cotation avec des données
 """
+import sys
 from pathlib import Path
 
-import yfinance as yf
-import pandas as pd
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-ETFS = [
-    ("WORLD","IE00B4L5Y983"),("S&P 500","IE00B5BMR087"),("EUROPE 600","LU0908500753"),
-    ("EURO STOXX 50","IE00B53L3W79"),("IBEX 35","FR0010655746"),("BEL 20","FR0000021842"),
-    ("WORLD SMALL CAP","IE00BF4RFH31"),("WORLD MIN VOL","IE00B8FHGS14"),("DIVIDEND LEADERS","NL0011683594"),
-    ("NASDAQ INCOME","IE000U9J8HX9"),("NASDAQ","IE00B53SZB19"),("SEMIS","IE000I8KRLL9"),
-    ("CYBERSEC","IE00BYPLS672"),("BIOTECH","IE00BQ70R696"),("ROBOTICS","IE00BYZK4552"),
-    ("SPACE","IE000YU9K6K2"),("QUANTUM","IE0007Y8Y157"),("EURO BANKS","LU1829219390"),
-    ("HEALTH CARE","IE00BM67HK77"),("EMMKT","IE00BKM4GZ66"),("CHINA LC","IE00B02KXK85"),
-    ("INDIA","IE00BZCQB185"),("KOREA","LU1900066975"),("BRAZIL","IE00B0M63516"),
-    ("CHINA A","IE00BQT3WG13"),("WORLD ENERGY","IE00BM67HM91"),("OIL & GAS E&P","IE00B6R51Z18"),
-    ("URANIUM","IE000M7V94E1"),("CLEAN ENERGY","IE00BK5BCH80"),("HYDROGEN","FR0010930644"),
-    ("COPPER MINERS","IE0003Z9E2Y3"),("RARE EARTHS","IE0002PG6CA6"),("GOLD","IE00B4ND3602"),
-    ("GOLD MINERS","IE00BQQP9F84"),("SILVER MINERS","IE000UL6CLP7"),("HIGHY BOND","LU1109942653"),
-    ("US TREASURY 20Y","LU1407890620"),("GLOBAL AGG BOND","IE00BG47KH54"),("EUR GOVT BOND","IE00B4WXJJ64"),
-    ("OVERNIGHT CASH","LU1190417599"),("DEFENSE","IE000YYE6WK5"),("STAPLES","IE00BM67HN09"),
-    ("BITCOIN","XS2940466316"),("CRYPTO EQUITY","IE00BMDKNW35"),("STOXX SHORT","FR0010424143"),
-    ("COPPER LVG","IE00B8JVMZ80"),("PALLADIUM LVG","IE00B94QLN63"),("NASDAQ 3X","IE00BLRPRL42"),
-    ("S&P 500 SHORT","LU0322251520"),("EURO STOXX 2X","FR0010468983"),
-]
+import pandas as pd  # noqa: E402
+import yfinance as yf  # noqa: E402
 
-rows = []
-for name, isin in ETFS:
+from data.universe import load_universe, reference_exchange, yahoo_suffix  # noqa: E402
+
+# Symboles que la recherche par ISIN ne trouve pas sur la bourse de référence.
+# Ils sont testés en plus des résultats de la recherche.
+EXTRA_CANDIDATES = {
+    "EURO STOXX 50": ["SXRT.DE"],
+    "CHINA A": ["36BZ.DE"],
+    "COPPER MINERS": ["4COP.DE"],
+    "OVERNIGHT CASH": ["CSH2.DE", "LYXO.DE"],
+}
+
+
+def candidates(ticker: str, isin: str) -> list[str]:
     try:
         quotes = yf.Search(isin, max_results=10).quotes
-    except Exception as e:
+    except Exception:
         quotes = []
-    cands = []
-    for q in quotes:
-        sym = q.get("symbol")
-        if not sym:
-            continue
-        try:
-            h = yf.Ticker(sym).history(period="1y", auto_adjust=False)
-            cur = yf.Ticker(sym).fast_info.get("currency")
-        except Exception:
-            continue
-        if len(h) == 0:
-            continue
-        cands.append({"symbol": sym, "exchange": q.get("exchange"), "currency": cur,
-                      "days_1y": len(h), "last_date": h.index[-1].date()})
-    # préférence : cotation en EUR, puis le plus d'historique
-    cands.sort(key=lambda c: (c["currency"] == "EUR", c["days_1y"]), reverse=True)
+    found = [q["symbol"] for q in quotes if q.get("symbol")]
+    return list(dict.fromkeys(EXTRA_CANDIDATES.get(ticker, []) + found))
+
+
+def describe(symbol: str) -> dict | None:
+    try:
+        t = yf.Ticker(symbol)
+        h = t.history(period="1y", auto_adjust=False)
+        currency = t.fast_info.get("currency")
+    except Exception:
+        return None
+    if len(h) == 0:
+        return None
+    return {"symbol": symbol, "currency": currency, "days_1y": len(h), "last_date": h.index[-1].date()}
+
+
+rows = []
+for etf in load_universe().itertuples():
+    suffix = yahoo_suffix(etf.ticker)
+    cands = [c for c in (describe(s) for s in candidates(etf.ticker, etf.isin)) if c]
+    # Préférence : bourse de référence, puis cotation en EUR, puis le plus d'historique.
+    cands.sort(key=lambda c: (c["symbol"].endswith(suffix), c["currency"] == "EUR", c["days_1y"]), reverse=True)
     best = cands[0] if cands else None
-    status = "OK" if best and best["days_1y"] >= 200 else ("PARTIEL" if best else "INTROUVABLE")
-    rows.append({"name": name, "isin": isin, "status": status,
-                 "yahoo_symbol": best and best["symbol"], "currency": best and best["currency"],
-                 "days_1y": best and best["days_1y"], "last_date": best and best["last_date"],
+    if best is None:
+        status = "INTROUVABLE"
+    elif not best["symbol"].endswith(suffix):
+        status = "AUTRE BOURSE"
+    else:
+        status = "OK" if best["days_1y"] >= 200 else "PARTIEL"
+    rows.append({"name": etf.ticker, "isin": etf.isin, "exchange": reference_exchange(etf.ticker),
+                 "status": status, "yahoo_symbol": best and best["symbol"],
+                 "currency": best and best["currency"], "days_1y": best and best["days_1y"],
+                 "last_date": best and best["last_date"],
                  "autres_symboles": ", ".join(c["symbol"] for c in cands[1:])})
-    print(f"{status:12} {name:18} {isin}  -> {best and best['symbol']} ({best and best['currency']}, {best and best['days_1y']} j)")
+    print(f"{status:12} {etf.ticker:18} {etf.isin}  -> {best and best['symbol']} "
+          f"({best and best['currency']}, {best and best['days_1y']} j)")
 
 df = pd.DataFrame(rows)
 out = Path(__file__).resolve().parent / "etf_yahoo_map.csv"
 df.to_csv(out, index=False)
 print("\n", df["status"].value_counts().to_string())
+print("\nÀ vérifier :")
+print(df[df["status"] != "OK"][["name", "exchange", "status", "yahoo_symbol", "autres_symboles"]].to_string(index=False))
 print(f"\nRésultat écrit dans {out}")

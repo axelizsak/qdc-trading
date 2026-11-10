@@ -4,16 +4,17 @@ Input:  ISIN list (data/etf_universe.csv)
 Output: ETF mapping (ISIN -> Yahoo ticker), clean prices in the Prices format
         (date, ticker, close_eur), plus returns, volatility, drawdowns and correlations.
 
-Source: yfinance, EUR listing preferred.
-Fallback: another listing of the same ETF + FX conversion, or a manual export
-from justETF / Investing.com. The ISIN -> Yahoo symbol mapping is produced by
-data/check_etfs_yfinance.py (data/etf_yahoo_map.csv).
+Source: yfinance, on the exchange Belfius uses to execute and value the orders
+(Xetra for almost all ETFs, see data/universe.py). All those listings trade in EUR.
+The Belfius ticker -> Yahoo symbol mapping is produced by data/check_etfs_yfinance.py
+(data/etf_yahoo_map.csv).
 
 How fetch_prices works:
   1. Read data/etf_yahoo_map.csv (Belfius ticker -> Yahoo symbol + currency).
-  2. Download adjusted closes from Yahoo. Adjusted = dividends reinvested, so returns
-     are total returns; the latest adjusted close equals the real close.
-  3. Convert every listing to EUR (GBp is pence: divide by 100 first).
+  2. Download the real closing prices from Yahoo, not adjusted for dividends: Belfius
+     values the portfolio at real closes and does not credit dividends.
+  3. Convert to EUR if a listing is in another currency (fallback only: the
+     reference listings are all in EUR; GBp is pence, divided by 100 first).
   4. Put all ETFs on one business-day calendar. A missing day (holiday on one
      exchange) takes the previous close, for at most MAX_FILL_DAYS days.
   5. Rename to the Belfius ticker and return the Prices format.
@@ -31,15 +32,6 @@ from data.universe import tickers
 YAHOO_MAP_CSV = DATA_DIR / "etf_yahoo_map.csv"
 MAX_FILL_DAYS = 3  # longest gap filled with the previous close (exchange holidays)
 
-# Manual fixes for ETFs the ISIN search maps badly. They override etf_yahoo_map.csv.
-# Belfius ticker -> (Yahoo symbol, currency)
-MANUAL_SYMBOLS = {
-    "EURO STOXX 50": ("CSX5.AS", "EUR"),
-    "CHINA A": ("CNYA.AS", "EUR"),
-    "COPPER MINERS": ("4COP.DE", "EUR"),
-    "OVERNIGHT CASH": ("CSH2.PA", "EUR"),
-}
-
 Downloader = Callable[[list[str], date, date], pd.DataFrame]
 
 
@@ -49,20 +41,17 @@ def load_yahoo_map() -> pd.DataFrame:
         raise FileNotFoundError(
             f"{YAHOO_MAP_CSV.name} is missing: run `python data/check_etfs_yfinance.py` first")
     m = pd.read_csv(YAHOO_MAP_CSV).rename(columns={"name": "ticker"})
-    m = m[~m["ticker"].isin(MANUAL_SYMBOLS)]
-    manual = pd.DataFrame([(t, sym, ccy) for t, (sym, ccy) in MANUAL_SYMBOLS.items()],
-                          columns=["ticker", "yahoo_symbol", "currency"])
-    m = pd.concat([m, manual], ignore_index=True).dropna(subset=["yahoo_symbol"])
+    m = m.dropna(subset=["yahoo_symbol"])
     m["currency"] = m["currency"].fillna("EUR")
     return m[["ticker", "yahoo_symbol", "currency"]]
 
 
 def yahoo_download(symbols: list[str], start: date, end: date) -> pd.DataFrame:
-    """Adjusted closes, one column per Yahoo symbol, dates as index. `end` is included."""
+    """Real closes (not adjusted for dividends), one column per Yahoo symbol. `end` is included."""
     import yfinance as yf
 
     raw = yf.download(symbols, start=start, end=end + timedelta(days=1),
-                      auto_adjust=True, progress=False, threads=True)
+                      auto_adjust=False, progress=False, threads=True)
     close = raw["Close"]
     if isinstance(close, pd.Series):  # a single symbol
         close = close.to_frame(symbols[0])
