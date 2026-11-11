@@ -16,6 +16,8 @@ Rules (official Belfius Q&A, and ours):
   - Real prices only: nothing is added, filled or moved. Each ETF keeps its own trading days
     on its own exchange; a day without a quote is simply absent (NA in a wide table).
     Indicators are computed ETF by ETF on each ETF's last available prices.
+    Only exception: a unit split the source did not apply to the history (SPLIT_FIXES). The prices
+    before it are divided by the split ratio, so the history is continuous; no value really changes.
   - An ETF without a price is left out and reported, never replaced by another exchange's price.
 
 Quick run on real data:  python -m data.data_agent
@@ -36,6 +38,16 @@ OHLC_COLUMNS = ["Open", "High", "Low", "Close"]
 
 EODHD_URL = "https://eodhd.com/api/eod/"
 EODHD_FREE_HISTORY_DAYS = 365   # the free plan only gives the past year
+
+# Unit splits the source did not apply to the history: {Belfius ticker: split}.
+# Prices before `first_day` are divided by `ratio`, so the history is continuous (same number of units
+# as today). Prices from `first_day` on, the ones Belfius uses, are not changed.
+# Applied only if the jump is still in the data (if the source fixes its history, nothing is divided twice).
+SPLIT_FIXES = {
+    # Split of 1 for 80. Source: Deutsche Boerse adjusted history, checked on two days:
+    # 09/09/2026 Yahoo 401.05 / Deutsche Boerse 5.0131 = 80.00; 22/10/2026 Yahoo 349.85 / 4.3731 = 80.00.
+    "EURO BANKS": {"first_day": date(2026, 10, 26), "ratio": 80},
+}
 
 BIG_MOVE_PERCENT = 20           # daily moves above this are reported by check_prices
 MISSING_DAYS_LOOKBACK = 365     # check_prices lists missing days over this many days
@@ -99,6 +111,31 @@ def eodhd_ohlc(symbol: str, start: date, end: date) -> pd.DataFrame:
 
 # ---------- Step 2: the prices table -----------------------------------------------------
 
+def apply_split_fix(ticker: str, ohlc: pd.DataFrame) -> pd.DataFrame:
+    """Divide the prices before a unit split by its ratio, if the source left the jump in the history."""
+    if ticker not in SPLIT_FIXES:
+        return ohlc
+    split = SPLIT_FIXES[ticker]
+
+    before = ohlc[ohlc.index.date < split["first_day"]]
+    after = ohlc[ohlc.index.date >= split["first_day"]]
+    if before.empty or after.empty:
+        return ohlc
+
+    # Is the jump still there? Last close before the split vs first close after it.
+    jump = float(before["Close"].iloc[-1]) / float(after["Close"].iloc[0])
+    if jump < split["ratio"] / 2:
+        print(f"  {ticker}: split of 1 for {split['ratio']} already applied by the source, nothing changed")
+        return ohlc
+
+    adjusted = ohlc.copy()
+    is_before = adjusted.index.date < split["first_day"]
+    for column in OHLC_COLUMNS:
+        adjusted.loc[is_before, column] = adjusted.loc[is_before, column] / split["ratio"]
+    print(f"  {ticker}: prices before {split['first_day']} divided by {split['ratio']} (unit split)")
+    return adjusted
+
+
 def fetch_prices(start: date, end: date,
                  yahoo: Downloader = yahoo_ohlc,
                  eodhd: Downloader = eodhd_ohlc,
@@ -140,6 +177,8 @@ def fetch_prices(start: date, end: date,
         if ohlc.empty:
             print(f"{etf.ticker:18} {source:6} {source_symbol:11} no data for this period")
             continue
+
+        ohlc = apply_split_fix(etf.ticker, ohlc)
 
         frames.append(pd.DataFrame({
             "date": ohlc.index.date,

@@ -190,3 +190,34 @@ def test_reference_exchanges_follow_the_belfius_list():
         if yahoo_suffix(ticker) != ".DE":
             not_xetra += 1
     assert not_xetra == 3
+
+
+# ---------- Unit splits ----------
+
+def split_history(jump: bool) -> pd.DataFrame:
+    """EURO BANKS around its split of 1 for 80 on 26/10/2026, with or without the jump in the history."""
+    days = pd.DatetimeIndex(["2026-10-21", "2026-10-22", "2026-10-26", "2026-10-27"])
+    if jump:
+        close = [348.0, 349.85, 4.4275, 4.45]
+    else:
+        close = [4.35, 4.3731, 4.4275, 4.45]
+    bars = pd.DataFrame({"Close": close}, index=days)
+    bars["Open"] = bars["Close"]
+    bars["High"] = bars["Close"]
+    bars["Low"] = bars["Close"]
+    return bars[data_agent.OHLC_COLUMNS]
+
+
+def test_split_fix_divides_the_prices_before_the_split():
+    fixed = data_agent.apply_split_fix("EURO BANKS", split_history(jump=True))
+    assert fixed.loc["2026-10-22", "Close"] == pytest.approx(349.85 / 80)
+    assert fixed.loc["2026-10-22", "High"] == pytest.approx(349.85 / 80)
+    assert fixed.loc["2026-10-26", "Close"] == pytest.approx(4.4275)        # after the split: unchanged
+
+
+def test_split_fix_is_not_applied_twice():
+    history = split_history(jump=False)                                     # the source already adjusted it
+    fixed = data_agent.apply_split_fix("EURO BANKS", history)
+    assert fixed["Close"].tolist() == history["Close"].tolist()
+    other = data_agent.apply_split_fix("WORLD", split_history(jump=True))     # no split known for WORLD
+    assert other.loc["2026-10-22", "Close"] == pytest.approx(349.85)
