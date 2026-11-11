@@ -88,7 +88,7 @@ How to work:
    - direction in [-1, 1], the move you expect over the next few trading days: 0.1 to 0.3 is a slight tilt, 0.3 to 0.6 a clear view backed by a specific catalyst or data point, above 0.6 only when several independent and recent facts point the same way (same scale for negative views).
    - confidence in [0, 1], how much evidence supports the call: 0.2 thin or mixed, 0.5 solid, 0.8 strong and recent.
    On most days most ETFs deserve a small score. With no relevant news, give 0 with a low confidence: that is a valid answer.
-4. Write the rationale your portfolio manager wants: 2 to 4 sentences of dated facts with numbers, ending with the next catalyst and its date when there is one. Then the strongest counter-argument, and the URLs you relied on.
+4. Write the rationale your portfolio manager wants: 2 to 4 sentences of dated facts with numbers, ending with the next catalyst and its date when there is one. Then the strongest counter-argument, and the URLs you relied on: at least one for every ETF, the page you relied on most for it, even when you conclude there is no edge.
 
 Never invent a number or a date. Report analysts' forecasts as attributed opinions, not as facts. {untrusted}
 
@@ -105,7 +105,7 @@ def system_prompt(theme: str, as_of: date) -> str:
 def _etf_lines(etfs: pd.DataFrame) -> str:
     lines = []
     for r in etfs.itertuples():
-        line = f"- {r.ticker} · {r.name}"
+        line = f'- "{r.ticker}": {r.name}'
         if r.ticker in UNDERLYING:
             line += f" · judge {UNDERLYING[r.ticker]} itself: the code applies the leverage"
         lines.append(line)
@@ -118,41 +118,65 @@ def _urls(sources) -> list[str]:
     return [u.strip() for u in urls if isinstance(u, str) and u.strip().startswith("http")]
 
 
-def analyse_theme(client, usage: Usage, as_of: date, theme: str, etfs: pd.DataFrame, attempts: int = 2) -> list[dict]:
-    """One analyst; asked again once if its answer has no usable view."""
+def analyse_theme(client, usage: Usage, as_of: date, theme: str, etfs: pd.DataFrame,
+                  attempts: int = 2) -> tuple[list[dict], dict[str, str]]:
+    """One analyst. ETFs its answer leaves without a usable view are asked again, once.
+
+    Returns (views, {ticker: why it still has no view}).
+    """
+    rows, remaining, dropped = [], etfs, {}
     for _ in range(attempts):
         text = ask(client, usage, settings.LLM_REASONING, system_prompt(theme, as_of),
-                   f"Your ETFs:\n{_etf_lines(etfs)}",
+                   f"Your ETFs:\n{_etf_lines(remaining)}",
                    tools=[{"type": settings.WEB_SEARCH_TOOL_REASONING, "name": "web_search",
                            "max_uses": settings.MACRO_ANALYST_SEARCHES}],
                    output_config={"effort": "medium"})
-        try:
-            rows = _parse(text, as_of, set(etfs["ticker"]))
-        except ValueError:  # no JSON in the answer
-            rows = []
-        if rows:
-            return rows
-    raise RuntimeError("no usable view after two answers")
+        new, dropped = _parse(text, as_of, set(remaining["ticker"]))
+        rows += new
+        remaining = remaining[remaining["ticker"].isin(dropped)]
+        if remaining.empty:
+            return rows, {}
+    return rows, dropped
 
 
-def _parse(text: str, as_of: date, covered: set[str]) -> list[dict]:
-    rows, seen = [], set()
-    for view in extract_json(text).get("etfs", []):
-        ticker = view.get("ticker")
-        urls = _urls(view.get("sources"))
-        if ticker not in covered or ticker in seen or not urls:
+def _match(answered, expected: set[str]) -> str | None:
+    """The expected ticker an answer refers to: exact, or the start of a longer string such as
+    'S&P 500 · iShares Core S&P 500 UCITS ETF' (the longest match wins: GOLD MINERS, not GOLD)."""
+    if not isinstance(answered, str):
+        return None
+    text = answered.strip().strip('"').upper()
+    hits = [e for e in expected if text == e.upper() or text.startswith(e.upper() + " ")
+            or text.startswith(e.upper() + '"')]
+    return max(hits, key=len) if hits else None
+
+
+def _parse(text: str, as_of: date, expected: set[str]) -> tuple[list[dict], dict[str, str]]:
+    """Usable views in an answer, and why each expected ETF without one was dropped."""
+    try:
+        answer = extract_json(text)
+    except ValueError:
+        return [], {t: "no JSON in the answer" for t in expected}
+    rows, dropped = [], {}
+    for view in answer.get("etfs", []) if isinstance(answer, dict) else []:
+        ticker = _match(view.get("ticker"), expected)
+        if ticker is None or ticker in {r["ticker"] for r in rows}:
             continue
-        seen.add(ticker)
+        urls = _urls(view.get("sources"))
+        if not urls:
+            dropped[ticker] = "no source URL"
+            continue
         rows.append({"date": as_of.isoformat(), "ticker": ticker,
                      "direction": float(np.clip(view.get("direction", 0), -1, 1)),
                      "confidence": float(np.clip(view.get("confidence", 0), 0, 1)),
                      "rationale": view.get("rationale", ""), "counter_argument": view.get("counter_argument", ""),
                      "sources": LIST_SEP.join(dict.fromkeys(urls))})
-    return rows
+    for ticker in expected - {r["ticker"] for r in rows}:
+        dropped.setdefault(ticker, "left out of the answer")
+    return rows, dropped
 
 
 def analyse_all(client, usage: Usage, as_of: date) -> tuple[pd.DataFrame, dict[str, str]]:
-    """One analyst per theme, in parallel. Returns (ETF views, {analyst: error} for the ones that failed)."""
+    """One analyst per theme, in parallel. Returns (ETF views, {analyst: what went wrong})."""
     universe = load_universe()
     rows, failures = [], {}
     covered = universe[~universe["ticker"].isin(SAME_AS)]
@@ -161,9 +185,14 @@ def analyse_all(client, usage: Usage, as_of: date) -> tuple[pd.DataFrame, dict[s
                 for theme, etfs in covered.groupby("theme", sort=False)}
         for theme, job in jobs.items():
             try:
-                rows += job.result()
+                views, missing = job.result()
             except Exception as exc:
                 failures[f"analyst {theme}"] = f"{type(exc).__name__}: {exc}"
+                continue
+            rows += views
+            if missing:
+                failures[f"analyst {theme}"] = "no view for " + "; ".join(
+                    f"{ticker} ({why})" for ticker, why in sorted(missing.items()))
     by_ticker = {r["ticker"]: r for r in rows}
     for ticker, base in SAME_AS.items():
         if base in by_ticker:

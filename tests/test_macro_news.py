@@ -41,7 +41,7 @@ class FakeClaude:
         self.calls.append(request)
         tool_types = {t["type"] for t in request.get("tools", [])}
         if "quant researcher" in request.get("system", ""):
-            tickers = re.findall(r"^- (.+?) · ", request["messages"][0]["content"], flags=re.M)
+            tickers = re.findall(r'^- "(.+?)":', request["messages"][0]["content"], flags=re.M)
             etfs = [{"ticker": t, "direction": self.direction, "confidence": 0.5, "rationale": f"{t} news",
                      "counter_argument": "c", "sources": ["https://example.com/etf"]} for t in tickers]
             return _response("```json\n" + json.dumps({"etfs": etfs}) + "\n```")
@@ -310,9 +310,10 @@ def test_an_empty_analyst_answer_is_asked_again():
         '"counter_argument": "c", "sources": [{"url": "https://example.com/gold"}]}]}\n```')])
     client = SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: next(replies))))
     universe = load_universe()
-    rows = macro_analysts.analyse_theme(client, macro_llm.Usage(), DAY, "Precious metals",
-                                        universe[universe["ticker"] == "GOLD"])
+    rows, missing = macro_analysts.analyse_theme(client, macro_llm.Usage(), DAY, "Precious metals",
+                                                 universe[universe["ticker"] == "GOLD"])
     assert [r["ticker"] for r in rows] == ["GOLD"] and rows[0]["sources"] == "https://example.com/gold"
+    assert missing == {}
 
 
 def test_every_theme_has_a_coverage_brief_in_its_prompt():
@@ -320,3 +321,36 @@ def test_every_theme_has_a_coverage_brief_in_its_prompt():
         assert theme in macro_analysts.THEME_BRIEFS
         prompt = macro_analysts.system_prompt(theme, DAY)
         assert macro_analysts.THEME_BRIEFS[theme] in prompt and "2026-12-07" in prompt and "{" not in prompt.split("```json")[0]
+
+
+def test_etfs_missing_from_an_answer_are_asked_again_and_reported():
+    view = {"direction": 0.2, "confidence": 0.4, "rationale": "r", "counter_argument": "c"}
+    first = {"etfs": [{**view, "ticker": "GOLD", "sources": ["https://example.com/gold"]},
+                      {**view, "ticker": "GOLD MINERS", "sources": []}]}  # SILVER MINERS left out
+    second = {"etfs": [{**view, "ticker": "GOLD MINERS", "sources": ["https://example.com/miners"]}]}
+    replies, prompts = iter([first, second]), []
+
+    def create(**request):
+        prompts.append(request["messages"][0]["content"])
+        return _response("```json\n" + json.dumps(next(replies)) + "\n```")
+
+    client = SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(create=create)))
+    etfs = load_universe().query("theme == 'Precious metals'")
+    rows, missing = macro_analysts.analyse_theme(client, macro_llm.Usage(), DAY, "Precious metals", etfs)
+
+    assert sorted(r["ticker"] for r in rows) == ["GOLD", "GOLD MINERS"]
+    assert '"GOLD MINERS"' in prompts[1] and '"SILVER MINERS"' in prompts[1] and '- "GOLD":' not in prompts[1]
+    assert missing == {"SILVER MINERS": "left out of the answer"}
+
+
+def test_an_answer_without_json_is_reported():
+    rows, dropped = macro_analysts._parse("Sorry, I found nothing.", DAY, {"GOLD"})
+    assert rows == [] and dropped == {"GOLD": "no JSON in the answer"}
+
+
+def test_a_ticker_copied_with_its_name_is_still_matched():
+    expected = {"S&P 500", "GOLD", "GOLD MINERS"}
+    assert macro_analysts._match("S&P 500 · iShares Core S&P 500 UCITS ETF USD (Acc)", expected) == "S&P 500"
+    assert macro_analysts._match("gold miners", expected) == "GOLD MINERS"
+    assert macro_analysts._match("GOLD MINERS · VanEck", expected) == "GOLD MINERS"
+    assert macro_analysts._match("SILVER", expected) is None
