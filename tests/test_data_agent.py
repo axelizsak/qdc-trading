@@ -63,3 +63,21 @@ def test_reference_exchanges_follow_the_belfius_list():
     assert yahoo_suffix("BEL 20") == ".BR"
     assert yahoo_suffix("COPPER LVG") == yahoo_suffix("PALLADIUM LVG") == ".MI"
     assert sum(yahoo_suffix(t) != ".DE" for t in tickers()) == 3
+
+
+def test_pick_best_prefers_reference_exchange_then_eur():
+    from data.check_etfs_yfinance import pick_best
+
+    listings = [
+        {"symbol": "QQQ3.L", "currency": "USD", "days_1y": 253},
+        {"symbol": "QQQ3.MI", "currency": "EUR", "days_1y": 250},
+        {"symbol": "QQQ3.DE", "currency": "EUR", "days_1y": 120},
+    ]
+    best, status = pick_best("NASDAQ 3X", listings)
+    assert (best["symbol"], status) == ("QQQ3.DE", "PARTIAL")
+
+    best, status = pick_best("NASDAQ 3X", listings[:2])
+    assert (best["symbol"], status) == ("QQQ3.MI", "OTHER EXCHANGE")
+
+    assert pick_best("NASDAQ 3X", []) == (None, "NOT FOUND")
+    assert pick_best("BEL 20", [{"symbol": "B20.BR", "currency": "EUR", "days_1y": 250}])[1] == "OK"
