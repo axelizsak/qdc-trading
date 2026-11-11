@@ -10,7 +10,7 @@ from data import data_agent
 def yahoo_map(tmp_path, monkeypatch):
     path = tmp_path / "etf_yahoo_map.csv"
     pd.DataFrame({
-        "name": ["WORLD", "S&P 500", "GOLD", "QUANTUM"],
+        "ticker": ["WORLD", "S&P 500", "GOLD", "QUANTUM"],
         "isin": ["x1", "x2", "x3", "x4"],
         "status": ["OK", "OK", "OK", "INTROUVABLE"],
         "yahoo_symbol": ["IWDA.AS", "CSPX.L", "SGLN.L", None],

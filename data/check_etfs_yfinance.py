@@ -90,7 +90,7 @@ def build_yahoo_map(verbose: bool = True) -> pd.DataFrame:
     for etf in load_universe().itertuples():
         listings = [d for d in (describe(s) for s in candidates(etf.ticker, etf.isin)) if d]
         best, status = pick_best(etf.ticker, listings)
-        rows.append({"name": etf.ticker, "isin": etf.isin, "exchange": reference_exchange(etf.ticker),
+        rows.append({"ticker": etf.ticker, "isin": etf.isin, "exchange": reference_exchange(etf.ticker),
                      "status": status, "yahoo_symbol": best and best["symbol"],
                      "currency": best and best["currency"], "days_1y": best and best["days_1y"],
                      "last_date": best and best["last_date"],
@@ -106,7 +106,7 @@ def main() -> None:
     df.to_csv(YAHOO_MAP_CSV, index=False)
     print("\n", df["status"].value_counts().to_string())
     print("\nTo check:")
-    print(df[df["status"] != "OK"][["name", "exchange", "status", "yahoo_symbol", "other_symbols"]]
+    print(df[df["status"] != "OK"][["ticker", "exchange", "status", "yahoo_symbol", "other_symbols"]]
           .to_string(index=False))
     print(f"\nWritten to {YAHOO_MAP_CSV}")
 

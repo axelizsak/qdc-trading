@@ -40,7 +40,7 @@ def load_yahoo_map() -> pd.DataFrame:
     if not YAHOO_MAP_CSV.exists():
         raise FileNotFoundError(
             f"{YAHOO_MAP_CSV.name} is missing: run `python data/check_etfs_yfinance.py` first")
-    m = pd.read_csv(YAHOO_MAP_CSV).rename(columns={"name": "ticker"})
+    m = pd.read_csv(YAHOO_MAP_CSV)
     m = m.dropna(subset=["yahoo_symbol"])
     m["currency"] = m["currency"].fillna("EUR")
     return m[["ticker", "yahoo_symbol", "currency"]]
