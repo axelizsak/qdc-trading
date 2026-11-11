@@ -38,7 +38,12 @@ def mock_prices(days: int = 260, end: str = "2026-11-30", seed: int = 0) -> pd.D
         vol = rng.uniform(0.005, 0.03)
         rets = rng.normal(0.0003, vol, size=days)
         close = 100 * np.exp(np.cumsum(rets))
-        frames.append(pd.DataFrame({"date": dates.date, "ticker": t, "close_eur": close.round(4)}))
+        open_ = close * np.exp(rng.normal(0, vol / 2, size=days))
+        high = np.maximum(open_, close) * (1 + rng.uniform(0, vol, size=days))
+        low = np.minimum(open_, close) * (1 - rng.uniform(0, vol, size=days))
+        frames.append(pd.DataFrame({"date": dates.date, "ticker": t, "open_eur": open_.round(4),
+                                    "high_eur": high.round(4), "low_eur": low.round(4),
+                                    "close_eur": close.round(4)}))
     return validate_prices(pd.concat(frames, ignore_index=True))
 
 

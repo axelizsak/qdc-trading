@@ -140,11 +140,15 @@ streamlit run app/streamlit_app.py
 
 Each step uses its mock while its switch in `USE_MOCK` (`data/config.py`) is on. Runs on mocks write to `logs/mock/`, which is not committed.
 
-Check which ETFs are available on Yahoo Finance:
+Data agent (prices of the 50 ETFs):
 
 ```bash
-python data/check_etfs_yfinance.py   # writes data/etf_yahoo_map.csv
+python -m data.symbols      # step 1, once: Yahoo symbol of each ETF -> data/etf_symbols.csv (about 3 minutes)
+python -m data.data_agent   # step 2: daily OHLC prices since 2020 + quality checks -> data/cache/
 ```
+
+NASDAQ 3X is not on Yahoo for Xetra: its prices come from EODHD (free plan, official Deutsche Boerse
+data distributor). Create a free key on eodhd.com and add `EODHD_API_KEY=...` to your `.env`.
 
 ## Work split
 

@@ -10,7 +10,9 @@ import pandas as pd
 
 from data.config import MACRO_FACTORS, MAX_ORDERS_PER_DAY, SIGNAL_AGENTS
 
-PRICES = ["date", "ticker", "close_eur"]
+# Real daily prices (not adjusted for dividends), in EUR, on the Belfius exchange.
+# One row per day the ETF was quoted: a day without a quote is absent, never filled.
+PRICES = ["date", "ticker", "open_eur", "high_eur", "low_eur", "close_eur"]
 SIGNALS = ["ticker", "date", "agent", "score", "confidence", "rationale"]
 PORTFOLIO = ["ticker", "target_weight"]
 ORDERS = ["date", "side", "ticker", "units"]  # matches the Belfius form
