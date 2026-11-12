@@ -11,6 +11,7 @@ from data.mock import (
     mock_features,
     mock_holdings,
     mock_macro_views,
+    mock_prices,
     mock_source_registry,
 )
 
@@ -21,6 +22,24 @@ def test_mock_matches_its_format(name):
     columns = getattr(schemas, name.upper())
     assert list(df.columns) == columns
     getattr(schemas, f"validate_{name}")(df)
+
+
+def test_prices_volume_can_be_empty_but_not_negative():
+    df = mock_prices(days=5)
+    df.loc[0, "volume"] = np.nan                     # source without volume: allowed
+    schemas.validate_prices(df)
+    df.loc[1, "volume"] = -10
+    with pytest.raises(ValueError, match="volume"):
+        schemas.validate_prices(df)
+
+
+def test_prices_adjusted_close_can_be_empty_but_must_be_positive():
+    df = mock_prices(days=5)
+    df.loc[0, "adj_close_eur"] = np.nan
+    schemas.validate_prices(df)
+    df.loc[1, "adj_close_eur"] = 0
+    with pytest.raises(ValueError, match="adj_close_eur"):
+        schemas.validate_prices(df)
 
 
 def test_mocks_survive_a_csv_round_trip(tmp_path):

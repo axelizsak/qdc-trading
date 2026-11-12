@@ -10,14 +10,20 @@ from data.schemas import PRICES
 DAYS = pd.bdate_range("2026-11-02", "2026-11-13")   # 10 business days
 
 
-def fake_ohlc(close: float, missing_day=None) -> pd.DataFrame:
-    """Constant bars, optionally with one day without a quote."""
+def fake_ohlc(close: float, missing_day=None, volume=None, adj_close=None) -> pd.DataFrame:
+    """Constant bars, optionally with one day without a quote.
+    No Volume / AdjClose column when volume / adj_close is None (a source that does not give them)."""
     index = []
     for day in DAYS:
         if day != missing_day:
             index.append(day)
     rows = {"Open": close * 0.99, "High": close * 1.02, "Low": close * 0.98, "Close": close}
-    return pd.DataFrame(rows, index=pd.DatetimeIndex(index))
+    bars = pd.DataFrame(rows, index=pd.DatetimeIndex(index))
+    if volume is not None:
+        bars["Volume"] = float(volume)
+    if adj_close is not None:
+        bars["AdjClose"] = float(adj_close)
+    return bars
 
 
 def fake_yahoo(symbol, start, end):
@@ -25,7 +31,10 @@ def fake_yahoo(symbol, start, end):
     if symbol not in prices:
         return pd.DataFrame(columns=data_agent.OHLC_COLUMNS)
     missing_day = DAYS[2] if symbol == "BEL.BR" else None   # a Brussels holiday
-    bars = fake_ohlc(prices[symbol], missing_day)
+    adjusted = 48.0 if symbol == "BEL.BR" else prices[symbol]      # BEL 20 distributes: adjusted < close
+    bars = fake_ohlc(prices[symbol], missing_day, volume=1000, adj_close=adjusted)
+    if symbol == "LSK8.DE":
+        bars.loc[DAYS[4], "Volume"] = 0.0                   # a day without any trade
     keep = []
     for day in bars.index:
         if start <= day.date() <= end:
@@ -35,7 +44,7 @@ def fake_yahoo(symbol, start, end):
 
 def fake_eodhd(symbol, start, end):
     assert symbol == "3QQQ.XETRA"
-    return fake_ohlc(300.0)
+    return fake_ohlc(300.0)                                  # this fake source gives no volume, no adjusted close
 
 
 SYMBOLS = pd.DataFrame([
@@ -71,6 +80,22 @@ def test_nasdaq_3x_comes_from_eodhd_and_no_data_etfs_are_left_out():
     assert "QUANTUM" not in set(p["ticker"])
 
 
+def test_volume_is_kept_and_left_empty_when_the_source_has_none():
+    p = fetch()
+    world = p[p["ticker"] == "WORLD"]
+    assert (world["volume"] == 1000).all()
+    stoxx_short = p[p["ticker"] == "STOXX SHORT"]
+    assert stoxx_short[stoxx_short["date"] == DAYS[4].date()]["volume"].iloc[0] == 0   # no trade: 0, not NA
+    assert p[p["ticker"] == "NASDAQ 3X"]["volume"].isna().all()                          # never invented
+
+
+def test_adjusted_close_is_kept_next_to_the_real_close():
+    p = fetch()
+    bel = p[p["ticker"] == "BEL 20"]
+    assert (bel["close_eur"] == 50.0).all() and (bel["adj_close_eur"] == 48.0).all()
+    assert p[p["ticker"] == "NASDAQ 3X"]["adj_close_eur"].isna().all()       # never invented
+
+
 def test_a_day_without_quote_stays_absent():
     p = fetch()
     days = p.groupby("ticker").size()
@@ -104,13 +129,31 @@ def test_check_prices_reports_without_changing_the_data():
     p.loc[(p["ticker"] == "WORLD") & (p["date"] == date(2026, 11, 13)), "close_eur"] = 130.0   # +30 %
     reports = data_agent.check_prices(p, SYMBOLS)
 
-    assert list(reports) == ["coverage", "stale", "missing_days", "bad_bars", "big_moves", "left_out"]
+    assert list(reports) == ["coverage", "stale", "missing_days", "bad_bars", "big_moves", "left_out",
+                             "no_volume", "adjusted"]
     assert len(reports["stale"]) == 0
     assert reports["missing_days"]["date"].tolist() == [DAYS[2].date()]
     assert reports["missing_days"]["missing"].iloc[0] == "BEL 20"
     assert reports["big_moves"]["ticker"].tolist() == ["WORLD"]
     assert reports["left_out"]["ticker"].tolist() == ["QUANTUM"]
     assert len(p) == len(before)
+
+
+def test_check_prices_reports_days_without_trade_or_volume():
+    reports = data_agent.check_prices(fetch(), SYMBOLS)
+    no_volume = reports["no_volume"].set_index("ticker")
+    assert no_volume.loc["STOXX SHORT", "zero_volume_days"] == 1
+    assert no_volume.loc["NASDAQ 3X", "no_volume_data_days"] == 10
+    assert "WORLD" not in no_volume.index
+
+
+def test_check_prices_reports_adjusted_closes_that_differ_or_are_missing():
+    reports = data_agent.check_prices(fetch(), SYMBOLS)
+    adjusted = reports["adjusted"].set_index("ticker")
+    assert adjusted.loc["BEL 20", "days_adjusted"] == 9
+    assert adjusted.loc["BEL 20", "oldest_ratio"] == pytest.approx(48 / 50)
+    assert adjusted.loc["NASDAQ 3X", "days_missing"] == 10
+    assert "WORLD" not in adjusted.index                                     # accumulating: adjusted = close
 
 
 def test_check_prices_finds_impossible_bars_and_stale_etfs():
@@ -205,7 +248,9 @@ def split_history(jump: bool) -> pd.DataFrame:
     bars["Open"] = bars["Close"]
     bars["High"] = bars["Close"]
     bars["Low"] = bars["Close"]
-    return bars[data_agent.OHLC_COLUMNS]
+    bars["AdjClose"] = bars["Close"]
+    bars["Volume"] = [50.0, 60.0, 4000.0, 4800.0]
+    return bars[data_agent.BAR_COLUMNS]
 
 
 def test_split_fix_divides_the_prices_before_the_split():
@@ -213,6 +258,9 @@ def test_split_fix_divides_the_prices_before_the_split():
     assert fixed.loc["2026-10-22", "Close"] == pytest.approx(349.85 / 80)
     assert fixed.loc["2026-10-22", "High"] == pytest.approx(349.85 / 80)
     assert fixed.loc["2026-10-26", "Close"] == pytest.approx(4.4275)        # after the split: unchanged
+    assert fixed.loc["2026-10-22", "AdjClose"] == pytest.approx(349.85 / 80)
+    assert fixed.loc["2026-10-22", "Volume"] == pytest.approx(60.0 * 80)    # volumes in today's units
+    assert fixed.loc["2026-10-26", "Volume"] == pytest.approx(4000.0)
 
 
 def test_split_fix_is_not_applied_twice():
