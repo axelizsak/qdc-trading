@@ -63,9 +63,8 @@ CSS = f"""
 
 
 def default_day() -> date:
-    today = date.today()
-    upcoming = [d for d in settings.TRADING_DAYS if d >= today]
-    return upcoming[0] if upcoming else settings.TRADING_DAYS[-1]
+    """Today: any day can be run, days before the trading window are practice."""
+    return date.today()
 
 
 def as_of() -> date:
@@ -103,7 +102,7 @@ def header() -> None:
     orders = len(state.get("approved_orders") or state.get("proposed_orders", []))
     parts = [f"<span class='brand'>QDC ▸ Terminal</span>", f"{day:%a %d %b %Y}"]
     if day not in settings.TRADING_DAYS:
-        parts.append("not a trading day")
+        parts.append("practice day" if day < settings.TRADING_DAYS[0] else "not a trading day")
     where = day_label(status, state, pending)
     parts.append(f"<span class='hot'>waiting · {where}</span>" if status == "waiting for approval" else where)
     if status != "not started":

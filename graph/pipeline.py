@@ -15,12 +15,15 @@
 - When the day ends: <logs>/orders.csv (AI suggestion next to the human decision),
   <logs>/reviews.csv (every review with its feedback) and <logs>/summary/<date>.md.
 - Signals and the macro summary are written to <logs>/ and read back when a date is run
-  again, so a rerun never calls the agents (or the Claude API) twice. The real Macro/News agent
-  always uses logs/, and only runs on the day itself (it reads the news of the day).
+  again, so a rerun never calls the agents (or the Claude API) twice. A real signal step always
+  uses logs/. The real Macro/News agent only runs on the day itself (it reads the news of the day).
+- Any day can be run: days before the trading window are practice, to collect signals and test
+  orders. Practice orders never count in the competition, which starts from START_CAPITAL_EUR.
 - <logs> is logs/mock/ (gitignored) while any step is on a mock, else logs/ (graded evidence).
 
 Usage:
-    python -m graph.pipeline --date 2026-12-07                      # run until the first review
+    python -m graph.pipeline                                        # run today until the first review
+    python -m graph.pipeline --date 2026-12-07                      # run that day until the first review
     python -m graph.pipeline --date 2026-12-07 --answer a.json      # answer the review waiting
     python -m graph.pipeline --date 2026-12-07 --approve-all        # approve every review left
     python -m graph.pipeline --date 2026-12-07 --rerun              # start the day again
@@ -208,8 +211,19 @@ def load_agent_weights(logs: Path, as_of: date) -> dict[str, float]:
     return {a: 1 / len(settings.SIGNAL_AGENTS) for a in settings.SIGNAL_AGENTS}
 
 
-def load_book(logs: Path, prices: pd.DataFrame, as_of: date) -> tuple[pd.DataFrame, float]:
-    """Holdings and cash before `as_of`, rebuilt from the executed orders in <logs>/orders.csv.
+def same_book(log: pd.DataFrame, as_of: date) -> pd.DataFrame:
+    """The order-log rows of the portfolio `as_of` belongs to. Days before the trading window are
+    practice and share a practice book; the competition starts again from START_CAPITAL_EUR on the
+    first trading day, so practice orders never count in it."""
+    start = settings.TRADING_DAYS[0]
+    dates = pd.to_datetime(log["date"]).dt.date
+    return log[dates >= start] if as_of >= start else log[dates < start]
+
+
+def load_book(logs: Path, prices: pd.DataFrame, as_of: date,
+              with_the_day: bool = False) -> tuple[pd.DataFrame, float]:
+    """Holdings and cash before `as_of` (or after its orders, `with_the_day`), rebuilt from the executed
+    orders of the same book (see same_book) in <logs>/orders.csv.
 
     Fills are valued at the close of the order date (the fill-price rule is still to confirm with Belfius).
     """
@@ -218,8 +232,10 @@ def load_book(logs: Path, prices: pd.DataFrame, as_of: date) -> tuple[pd.DataFra
     empty = pd.DataFrame(columns=HOLDINGS)
     if not path.exists():
         return empty, cash
-    log = validate_order_log(pd.read_csv(path))
-    done = log[(log["decision"] != "rejected") & (log["date"].astype(str) < as_of.isoformat())]
+    log = same_book(validate_order_log(pd.read_csv(path)), as_of)
+    day = log["date"].astype(str)
+    before = (day <= as_of.isoformat()) if with_the_day else (day < as_of.isoformat())
+    done = log[(log["decision"] != "rejected") & before]
     if done.empty:
         return empty, cash
     units = done["units"].astype(float)
@@ -424,16 +440,23 @@ def data_step(state: DayState, config: RunnableConfig) -> dict:
     }
 
 
+def _signals_home(step: str, logs: Path) -> Path:
+    """Where a signal step keeps its signals: logs/ (graded evidence, and the data the review loop learns
+    from) once the step is real, even while other steps are still on mocks; else <logs>."""
+    return logs if settings.USE_MOCK[step] else settings.LOGS_DIR
+
+
 def technical_step(state: DayState, config: RunnableConfig) -> dict:
     as_of, logs = _day(state, config)
-    cached = _read_signals(logs, as_of, TECHNICAL_AGENTS, "technical")
+    home = _signals_home("technical", logs)
+    cached = _read_signals(home, as_of, TECHNICAL_AGENTS, "technical")
     if cached is not None:
         return {"signals": _records(cached)}
     try:
         signals = _check_signals(_call("technical", _frame(state["prices"], PRICES),
                                        _frame(state["indicators"], FEATURES), as_of, state["lessons"]),
                                  TECHNICAL_AGENTS)
-        _write_signals(logs, signals, as_of, TECHNICAL_AGENTS)
+        _write_signals(home, signals, as_of, TECHNICAL_AGENTS)
         return {"signals": _records(signals)}
     except Exception as exc:
         incident = _incident(logs, as_of, "technical", exc)
@@ -447,7 +470,7 @@ def macro_news_step(state: DayState, config: RunnableConfig) -> dict:
     It reads the news of the day: it runs on the day itself, never for another date."""
     as_of, logs = _day(state, config)
     real = not settings.USE_MOCK["macro_news"]
-    home = settings.LOGS_DIR if real else logs
+    home = _signals_home("macro_news", logs)
     summary_path = home / "macro" / f"{as_of.isoformat()}.md"
     cached = _read_signals(home, as_of, MACRO_AGENTS, "macro_news")
     if cached is not None:
@@ -706,7 +729,7 @@ def _print_done(as_of: date, logs: Path) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run one trading day through the agent pipeline.")
-    parser.add_argument("--date", required=True, type=date.fromisoformat, help="trading day, YYYY-MM-DD")
+    parser.add_argument("--date", type=date.fromisoformat, default=date.today(), help="YYYY-MM-DD, default today")
     resume = parser.add_mutually_exclusive_group()
     resume.add_argument("--approve-all", action="store_true", help="approve every review left, orders as proposed")
     resume.add_argument("--answer", type=Path, help="answer the review waiting with this JSON file")

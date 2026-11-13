@@ -13,7 +13,7 @@ prices, prices_mock = data.day_prices(as_of, state)
 log = data.order_log(logs)
 held, cash = data.positions(as_of, logs, prices)
 total = float(held["value_eur"].sum()) + cash
-history = data.portfolio_history(log, prices)
+history = data.portfolio_history(pipeline.same_book(log, as_of) if log is not None else None, prices)
 start = settings.START_CAPITAL_EUR
 gain = total / start - 1
 

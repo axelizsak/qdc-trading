@@ -1,6 +1,6 @@
 """Loaders for the cockpit. Each returns (data, is_mock): real logs first, mock data when there are none."""
 import re
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -128,7 +128,7 @@ def portfolio_history(log: pd.DataFrame | None, prices: pd.DataFrame) -> pd.Data
 
 def positions(as_of: date, logs: Path, prices: pd.DataFrame) -> tuple[pd.DataFrame, float]:
     """Holdings valued at the latest close, after the orders of `as_of`, and cash."""
-    holdings, cash = pipeline.load_book(logs, prices, as_of + timedelta(days=1))
+    holdings, cash = pipeline.load_book(logs, prices, as_of, with_the_day=True)
     close = last_close(prices, as_of)
     out = holdings.copy()
     out["units"] = out["units"].astype(float)
