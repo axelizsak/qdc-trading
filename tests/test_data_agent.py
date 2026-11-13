@@ -269,3 +269,18 @@ def test_split_fix_is_not_applied_twice():
     assert fixed["Close"].tolist() == history["Close"].tolist()
     other = data_agent.apply_split_fix("WORLD", split_history(jump=True))     # no split known for WORLD
     assert other.loc["2026-10-22", "Close"] == pytest.approx(349.85)
+
+
+def test_a_failed_eodhd_request_never_shows_the_key(monkeypatch, capsys):
+    import requests
+
+    from data import data_agent
+
+    def refused(url, params, timeout):
+        raise requests.ConnectionError(f"Max retries exceeded with url: {url}?api_token={params['api_token']}")
+
+    monkeypatch.setenv("EODHD_API_KEY", "secret-test-key")
+    monkeypatch.setattr(data_agent.requests, "get", refused)
+    bars = data_agent.eodhd_ohlc("TEST.XETRA", date(2026, 1, 5), date(2026, 3, 2))
+    assert bars.empty
+    assert "secret-test-key" not in capsys.readouterr().out

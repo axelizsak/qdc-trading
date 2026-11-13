@@ -176,13 +176,16 @@ def _check_signals(signals: pd.DataFrame, agents: list[str]) -> pd.DataFrame:
     return signals
 
 
-def _read_signals(logs: Path, as_of: date, agents: list[str]) -> pd.DataFrame | None:
-    """Signals already logged for this date and these agents, or None."""
+def _read_signals(logs: Path, as_of: date, agents: list[str], step: str) -> pd.DataFrame | None:
+    """Signals already logged for this date and these agents, or None.
+    Mock signals are never reused once the step runs its real module."""
     path = logs / "signals.csv"
     if not path.exists():
         return None
     df = pd.read_csv(path)
     rows = df[(df["date"].astype(str) == as_of.isoformat()) & df["agent"].isin(agents)]
+    if not settings.USE_MOCK[step] and (rows["rationale"] == "mock").any():
+        return None
     return rows if set(rows["agent"]) == set(agents) else None
 
 
@@ -422,7 +425,7 @@ def data_step(state: DayState, config: RunnableConfig) -> dict:
 
 def technical_step(state: DayState, config: RunnableConfig) -> dict:
     as_of, logs = _day(state, config)
-    cached = _read_signals(logs, as_of, TECHNICAL_AGENTS)
+    cached = _read_signals(logs, as_of, TECHNICAL_AGENTS, "technical")
     if cached is not None:
         return {"signals": _records(cached)}
     try:
@@ -440,7 +443,7 @@ def technical_step(state: DayState, config: RunnableConfig) -> dict:
 def macro_news_step(state: DayState, config: RunnableConfig) -> dict:
     as_of, logs = _day(state, config)
     summary_path = logs / "macro" / f"{as_of.isoformat()}.md"
-    cached = _read_signals(logs, as_of, MACRO_AGENTS)
+    cached = _read_signals(logs, as_of, MACRO_AGENTS, "macro_news")
     if cached is not None:
         summary = summary_path.read_text() if summary_path.exists() else ""
         return {"signals": _records(cached), "macro_summary": summary}
