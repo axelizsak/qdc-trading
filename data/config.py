@@ -40,7 +40,7 @@ SIGNAL_AGENTS = ["technical_det", "technical_llm", "macro_news"]
 USE_MOCK = {
     "data": False,
     "technical": False,
-    "macro_news": True,
+    "macro_news": False,
     "portfolio": True,
     "risk": True,
 }
