@@ -261,3 +261,27 @@ def test_real_macro_news_never_runs_for_another_day(logs, tmp_path, monkeypatch)
 
     assert "only runs on 2026-12-07 itself" in pending["incidents"][0]["error"]
     assert not (tmp_path / "real" / "signals.csv").exists()
+
+
+def test_practice_orders_never_count_in_the_competition(logs):
+    practice = date(2026, 11, 20)
+    pipeline.approve_day(practice, logs)
+    prices = pd.DataFrame(_state(logs, practice)["prices"])
+
+    held, cash = pipeline.load_book(logs, prices, date(2026, 11, 23))
+    assert len(held) > 0 and cash < settings.START_CAPITAL_EUR  # the practice book goes on
+    held, cash = pipeline.load_book(logs, prices, settings.TRADING_DAYS[0])
+    assert held.empty and cash == settings.START_CAPITAL_EUR  # the competition starts from scratch
+
+
+def test_real_signal_steps_keep_their_signals_in_logs(logs, tmp_path, monkeypatch):
+    real_logs = tmp_path / "real"
+    monkeypatch.setattr(settings, "LOGS_DIR", real_logs)
+    monkeypatch.setitem(settings.USE_MOCK, "technical", False)
+    monkeypatch.setitem(pipeline.REAL, "technical", lambda prices, features, as_of, lessons: pipeline.mock.mock_signals(
+        as_of.isoformat(), agents=["technical_det"]).assign(rationale="real technical"))
+
+    pipeline.run_day(DAY, logs)  # portfolio and risk are still on mocks
+
+    saved = pd.read_csv(real_logs / "signals.csv")
+    assert set(saved["agent"]) == {"technical_det"} and len(saved) == 50

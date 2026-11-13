@@ -100,12 +100,12 @@ cp .env.example .env      # add your ANTHROPIC_API_KEY and EODHD_API_KEY. Never 
 pytest
 ```
 
-Run a trading day. The pipeline pauses at each of the three reviews (the cockpit's Orders page does the same):
+Run a day. Any day works: before 7 December it is practice, to collect the agents' signals every day and test the orders (practice orders never count in the competition, which starts from €10,000). The pipeline pauses at each of the three reviews (the cockpit's Orders page does the same):
 
 ```bash
-python -m graph.pipeline --date 2026-12-07                    # agents run, orders proposed, pause
-python -m graph.pipeline --date 2026-12-07 --answer a.json    # answer the review waiting (format in graph/pipeline.py)
-python -m graph.pipeline --date 2026-12-07 --approve-all      # approve every review left, write the order log
+python -m graph.pipeline                                      # today: agents run, orders proposed, pause
+python -m graph.pipeline --answer a.json                      # answer the review waiting (format in graph/pipeline.py)
+python -m graph.pipeline --approve-all                        # approve every review left, write the order log
 ```
 
 Run the Macro/News agent every business day. Claude is the only key it needs:
