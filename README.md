@@ -96,7 +96,7 @@ These were fixed on day 1 and are defined in `data/schemas.py`. Build your modul
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env      # add your ANTHROPIC_API_KEY. Never commit .env
+cp .env.example .env      # add your ANTHROPIC_API_KEY and EODHD_API_KEY. Never commit .env
 pytest
 ```
 
