@@ -15,7 +15,8 @@
 - When the day ends: <logs>/orders.csv (AI suggestion next to the human decision),
   <logs>/reviews.csv (every review with its feedback) and <logs>/summary/<date>.md.
 - Signals and the macro summary are written to <logs>/ and read back when a date is run
-  again, so a rerun never calls the agents (or the Claude API) twice.
+  again, so a rerun never calls the agents (or the Claude API) twice. The real Macro/News agent
+  always uses logs/, and only runs on the day itself (it reads the news of the day).
 - <logs> is logs/mock/ (gitignored) while any step is on a mock, else logs/ (graded evidence).
 
 Usage:
@@ -441,18 +442,26 @@ def technical_step(state: DayState, config: RunnableConfig) -> dict:
 
 
 def macro_news_step(state: DayState, config: RunnableConfig) -> dict:
+    """The real agent reads and writes logs/ (graded evidence) even while other steps are on mocks, so the
+    day's run from `python -m agents.macro_news` is reused and Claude is never paid twice for a date.
+    It reads the news of the day: it runs on the day itself, never for another date."""
     as_of, logs = _day(state, config)
-    summary_path = logs / "macro" / f"{as_of.isoformat()}.md"
-    cached = _read_signals(logs, as_of, MACRO_AGENTS, "macro_news")
+    real = not settings.USE_MOCK["macro_news"]
+    home = settings.LOGS_DIR if real else logs
+    summary_path = home / "macro" / f"{as_of.isoformat()}.md"
+    cached = _read_signals(home, as_of, MACRO_AGENTS, "macro_news")
     if cached is not None:
         summary = summary_path.read_text() if summary_path.exists() else ""
         return {"signals": _records(cached), "macro_summary": summary}
     try:
+        if real and as_of != date.today():
+            raise ValueError(f"no Macro/News run for {as_of}: it reads the news of the day, so it only runs "
+                             f"on {as_of} itself (in the cockpit or with python -m agents.macro_news)")
         summary, signals = _call("macro_news", as_of, state["lessons"])
         _check_signals(signals, MACRO_AGENTS)
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(summary)
-        _write_signals(logs, signals, as_of, MACRO_AGENTS)
+        _write_signals(home, signals, as_of, MACRO_AGENTS)
         return {"signals": _records(signals), "macro_summary": summary}
     except Exception as exc:
         incident = _incident(logs, as_of, "macro_news", exc)

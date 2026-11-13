@@ -233,3 +233,31 @@ def test_cli_runs_answers_then_approves_the_rest(logs, tmp_path, capsys):
     assert "round 2" in capsys.readouterr().out
     pipeline.main(["--date", "2026-12-07", "--logs-dir", str(logs), "--approve-all"])
     assert (logs / "orders.csv").exists() and (logs / "reviews.csv").exists()
+
+
+def test_real_macro_news_reuses_the_days_run_from_logs(logs, tmp_path, monkeypatch):
+    real_logs = tmp_path / "real"
+    monkeypatch.setattr(settings, "LOGS_DIR", real_logs)
+    monkeypatch.setitem(settings.USE_MOCK, "macro_news", False)
+    monkeypatch.setitem(pipeline.REAL, "macro_news", _boom)  # Claude must not be called
+    run = pipeline.mock.mock_signals(DAY.isoformat(), agents=pipeline.MACRO_AGENTS).assign(rationale="real run")
+    (real_logs / "macro").mkdir(parents=True)
+    run.to_csv(real_logs / "signals.csv", index=False)
+    (real_logs / "macro" / f"{DAY}.md").write_text("# Macro report of the day")
+
+    pipeline.run_day(DAY, logs)
+
+    assert not (logs / "incidents.csv").exists()
+    assert _state(logs)["macro_summary"] == "# Macro report of the day"
+    assert {s["rationale"] for s in _state(logs)["signals"] if s["agent"] == "macro_news"} == {"real run"}
+
+
+def test_real_macro_news_never_runs_for_another_day(logs, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "LOGS_DIR", tmp_path / "real")
+    monkeypatch.setitem(settings.USE_MOCK, "macro_news", False)
+    monkeypatch.setitem(pipeline.REAL, "macro_news", _boom)
+
+    pending = pipeline.run_day(DAY, logs)  # DAY is not today
+
+    assert "only runs on 2026-12-07 itself" in pending["incidents"][0]["error"]
+    assert not (tmp_path / "real" / "signals.csv").exists()
