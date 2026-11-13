@@ -1,4 +1,6 @@
-"""Portfolio (home): performance against WORLD first, then where the trading day stands, then positions."""
+"""Portfolio (home): performance first, then where the trading day stands, then positions."""
+from pathlib import Path
+
 import streamlit as st
 
 from app import charts, data, ui
@@ -15,20 +17,13 @@ history = data.portfolio_history(log, prices)
 start = settings.START_CAPITAL_EUR
 gain = total / start - 1
 
-ui.page("Portfolio", "How we are doing against €10,000 put in WORLD, and what the day needs from you.")
+ui.page("Portfolio", f"How the €{start:,.0f} we started with is doing, and what the day needs from you.")
 ui.mock_note(prices_mock, "no prices for this day yet")
-figures = [("Value", f"€{total:,.0f}", f"{'▲' if gain >= 0 else '▼'} {gain:+.2%} since start",
-            "up" if gain >= 0 else "down")]
-if len(history):
-    last = history.sort_values("date").groupby("series")["value_eur"].last()
-    edge = (last["Portfolio"] - last["WORLD"]) / start
-    figures.append(("vs WORLD", f"{edge:+.2%}", "ahead of the market" if edge >= 0 else "behind the market",
-                    "up" if edge >= 0 else "down"))
-else:
-    figures.append(("vs WORLD", "—", "no order yet"))
-figures += [("Cash", f"€{cash:,.0f}", f"{cash / total:.0%} of the portfolio" if total else None),
-            ("Today", status.capitalize(), None, "hot" if status == "waiting for approval" else None)]
-ui.kpis(figures)
+ui.kpis([
+    ("Value", f"€{total:,.0f}", f"{'▲' if gain >= 0 else '▼'} {gain:+.2%} since start", "up" if gain >= 0 else "down"),
+    ("Cash", f"€{cash:,.0f}", f"{cash / total:.0%} of the portfolio" if total else None),
+    ("Today", status.capitalize(), None, "hot" if status == "waiting for approval" else None),
+])
 
 ui.label("Performance", "EUR · fills at the close of the order date")
 if history.empty:
@@ -79,3 +74,5 @@ else:
 if log is not None:
     with st.expander("Order log"):
         st.dataframe(log, hide_index=True, width="stretch")
+with st.expander("How the system works"):
+    st.image(str(Path(__file__).resolve().parents[2] / "docs" / "workflow.png"), width=720)

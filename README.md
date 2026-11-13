@@ -30,31 +30,7 @@ After each trading day, the review loop compares each agent's prediction with th
 Agents that were right gain weight. Lessons go into a journal that the agents read before the next decision.
 Every update is logged in `logs/`, and that log is our evidence of model re-assessment.
 
-```
-            yfinance / web search
-                     |
-               [1] DATA AGENT
-                     |
-           +---------+---------+
-           |                   |
-     [2] TECHNICAL       [3] MACRO/NEWS
-  indicators + ml_library   Claude web search
-     + LLM layer
-           |                   |
-           +---------+---------+
-                     |   signals
-          [4] PORTFOLIO MANAGER
-                     |   target weights
-             [5] RISK MANAGER
-                     |   orders
-         HUMAN APPROVAL (Streamlit)
-                     |
-          Order log -> Belfius form
-                     |
-     REVIEW LOOP (after each trading day)
-                     |
-   updates agent weights + lessons journal
-```
+![Workflow of one trading day](docs/workflow.png)
 
 **Rule:** use code for calculations, and the LLM only where judgement is needed.
 

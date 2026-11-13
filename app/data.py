@@ -92,9 +92,9 @@ def last_close(prices: pd.DataFrame, as_of: date) -> pd.Series:
 
 
 def portfolio_history(log: pd.DataFrame | None, prices: pd.DataFrame) -> pd.DataFrame:
-    """Daily value of the portfolio and of €START_CAPITAL in WORLD, from the first executed order on.
+    """Daily value of the portfolio from the first executed order on.
 
-    Columns: date, series ("Portfolio" | "WORLD"), value_eur. Fills at the close of the order date.
+    Columns: date, series ("Portfolio"), value_eur. Fills at the close of the order date.
     """
     if log is None:
         return pd.DataFrame(columns=["date", "series", "value_eur"])
@@ -114,10 +114,6 @@ def portfolio_history(log: pd.DataFrame | None, prices: pd.DataFrame) -> pd.Data
         units = so_far.groupby("ticker")["signed"].sum()
         value = cash + float((units * close.loc[day, units.index]).sum())
         rows.append({"date": day, "series": "Portfolio", "value_eur": value})
-    world = close["WORLD"]
-    for day in close.index:
-        rows.append({"date": day, "series": "WORLD",
-                     "value_eur": settings.START_CAPITAL_EUR * world[day] / world.iloc[0]})
     out = pd.DataFrame(rows)
     out["date"] = pd.to_datetime(out["date"])
     return out
