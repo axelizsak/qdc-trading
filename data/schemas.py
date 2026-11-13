@@ -29,12 +29,20 @@ ETF_VIEWS = ["date", "ticker", "direction", "confidence", "rationale", "counter_
 SOURCE_CHANGES = ["date", "source", "change", "note"]
 # data/macro_exposure.csv: how much each ETF moves with each macro factor (before leverage).
 MACRO_EXPOSURE = ["ticker", "multiplier", *MACRO_FACTORS]
+# Risk Manager output: the portfolio after the approved orders, one row per metric
+# (concentration, volatility, drawdown, exposure, leverage, liquidity...). limit is empty when there is none.
+RISK_REPORT = ["date", "metric", "value", "limit", "status", "comment"]
+# logs/reviews.csv: every human answer at the three review gates, with the feedback sent back.
+REVIEWS = ["date", "round", "gate", "decision", "feedback"]
 
 SIDES = {"BUY", "SELL"}
 EVIDENCE_KINDS = {"number", "text", "exploration"}
 SOURCE_STATUSES = {"active", "testing", "dropped"}
 DECISIONS = {"approved", "modified", "rejected", "added"}
 SOURCE_CHANGE_KINDS = {"added", "removed"}
+RISK_STATUSES = {"ok", "warning", "breach"}
+REVIEW_GATES = ["orders", "risk", "summary"]  # in the order the human meets them
+REVIEW_DECISIONS = {"approved", "revised", "stopped"}  # revised: back to the Portfolio Manager; stopped: no trade
 LIST_SEP = ";"
 
 # Proposed starting set of features, to validate with the data agent's owner. Not enforced.
@@ -255,4 +263,27 @@ def validate_etf_views(df: pd.DataFrame) -> pd.DataFrame:
     if not df["sources"].map(split_list).map(bool).all():
         raise ValueError("etf_views: every view needs at least one source")
     _require_unique(df, ["date", "ticker"], "etf_views")
+    return df
+
+
+def validate_risk_report(df: pd.DataFrame) -> pd.DataFrame:
+    """Post-trade risk metrics: a finite value, a status (ok, warning, breach), one row per (date, metric)."""
+    _require_columns(df, RISK_REPORT, "risk_report")
+    _require_text(df, "metric", "risk_report")
+    if not np.isfinite(pd.to_numeric(df["value"], errors="coerce")).all():
+        raise ValueError("risk_report: value must be a finite number")
+    _require_in(df, "status", RISK_STATUSES, "risk_report")
+    _require_unique(df, ["date", "metric"], "risk_report")
+    return df
+
+
+def validate_reviews(df: pd.DataFrame) -> pd.DataFrame:
+    """Human answers at the review gates. Feedback is required to send a day back or to stop it."""
+    _require_columns(df, REVIEWS, "reviews")
+    _require_in(df, "gate", REVIEW_GATES, "reviews")
+    _require_in(df, "decision", REVIEW_DECISIONS, "reviews")
+    if not (pd.to_numeric(df["round"], errors="coerce") >= 1).all():
+        raise ValueError("reviews: round must be 1 or more")
+    _require_text(df[df["decision"] != "approved"], "feedback", "reviews")
+    _require_unique(df, ["date", "round", "gate"], "reviews")
     return df
