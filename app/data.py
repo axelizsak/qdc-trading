@@ -91,10 +91,13 @@ def last_close(prices: pd.DataFrame, as_of: date) -> pd.Series:
     return p.groupby("ticker")["close_eur"].last()
 
 
-def portfolio_history(log: pd.DataFrame | None, prices: pd.DataFrame) -> pd.DataFrame:
-    """Daily value of the portfolio from the first executed order on.
+BENCHMARK_LABEL = "MSCI World"
 
-    Columns: date, series ("Portfolio"), value_eur. Fills at the close of the order date.
+
+def portfolio_history(log: pd.DataFrame | None, prices: pd.DataFrame) -> pd.DataFrame:
+    """Daily value of the portfolio and of €START_CAPITAL in the benchmark, from the first executed order on.
+
+    Columns: date, series ("Portfolio" | BENCHMARK_LABEL), value_eur. Fills at the close of the order date.
     """
     if log is None:
         return pd.DataFrame(columns=["date", "series", "value_eur"])
@@ -114,6 +117,10 @@ def portfolio_history(log: pd.DataFrame | None, prices: pd.DataFrame) -> pd.Data
         units = so_far.groupby("ticker")["signed"].sum()
         value = cash + float((units * close.loc[day, units.index]).sum())
         rows.append({"date": day, "series": "Portfolio", "value_eur": value})
+    benchmark = close[settings.BENCHMARK]
+    for day in close.index:
+        rows.append({"date": day, "series": BENCHMARK_LABEL,
+                     "value_eur": settings.START_CAPITAL_EUR * benchmark[day] / benchmark.iloc[0]})
     out = pd.DataFrame(rows)
     out["date"] = pd.to_datetime(out["date"])
     return out
