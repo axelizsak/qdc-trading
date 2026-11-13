@@ -63,4 +63,4 @@ def test_approval_writes_the_order_log_and_offers_the_export(logs):
 
     home = open_page("home")
     assert not home.exception
-    assert not any("WORLD" in m.value for m in home.markdown)  # no benchmark in the cockpit
+    assert any(">vs MSCI World<" in m.value for m in home.markdown)  # the Belfius benchmark
