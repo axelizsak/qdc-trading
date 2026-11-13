@@ -1,15 +1,22 @@
-"""[2] Technical agent. Owner: Person 2. Momentum strategy (settings in agents/strategy_config.py).
+"""[2] Technical agent. Owner: Person 2. Two strategies (settings in agents/strategy_config.py).
 
 Input:  prices (Prices format) + indicators from the data agent (Features format, full history)
 Output:
   1. build_sheet: one row per ETF with the answers for the Portfolio Manager
+     Strategy 1, momentum (momentum_strategy): for ETFs in a strong trend
      - direction: trend on the short, medium and long term (up / down / none)
      - momentum setup: buy / avoid / none
      - strength: Clenow trend quality, ADX label, momentum and volume confirmations
      - measures: momentum 13612 (to rank), vol 60 (to size), market trend (context)
      - suggested signal: buy / watch / neutral / avoid, with a one-line rationale
-  2. run: the suggested signal in the Signals format (agent technical_det), for the pipeline.
-     The LLM layer (technical_llm) comes later.
+     Strategy 2, mean reversion (mean_reversion_strategy): for equity ETFs without a strong trend
+     - regime: trend (momentum fits) / range (mean reversion fits) / mixed
+     - mean reversion setup: buy / avoid / none / n/a
+       oversold or overbought by Connors RSI 2, Bollinger z-score 20, Donchian 20-day channel
+     - rebound done: price back above its SMA 5 (Connors exit)
+  2. run: the momentum suggested signal in the Signals format (agent technical_det), for the pipeline.
+     The mean reversion answers are in the sheet and the rationale; how to combine both into one
+     score is decided after their backtests. The LLM layer (technical_llm) comes later.
 
 Leveraged and inverse ETFs: direction and strength are read on the underlying index
 (column `underlying` of data/etf_universe.csv), then reversed for an inverse ETF.
@@ -135,6 +142,105 @@ def trend_quality(prices: pd.Series) -> float:
     return float(annualized_slope * r_squared)
 
 
+# ---------- Mean reversion strategy ----------------------------------------------------------
+
+def channel_position(price: float, low: float, high: float) -> float:
+    """Position of the price in its Donchian channel: 0 = on the low, 1 = on the high. NA if flat or missing."""
+    if pd.isna(price) or pd.isna(low) or pd.isna(high) or high == low:
+        return np.nan
+    return float((price - low) / (high - low))
+
+
+def oversold_signals(rsi_2: float, zscore: float, position: float) -> dict:
+    """The three classic 'price stretched down' measures, each True / False / None (missing)."""
+    signals = {"connors_rsi2": None, "bollinger": None, "donchian": None}
+    if not pd.isna(rsi_2):
+        signals["connors_rsi2"] = bool(rsi_2 < cfg.RSI2_OVERSOLD)
+    if not pd.isna(zscore):
+        signals["bollinger"] = bool(zscore <= cfg.ZSCORE_LOW)
+    if not pd.isna(position):
+        signals["donchian"] = bool(position < cfg.DONCHIAN_LOW)
+    return signals
+
+
+def overbought_signals(rsi_2: float, zscore: float, position: float) -> dict:
+    """The same three measures, 'price stretched up'."""
+    signals = {"connors_rsi2": None, "bollinger": None, "donchian": None}
+    if not pd.isna(rsi_2):
+        signals["connors_rsi2"] = bool(rsi_2 > cfg.RSI2_OVERBOUGHT)
+    if not pd.isna(zscore):
+        signals["bollinger"] = bool(zscore >= cfg.ZSCORE_HIGH)
+    if not pd.isna(position):
+        signals["donchian"] = bool(position > cfg.DONCHIAN_HIGH)
+    return signals
+
+
+def names_true(signals: dict) -> list[str]:
+    """Names of the signals that say yes, e.g. ['connors_rsi2', 'bollinger']."""
+    names = []
+    for name, answer in signals.items():
+        if answer is True:
+            names.append(name)
+    return names
+
+
+def mean_reversion_setup(applicable: bool, long: str | None, adx: float,
+                         oversold: list[str], overbought: list[str]) -> str:
+    """'buy': long-term trend not down, no strong trend, price stretched down (1 measure is enough).
+    'avoid': price stretched up (2 measures out of 3). 'none' otherwise.
+    'n/a' for ETFs without timing (gold, crypto, leveraged...)."""
+    if not applicable:
+        return "n/a"
+    if len(overbought) >= cfg.MR_MIN_OVERBOUGHT:
+        return "avoid"
+    if long is None or long == "down":
+        return "none"                       # no falling knife
+    if not pd.isna(adx) and adx > cfg.MR_ADX_MAX:
+        return "none"                       # strong trend: the momentum strategy applies
+    if len(oversold) >= cfg.MR_MIN_OVERSOLD:
+        return "buy"
+    return "none"
+
+
+def rebound_done(price: float, sma_5: float) -> bool | None:
+    """Connors exit: the rebound is done once the price is back above its SMA 5."""
+    if pd.isna(price) or pd.isna(sma_5):
+        return None
+    return bool(price > sma_5)
+
+
+def market_regime(adx: float, efficiency: float) -> str | None:
+    """Which strategy fits this ETF now: 'trend' (ADX > 25) -> momentum,
+    'range' (ADX < 20 and efficiency < 0.2) -> mean reversion, 'mixed' otherwise."""
+    if pd.isna(adx):
+        return None
+    if adx > cfg.ADX_STRONG:
+        return "trend"
+    if adx < cfg.RANGE_ADX_MAX and not pd.isna(efficiency) and efficiency < cfg.RANGE_EFFICIENCY_MAX:
+        return "range"
+    return "mixed"
+
+
+def mean_reversion_strategy(last: pd.Series, price: float, long: str | None, applicable: bool) -> dict:
+    """All the mean reversion answers for one ETF on one day."""
+    rsi_2 = value(last, "rsi_2")
+    zscore = value(last, "zscore_20")
+    position = channel_position(price, value(last, "low_20"), value(last, "high_20"))
+    oversold = names_true(oversold_signals(rsi_2, zscore, position))
+    overbought = names_true(overbought_signals(rsi_2, zscore, position))
+    adx = value(last, "adx_14")
+    return {
+        "regime": market_regime(adx, value(last, "efficiency_ratio_20")),
+        "mr_setup": mean_reversion_setup(applicable, long, adx, oversold, overbought),
+        "rsi_2": rsi_2,
+        "zscore_20": zscore,
+        "channel_position_20": position,
+        "mr_oversold": ", ".join(oversold),
+        "mr_overbought": ", ".join(overbought),
+        "rebound_done": rebound_done(price, value(last, cfg.REBOUND_DONE_SMA)),
+    }
+
+
 # ---------- Measures for the Portfolio Manager -------------------------------------------------
 
 def momentum_13612(prices: pd.Series) -> float:
@@ -196,6 +302,12 @@ def write_rationale(row: dict) -> str:
     else:
         text = text + f"; strength {row['trend_strength']} (ADX {row['adx_14']:.0f}), {row['confirmations']}/2"
     text = text + f"; market {labels[row['market_trend']]} -> {row['suggested_signal']}"
+    if row.get("mr_setup") is not None and row["mr_setup"] != "n/a":
+        text = text + f" | regime {labels.get(row['regime'], row['regime'])}; mean reversion {row['mr_setup']}"
+        if row["mr_oversold"] != "":
+            text = text + f" (oversold: {row['mr_oversold']})"
+        if row["mr_overbought"] != "":
+            text = text + f" (overbought: {row['mr_overbought']})"
     if row["read_on"] != row["ticker"]:
         text = text + f" (read on {row['read_on']})"
     return text
@@ -255,16 +367,51 @@ def sheet_for_one_etf(etf: pd.Series, prices: pd.DataFrame, indicators: pd.DataF
     last = index_rows.iloc[-1]
     price = float(index_prices.iloc[-1])
 
-    # Question 1, on the index (or the ETF itself)
+    vol = np.nan
+    if len(own_rows) > 0:
+        vol = value(own_rows.iloc[-1], cfg.VOL_COLUMN)
+
+    row = {
+        "date": as_of,
+        "ticker": ticker,
+        "family": etf["family"],
+        "read_on": read_on,
+        "leveraged": int(etf["leveraged"]),
+    }
+
+    # Strategy 1: momentum (read on the index for leveraged and inverse ETFs)
+    momentum = momentum_strategy(index_rows, index_prices, inverse)
+    for key, val in momentum.items():
+        row[key] = val
+    row["momentum_13612"] = momentum_13612(own_prices)
+    row["vol_60"] = vol
+    row["market_trend"] = market
+    row["suggested_signal"] = suggest_signal(momentum["momentum_setup"], market, momentum["trend_strength"])
+
+    # Strategy 2: mean reversion (equities only, never on leveraged or inverse ETFs)
+    applicable = bool(etf["use_timing"]) and int(etf["leveraged"]) == 1
+    reversion = mean_reversion_strategy(last, price, momentum["trend_long"], applicable)
+    for key, val in reversion.items():
+        row[key] = val
+
+    row["rationale"] = write_rationale(row)
+    return row
+
+
+def momentum_strategy(index_rows: pd.DataFrame, index_prices: pd.Series, inverse: bool) -> dict:
+    """All the momentum answers for one ETF on one day (direction, setup, strength)."""
+    last = index_rows.iloc[-1]
+    price = float(index_prices.iloc[-1])
+
+    # Question 1: direction, on the index (or the ETF itself)
     answers = {}
     for horizon, columns in cfg.HORIZONS.items():
         answers[horizon] = trend_answer(price, value(last, columns["sma"]), value(last, columns["ret"]))
     index_setup = momentum_setup(answers["short"], answers["medium"], answers["long"])
     index_direction = trend_direction(index_setup, answers["long"])
 
-    # Question 2, on the index
+    # Question 2: strength, on the index
     adx = value(last, "adx_14")
-    strength = adx_label(adx)
     momentum_ok = momentum_confirms(value(last, "rsi_14"), index_direction)
     obv_change = np.nan
     obv = index_rows["obv"] if "obv" in index_rows.columns else pd.Series(dtype=float)
@@ -279,35 +426,19 @@ def sheet_for_one_etf(etf: pd.Series, prices: pd.DataFrame, indicators: pd.DataF
             answers[horizon] = reverse_answer(answers[horizon])
         if not pd.isna(quality):
             quality = -quality
-    setup = momentum_setup(answers["short"], answers["medium"], answers["long"])
 
-    vol = np.nan
-    if len(own_rows) > 0:
-        vol = value(own_rows.iloc[-1], cfg.VOL_COLUMN)
-
-    row = {
-        "date": as_of,
-        "ticker": ticker,
-        "family": etf["family"],
-        "read_on": read_on,
-        "leveraged": int(etf["leveraged"]),
+    return {
         "trend_short": answers["short"],
         "trend_medium": answers["medium"],
         "trend_long": answers["long"],
-        "momentum_setup": setup,
+        "momentum_setup": momentum_setup(answers["short"], answers["medium"], answers["long"]),
         "trend_quality_90": quality,
         "adx_14": adx,
-        "trend_strength": strength,
+        "trend_strength": adx_label(adx),
         "momentum_confirms": momentum_ok,
         "volume_confirms": volume_ok,
         "confirmations": count_confirmations(momentum_ok, volume_ok),
-        "momentum_13612": momentum_13612(own_prices),
-        "vol_60": vol,
-        "market_trend": market,
     }
-    row["suggested_signal"] = suggest_signal(setup, market, strength)
-    row["rationale"] = write_rationale(row)
-    return row
 
 
 def build_sheet(prices: pd.DataFrame, features: pd.DataFrame, as_of: date) -> pd.DataFrame:

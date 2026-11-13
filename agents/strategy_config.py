@@ -28,6 +28,28 @@ TRADING_DAYS_PER_YEAR = 252
 VOL_COLUMN = "vol_60"
 MARKET_TICKER = "WORLD"                    # market trend = WORLD above or below its SMA 200
 
+# Mean reversion strategy (only for ETFs with use_timing = True: equities)
+#   buy setup  : long-term trend not down (no falling knife) AND no strong trend (ADX <= 25)
+#                AND the price is stretched down by at least MR_MIN_OVERSOLD of the three classic measures
+#   avoid setup: the price is stretched up by at least MR_MIN_OVERBOUGHT of them (not the moment to enter;
+#                two are required because being high is normal in an uptrend)
+# Sources: Connors RSI 2 (RSI 2 < 10 above the SMA 200), Bollinger bands (close below the lower
+# band = z-score 20 <= -2), Donchian channel (price at the bottom 10 % of its 20-day high-low range).
+RSI2_OVERSOLD = 10
+RSI2_OVERBOUGHT = 90
+ZSCORE_LOW = -2.0
+ZSCORE_HIGH = 2.0
+DONCHIAN_LOW = 0.10       # position in the 20-day channel: 0 = on the low, 1 = on the high
+DONCHIAN_HIGH = 0.90
+MR_MIN_OVERSOLD = 1       # each measure is a published rule on its own
+MR_MIN_OVERBOUGHT = 2
+MR_ADX_MAX = 25           # above this the trend is strong: the momentum strategy applies instead
+REBOUND_DONE_SMA = "sma_5"  # Connors exit: the rebound is done when the price is back above its SMA 5
+
+# Market regime of each ETF (which strategy fits): strong trend -> momentum, range -> mean reversion
+RANGE_ADX_MAX = 20
+RANGE_EFFICIENCY_MAX = 0.2
+
 # Suggested signal, and the number sent in the Signals table (technical_det)
 #   buy     : buy setup, market above its SMA 200 and a trend that is not absent (ADX >= 20)
 #   watch   : buy setup, but the market is below its SMA 200 or the trend is absent

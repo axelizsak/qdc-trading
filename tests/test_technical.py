@@ -93,6 +93,45 @@ def test_suggest_signal():
     assert technical.suggest_signal("avoid", "up", "strong") == "avoid"
 
 
+# ---------- Mean reversion -------------------------------------------------------------------
+
+def test_channel_position():
+    assert technical.channel_position(100, 90, 110) == pytest.approx(0.5)
+    assert technical.channel_position(90, 90, 110) == 0.0
+    assert np.isnan(technical.channel_position(100, 100, 100))      # flat channel
+
+
+def test_oversold_and_overbought_signals():
+    oversold = technical.oversold_signals(rsi_2=5, zscore=-2.5, position=0.05)
+    assert technical.names_true(oversold) == ["connors_rsi2", "bollinger", "donchian"]
+    overbought = technical.overbought_signals(rsi_2=95, zscore=0.5, position=0.5)
+    assert technical.names_true(overbought) == ["connors_rsi2"]
+    assert technical.oversold_signals(np.nan, np.nan, np.nan)["bollinger"] is None
+
+
+def test_mean_reversion_setup():
+    assert technical.mean_reversion_setup(True, "up", 18, ["connors_rsi2"], []) == "buy"
+    assert technical.mean_reversion_setup(True, "none", 18, ["bollinger"], []) == "buy"
+    assert technical.mean_reversion_setup(True, "down", 18, ["connors_rsi2"], []) == "none"   # falling knife
+    assert technical.mean_reversion_setup(True, "up", 30, ["connors_rsi2"], []) == "none"     # strong trend
+    assert technical.mean_reversion_setup(True, "up", 18, [], ["bollinger", "donchian"]) == "avoid"
+    assert technical.mean_reversion_setup(True, "up", 18, [], ["donchian"]) == "none"          # one is not enough
+    assert technical.mean_reversion_setup(True, "up", 18, [], []) == "none"
+    assert technical.mean_reversion_setup(False, "up", 18, ["connors_rsi2"], []) == "n/a"     # gold, crypto...
+
+
+def test_market_regime():
+    assert technical.market_regime(30, 0.5) == "trend"
+    assert technical.market_regime(15, 0.1) == "range"
+    assert technical.market_regime(15, 0.4) == "mixed"
+    assert technical.market_regime(np.nan, 0.1) is None
+
+
+def test_rebound_done():
+    assert technical.rebound_done(101, 100) is True
+    assert technical.rebound_done(99, 100) is False
+
+
 # ---------- The whole agent on prices made up for the test -----------------------------------
 
 def made_up_prices() -> pd.DataFrame:
@@ -148,6 +187,16 @@ def test_bonds_and_cash_are_not_scored(sheet_and_signals):
     skipped = universe[(~universe["buyable"]) | (universe["family"] == "cash")]["ticker"]
     for ticker in skipped:
         assert ticker not in set(sheet["ticker"])
+
+
+def test_mean_reversion_only_on_equities(sheet_and_signals):
+    sheet, _ = sheet_and_signals
+    gold = sheet[sheet["ticker"] == "GOLD"].iloc[0]
+    assert gold["mr_setup"] == "n/a"                      # use_timing is False for gold
+    short = sheet[sheet["ticker"] == "S&P 500 SHORT"].iloc[0]
+    assert short["mr_setup"] == "n/a"                     # never on leveraged or inverse ETFs
+    world = sheet[sheet["ticker"] == "WORLD"].iloc[0]
+    assert world["mr_setup"] in ["buy", "avoid", "none"]
 
 
 def test_run_returns_valid_signals(sheet_and_signals):
