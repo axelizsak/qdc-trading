@@ -10,7 +10,15 @@ import pandas as pd
 
 from data.config import MACRO_FACTORS, MAX_ORDERS_PER_DAY, SIGNAL_AGENTS
 
-PRICES = ["date", "ticker", "close_eur"]
+# Real daily prices (not adjusted for dividends), in EUR, on the Belfius exchange.
+# One row per day the ETF was quoted: a day without a quote is absent, never filled.
+# adj_close_eur: close adjusted for dividends (and splits) by the source. Equal to close_eur for an
+# accumulating ETF; lower before each payment for a distributing ETF. Used for indicators and model
+# training (real market moves, no fake drop on ex-dividend days). close_eur stays the price Belfius uses.
+# NA when the source gives none.
+# volume: units traded on that exchange that day (on-exchange only, so partial for an ETF);
+# NA when the source gives none, 0 when the ETF did not trade.
+PRICES = ["date", "ticker", "open_eur", "high_eur", "low_eur", "close_eur", "adj_close_eur", "volume"]
 SIGNALS = ["ticker", "date", "agent", "score", "confidence", "rationale"]
 PORTFOLIO = ["ticker", "target_weight"]
 ORDERS = ["date", "side", "ticker", "units"]  # matches the Belfius form
@@ -94,6 +102,12 @@ def validate_prices(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("prices: close_eur must be > 0")
     if df.duplicated(["date", "ticker"]).any():
         raise ValueError("prices: duplicate (date, ticker) rows")
+    adjusted = pd.to_numeric(df["adj_close_eur"], errors="coerce")
+    if (adjusted <= 0).any():
+        raise ValueError("prices: adj_close_eur must be > 0 (or empty when the source gives none)")
+    volume = pd.to_numeric(df["volume"], errors="coerce")
+    if (volume < 0).any():
+        raise ValueError("prices: volume must be >= 0 (or empty when the source gives none)")
     return df
 
 
