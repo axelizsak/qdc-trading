@@ -6,6 +6,7 @@ from pathlib import Path
 import streamlit as st
 
 from data import config as settings
+from data.schemas import REVIEW_GATES
 from graph import pipeline
 
 STEPS = ["data", "technical", "macro_news", "portfolio", "risk"]
@@ -99,11 +100,12 @@ def header() -> None:
                       help="Trading days: " + ", ".join(d.strftime("%d %b") for d in settings.TRADING_DAYS))
     day = as_of()
     status, state, pending = pipeline.day_status(day, pipeline_logs())
-    orders = len(pending["proposed_orders"]) if pending else len(state.get("proposed_orders", []))
+    orders = len(state.get("approved_orders") or state.get("proposed_orders", []))
     parts = [f"<span class='brand'>QDC ▸ Terminal</span>", f"{day:%a %d %b %Y}"]
     if day not in settings.TRADING_DAYS:
         parts.append("not a trading day")
-    parts.append(f"<span class='hot'>{status}</span>" if status == "waiting for approval" else status)
+    where = day_label(status, state, pending)
+    parts.append(f"<span class='hot'>waiting · {where}</span>" if status == "waiting for approval" else where)
     if status != "not started":
         parts.append(f"{orders} order{'s' if orders != 1 else ''}")
     if any(settings.USE_MOCK.values()):
@@ -132,27 +134,64 @@ def kpis(items: list[tuple]) -> None:
     html("<div class='qdc-kpis'>" + "".join(cells) + "</div>")
 
 
-def pipeline_strip(status: str, incidents: list[dict]) -> None:
-    """The day's steps left to right, each with its mode and its state."""
-    failed = {i["step"]: i["error"] for i in incidents}
+def day_label(status: str, state: dict, pending: dict | None) -> str:
+    """Where the day stands, in a few words: not started, orders review, risk review, ..., approved, no trade."""
+    if status == "waiting for approval":
+        return pipeline.GATE_NAMES[pending["gate"]]
+    if status == "done":
+        return "no trade today" if state.get("outcome") == "stopped" else "approved"
+    return status
 
-    def step(name: str, mode: str, state: str, cls: str) -> str:
-        return (f"<div class='qdc-step'><div class='n'>{escape(name)}</div><div class='m'>{mode}</div>"
-                f"<div class='s {cls}'>{state}</div></div>")
 
+def passed_reviews(state: dict) -> set[str]:
+    """The reviews already approved in the current round."""
+    round_ = state.get("round", 1)
+    return {r["gate"] for r in state.get("reviews", []) if r["round"] == round_ and r["decision"] == "approved"}
+
+
+def step_cells(cells: list[tuple[str, str, str, str]]) -> None:
+    """Boxes left to right, each (name, mode, state, css class)."""
+    boxes = [f"<div class='qdc-step'><div class='n'>{escape(name)}</div><div class='m'>{escape(mode)}</div>"
+             f"<div class='s {cls}'>{escape(text)}</div></div>" for name, mode, text, cls in cells]
+    html("<div class='qdc-pipe'>" + "<div class='qdc-arrow'>›</div>".join(boxes) + "</div>")
+
+
+def pipeline_strip(status: str, state: dict, pending: dict | None) -> None:
+    """The day's agents left to right, each with its mode and its state, then where your reviews stand."""
+    failed = {i["step"] for i in state.get("incidents", [])}
+    round_, passed = state.get("round", 1), passed_reviews(state)
     cells = []
     for key in STEPS:
         mode = "mock" if settings.USE_MOCK[key] else "real"
+        if key == "portfolio" and round_ > 1:
+            mode += f" · round {round_}"
         if status == "not started":
-            cells.append(step(STEP_LABELS[key], mode, "○ not run", "idle"))
+            cells.append((STEP_LABELS[key], mode, "○ not run", "idle"))
         elif key in failed:
-            cells.append(step(STEP_LABELS[key], mode, "✕ failed", "fail"))
+            cells.append((STEP_LABELS[key], mode, "✕ failed", "fail"))
+        elif key == "risk" and "orders" not in passed:
+            cells.append((STEP_LABELS[key], mode, "– skipped" if status == "done" else "○ after your review", "idle"))
         else:
-            cells.append(step(STEP_LABELS[key], mode, "● ok", "ok"))
-    approval = {"not started": ("○ not run", "idle"), "waiting for approval": ("◐ waiting for you", "wait"),
-                "done": ("● approved", "ok")}[status]
-    cells.append(step("Approval", "human", *approval))
-    html("<div class='qdc-pipe'>" + "<div class='qdc-arrow'>›</div>".join(cells) + "</div>")
+            cells.append((STEP_LABELS[key], mode, "● ok", "ok"))
+    you = {"not started": ("○ not run", "idle"),
+           "waiting for approval": (f"◐ {day_label(status, state, pending)}", "wait"),
+           "done": ("■ no trade today", "idle") if state.get("outcome") == "stopped" else ("● approved", "ok")}[status]
+    cells.append(("You", "3 reviews", *you))
+    step_cells(cells)
+
+
+def review_steps(pending: dict, state: dict) -> None:
+    """The three human reviews of the day, with the one waiting highlighted."""
+    passed = passed_reviews(state)
+    cells = []
+    for i, gate in enumerate(REVIEW_GATES, 1):
+        if gate in passed:
+            cells.append((f"{i} · {gate}", "you", "● approved", "ok"))
+        elif gate == pending["gate"]:
+            cells.append((f"{i} · {gate}", "you", "◐ waiting for you", "wait"))
+        else:
+            cells.append((f"{i} · {gate}", "you", "○ next", "idle"))
+    step_cells(cells)
 
 
 def mock_note(is_mock: bool, what: str = "No real data yet") -> None:

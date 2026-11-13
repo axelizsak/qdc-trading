@@ -10,6 +10,8 @@ from data.schemas import (
     LIST_SEP,
     MACRO_EXPOSURE,
     ORDER_LOG,
+    REVIEWS,
+    RISK_REPORT,
     STARTER_FEATURES,
     validate_agent_weights,
     validate_etf_views,
@@ -23,6 +25,8 @@ from data.schemas import (
     validate_orders,
     validate_portfolio,
     validate_prices,
+    validate_reviews,
+    validate_risk_report,
     validate_signals,
     validate_source_changes,
     validate_source_registry,
@@ -211,6 +215,33 @@ def mock_source_changes() -> pd.DataFrame:
     ]))
 
 
+def mock_risk_report(as_of: str = "2026-12-07") -> pd.DataFrame:
+    """The portfolio after the approved orders, on six metrics. Format: Risk report."""
+    day = pd.Timestamp(as_of).date()
+    rows = [
+        (day, "concentration", 0.18, 0.25, "ok", "mock: largest position, share of the portfolio"),
+        (day, "volatility", 0.14, 0.20, "ok", "mock: annualised, 60 days"),
+        (day, "drawdown", -0.06, -0.10, "ok", "mock: worst fall from a peak, 60 days"),
+        (day, "exposure", 0.62, 1.0, "ok", "mock: invested share, the rest is cash"),
+        (day, "leverage", 0.09, 0.10, "warning", "mock: share in leveraged or inverse ETFs"),
+        (day, "liquidity", 1.0, np.nan, "ok", "mock: share in ETFs that trade every day"),
+    ]
+    return validate_risk_report(pd.DataFrame(rows, columns=RISK_REPORT))
+
+
+def mock_reviews(as_of: str = "2026-12-07") -> pd.DataFrame:
+    """A day sent back once at the risk review, then approved at every gate. Format: Reviews."""
+    day = pd.Timestamp(as_of).date()
+    rows = [
+        (day, 1, "orders", "approved", np.nan),
+        (day, 1, "risk", "revised", "mock: too much in leveraged ETFs, cut them"),
+        (day, 2, "orders", "approved", np.nan),
+        (day, 2, "risk", "approved", np.nan),
+        (day, 2, "summary", "approved", np.nan),
+    ]
+    return validate_reviews(pd.DataFrame(rows, columns=REVIEWS))
+
+
 MOCKS = {
     "prices": mock_prices,
     "signals": mock_signals,
@@ -227,6 +258,8 @@ MOCKS = {
     "macro_exposure": mock_macro_exposure,
     "source_changes": mock_source_changes,
     "etf_views": mock_etf_views,
+    "risk_report": mock_risk_report,
+    "reviews": mock_reviews,
 }
 
 

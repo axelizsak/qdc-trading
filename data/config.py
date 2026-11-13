@@ -19,6 +19,7 @@ load_dotenv(ROOT / ".env")
 START_CAPITAL_EUR = 10_000
 BENCHMARK = "WORLD"  # iShares Core MSCI World, "Global equity (benchmark)" in the Belfius ETF list
 MAX_ORDERS_PER_DAY = 5
+MAX_REVISIONS = 2  # times a day can go back to the Portfolio Manager with human feedback
 TRANSACTION_COST = 0.0
 TRADING_DAYS = [
     date(2026, 12, 7),

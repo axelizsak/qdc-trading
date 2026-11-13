@@ -30,7 +30,8 @@ if len(history):
 else:
     figures.append((f"vs {data.BENCHMARK_LABEL}", "—", "no order yet"))
 figures += [("Cash", f"€{cash:,.0f}", f"{cash / total:.0%} of the portfolio" if total else None),
-            ("Today", status.capitalize(), None, "hot" if status == "waiting for approval" else None)]
+            ("Today", ui.day_label(status, state, pending).capitalize(), None,
+             "hot" if status == "waiting for approval" else None)]
 ui.kpis(figures)
 
 ui.label("Performance", "EUR · fills at the close of the order date")
@@ -43,23 +44,26 @@ else:
     st.altair_chart(charts.lines(history, "date", "value_eur", "series", "EUR", ",.0f"), width="stretch")
 
 incidents = state.get("incidents", [])
-proposed = pending["proposed_orders"] if pending else state.get("proposed_orders", [])
 ui.label("Today", f"{as_of:%a %d %b}")
-ui.pipeline_strip(status, incidents)
+ui.pipeline_strip(status, state, pending)
 for incident in incidents:
     st.error(f"{ui.STEP_LABELS[incident['step']]} failed and was replaced by its fallback: {incident['error']}")
 st.write("")
 if status == "not started":
     if st.button("Run the day", type="primary", icon=":material/play_arrow:",
-                 help="Runs every agent, then pauses for your approval on the Orders page"):
+                 help="Runs every agent, then pauses for your first review on the Orders page"):
         with st.spinner("Agents running..."):
             pipeline.run_day(as_of, logs)
         st.rerun()
 else:
     go, again, _ = st.columns([2, 1, 3])
     if status == "waiting for approval":
-        go.page_link("views/orders.py", label=f"Review the {len(proposed)} proposed orders",
-                     icon=":material/arrow_forward:")
+        label = {"orders": f"Review the {len(state.get('proposed_orders', []))} proposed orders",
+                 "risk": "Review the risk after the orders",
+                 "summary": "Review the executive summary"}[pending["gate"]]
+        go.page_link("views/orders.py", label=label, icon=":material/arrow_forward:")
+    elif state.get("outcome") == "stopped":
+        go.page_link("views/orders.py", label="No trade today · see your reviews", icon=":material/block:")
     else:
         go.page_link("views/orders.py", label="Approved · export for the Belfius form", icon=":material/task_alt:")
     if again.button("Run again", icon=":material/replay:",

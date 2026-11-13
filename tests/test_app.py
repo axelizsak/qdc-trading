@@ -49,11 +49,27 @@ def test_home_runs_the_day_until_the_pause(logs):
     assert pipeline.day_status(DAY, logs)[0] == "waiting for approval"
 
 
-def test_approval_writes_the_order_log_and_offers_the_export(logs):
+def _to_gate(logs, gate: str) -> None:
+    """Run the day and approve the reviews before `gate`."""
+    pending = pipeline.run_day(DAY, logs)
+    while pending["gate"] != gate:
+        pending = pipeline.resume_day(DAY, pipeline.approve(pending), logs)
+
+
+@pytest.mark.parametrize("gate", ["risk", "summary"])
+@pytest.mark.parametrize("name", PAGES)
+def test_page_runs_at_each_review(logs, name, gate):
+    _to_gate(logs, gate)
+    open_page(name)
+
+
+def test_three_approvals_write_the_order_log_and_offer_the_export(logs):
     pending = pipeline.run_day(DAY, logs)
     at = open_page("orders")
-    at.button(key="submit").click().run()
-    assert not at.exception
+    for gate in ("orders", "risk", "summary"):
+        assert pipeline.day_status(DAY, logs)[2]["gate"] == gate
+        at.button(key="submit").click().run()
+        assert not at.exception, at.exception
 
     log = validate_order_log(pd.read_csv(logs / "orders.csv"))
     assert sorted(log["ticker"]) == sorted(o["ticker"] for o in pending["proposed_orders"])
@@ -64,3 +80,25 @@ def test_approval_writes_the_order_log_and_offers_the_export(logs):
     home = open_page("home")
     assert not home.exception
     assert any(">vs MSCI World<" in m.value for m in home.markdown)  # the Belfius benchmark
+
+
+def test_feedback_sends_the_day_back_from_the_page(logs):
+    _to_gate(logs, "risk")
+    at = open_page("orders")
+    at.text_area(key="feedback_risk_1").input("cut the leveraged ETFs").run()
+    at.button(key="revise").click().run()
+    assert not at.exception, at.exception
+    pending = pipeline.day_status(DAY, logs)[2]
+    assert pending["gate"] == "orders" and pending["round"] == 2
+
+
+def test_no_trade_today_from_the_page(logs):
+    pipeline.run_day(DAY, logs)
+    at = open_page("orders")
+    at.text_area(key="feedback_orders_1").input("Fed tonight").run()
+    at.button(key="stop").click().run()
+    assert not at.exception, at.exception
+    status, state, _ = pipeline.day_status(DAY, logs)
+    assert status == "done" and state["outcome"] == "stopped"
+    for name in PAGES:
+        open_page(name)

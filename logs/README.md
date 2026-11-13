@@ -5,6 +5,8 @@ Everything here is committed, because it is graded evidence of the AI suggestion
 | File | Content |
 |---|---|
 | `orders.csv` | Every proposed order with the human decision, plus orders the human added (Order log format) |
+| `reviews.csv` | Every human review of the day (orders, risk, summary) with the feedback sent back (Reviews format) |
+| `summary/<date>.md` | The executive summary the human approved before the orders were submitted |
 | `signals.csv` | Every agent signal (Signals format), one row per agent × ETF × day |
 | `macro/<date>.md` | The Macro/News agent's report for the day: views, counter-arguments, sources, exploration findings, cost |
 | `evidence.csv` | Every fact and number the Macro/News agent collected (Evidence format) |
@@ -16,4 +18,4 @@ Everything here is committed, because it is graded evidence of the AI suggestion
 | `agent_weights.csv` | Agent weights after each review, with the hit rate that drove the change |
 | `lessons.md` | Lessons journal that the agents read before each decision |
 
-Not committed: `checkpoints.sqlite` (the saved graph state, used to resume a paused day) and `mock/` (runs while any step is on a mock).
+Not committed: `checkpoints.sqlite` (the saved graph state, used to resume a day between reviews) and `mock/` (runs while any step is on a mock).

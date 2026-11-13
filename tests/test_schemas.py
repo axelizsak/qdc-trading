@@ -113,3 +113,23 @@ def test_etf_views_rejects_bad_rows():
         schemas.validate_etf_views(df.assign(direction=1.5))
     with pytest.raises(ValueError, match="source"):
         schemas.validate_etf_views(df.assign(sources=""))
+
+
+def test_risk_report_rejects_bad_rows():
+    df = MOCKS["risk_report"]()
+    with pytest.raises(ValueError, match="unknown status"):
+        schemas.validate_risk_report(df.assign(status="red"))
+    with pytest.raises(ValueError, match="finite"):
+        schemas.validate_risk_report(df.assign(value=np.nan))
+    with pytest.raises(ValueError, match="duplicate"):
+        schemas.validate_risk_report(pd.concat([df, df.head(1)]))
+
+
+def test_reviews_reject_bad_rows():
+    df = MOCKS["reviews"]()
+    with pytest.raises(ValueError, match="feedback"):
+        schemas.validate_reviews(df.assign(feedback=""))  # the revised row needs its feedback
+    with pytest.raises(ValueError, match="unknown gate"):
+        schemas.validate_reviews(df.assign(gate="portfolio"))
+    with pytest.raises(ValueError, match="duplicate"):
+        schemas.validate_reviews(pd.concat([df, df.head(1)]))

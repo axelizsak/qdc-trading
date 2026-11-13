@@ -32,6 +32,8 @@ Every update is logged in `logs/`, and that log is our evidence of model re-asse
 
 ![Workflow of one trading day](docs/workflow.png)
 
+Nothing is traded without three human reviews: the proposed orders, the risk after those orders, then the executive summary. At each one you approve, send the day back to the Portfolio Manager with your feedback (at most twice a day), or stop it: no trade today. The trading rules (at most 5 orders, enough cash, no selling more than held) are checked in code on every proposal and on every approval.
+
 **Rule:** use code for calculations, and the LLM only where judgement is needed.
 
 | # | Agent | Module | Input | Output | LLM? |
@@ -39,8 +41,8 @@ Every update is logged in `logs/`, and that log is our evidence of model re-asse
 | 1 | Data | `data/data_agent.py` | ISIN list | ETF mapping (ISIN → Yahoo ticker), prices, returns, volatility, drawdowns, correlations | No |
 | 2 | Technical | `agents/technical.py` | Prices + features | Two scores per ETF: deterministic (indicators + `ml_library` models) and LLM-interpreted | Interpretation layer |
 | 3 | Macro / News | `agents/macro_news.py` | Web search (Claude API) | Macro summary + signal per theme (rates, geopolitics, commodities) | Yes |
-| 4 | Portfolio Manager | `agents/portfolio.py` | All signals + agent weights + lessons journal | Target weights + investment memo | Yes |
-| 5 | Risk Manager | `agents/risk.py` | Target weights + portfolio | Valid orders (concentration, cash, 5-order limit) | No |
+| 4 | Portfolio Manager | `agents/portfolio.py` | All signals + agent weights + lessons journal + current portfolio + your feedback | Target weights + up to 5 proposed orders + investment memo | Yes |
+| 5 | Risk Manager | `agents/risk.py` | The orders you approved + portfolio | Risk of the portfolio after the orders: concentration, volatility, drawdown, exposure, leverage, liquidity | No |
 
 There is no separate Quant/ML agent. The ML models are in a shared library (`ml_library/`) that the agents call, and every model is scored by the same walk-forward backtest (`backtest/`).
 
@@ -78,6 +80,8 @@ These were fixed on day 1 and are defined in `data/schemas.py`. Build your modul
 | Source registry | `source, kind, factors, status [active\|testing\|dropped], first_seen, n_uses, hit_rate` |
 | Order log | `date, ticker, ai_side, ai_units, decision [approved\|modified\|rejected\|added], side, units, reason` |
 | Incidents | `date, step, error` |
+| Risk report | `date, metric, value, limit, status [ok\|warning\|breach], comment` (one row per metric) |
+| Reviews | `date, round, gate [orders\|risk\|summary], decision [approved\|revised\|stopped], feedback` |
 | Macro exposure | `ticker, multiplier, <one column per macro factor>` (`data/macro_exposure.csv`, a proposal for the team to review) |
 
 `factor` is one of `MACRO_FACTORS` in `data/config.py`. List columns (`sources`, `factors`) are `;`-joined strings.
@@ -96,11 +100,12 @@ cp .env.example .env      # add your ANTHROPIC_API_KEY. Never commit .env
 pytest
 ```
 
-Run a trading day. The pipeline pauses before human approval, then resumes with the decisions:
+Run a trading day. The pipeline pauses at each of the three reviews (the cockpit's Orders page does the same):
 
 ```bash
-python -m graph.pipeline --date 2026-12-07                # agents run, orders proposed, pause
-python -m graph.pipeline --date 2026-12-07 --approve-all  # resume, write the order log
+python -m graph.pipeline --date 2026-12-07                    # agents run, orders proposed, pause
+python -m graph.pipeline --date 2026-12-07 --answer a.json    # answer the review waiting (format in graph/pipeline.py)
+python -m graph.pipeline --date 2026-12-07 --approve-all      # approve every review left, write the order log
 ```
 
 Run the Macro/News agent every business day. Claude is the only key it needs:
