@@ -38,8 +38,8 @@ SIGNAL_AGENTS = ["technical_det", "technical_llm", "macro_news"]
 # Set your step to False once your real module works. While any step is on a mock,
 # the pipeline writes to logs/mock/ (gitignored) instead of logs/.
 USE_MOCK = {
-    "data": True,
-    "technical": True,
+    "data": False,
+    "technical": False,
     "macro_news": True,
     "portfolio": True,
     "risk": True,

@@ -110,7 +110,12 @@ def eodhd_ohlc(symbol: str, start: date, end: date) -> pd.DataFrame:
         start = earliest
 
     params = {"api_token": api_key, "fmt": "json", "from": start.isoformat(), "to": end.isoformat()}
-    response = requests.get(EODHD_URL + symbol, params=params, timeout=30)
+    try:
+        response = requests.get(EODHD_URL + symbol, params=params, timeout=30)
+    except requests.RequestException as exc:
+        # The error text holds the request URL, so the key: never print it or let it reach logs/incidents.csv
+        print(f"  EODHD request failed for {symbol} ({type(exc).__name__}): {symbol} is left out")
+        return pd.DataFrame(columns=BAR_COLUMNS)
     if response.status_code != 200:
         print(f"  EODHD error {response.status_code} for {symbol}")
         return pd.DataFrame(columns=BAR_COLUMNS)
