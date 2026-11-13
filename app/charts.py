@@ -72,10 +72,10 @@ def factor_bars(df: pd.DataFrame) -> alt.Chart:
 
 def lines(df: pd.DataFrame, x: str, y: str, series: str, y_title: str, y_format: str,
           zero_based: bool = False) -> alt.Chart:
-    """2 px lines, one per series (max 3, fixed colour order), legend on top, value at each line end."""
+    """2 px lines, one per series (max 3, fixed colour order), legend on top if several, value at each line end."""
     names = list(dict.fromkeys(df[series]))
     color = alt.Color(f"{series}:N", scale=alt.Scale(domain=names, range=T["series"][:len(names)]),
-                      legend=alt.Legend(orient="top", title=None))
+                      legend=alt.Legend(orient="top", title=None) if len(names) > 1 else None)
     base = alt.Chart(df).encode(
         x=alt.X(f"yearmonthdate({x}):T", title=None,
                 axis=alt.Axis(format="%a %d %b", tickCount={"interval": "day", "step": 1}, labelAngle=0, grid=False)),

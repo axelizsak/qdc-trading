@@ -62,4 +62,5 @@ def test_approval_writes_the_order_log_and_offers_the_export(logs):
     assert any(">Approved<" in m.value for m in at.markdown)  # the page now shows the log and the export
 
     home = open_page("home")
-    assert any(">vs WORLD<" in m.value for m in home.markdown)
+    assert not home.exception
+    assert not any("WORLD" in m.value for m in home.markdown)  # no benchmark in the cockpit
