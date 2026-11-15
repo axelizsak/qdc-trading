@@ -132,6 +132,11 @@ def test_etf_views_rejects_bad_rows():
         schemas.validate_etf_views(df.assign(direction=1.5))
     with pytest.raises(ValueError, match="source"):
         schemas.validate_etf_views(df.assign(sources=""))
+    with pytest.raises(ValueError, match="catalyst_date"):
+        schemas.validate_etf_views(df.assign(catalyst_date="next week"))
+    with pytest.raises(ValueError, match="catalyst"):
+        schemas.validate_etf_views(df.assign(catalyst_date="2026-12-09", catalyst=""))
+    schemas.validate_etf_views(df.assign(catalyst_date=np.nan, catalyst=np.nan))  # no catalyst found is fine
 
 
 def test_risk_report_rejects_bad_rows():

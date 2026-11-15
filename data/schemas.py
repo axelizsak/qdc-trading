@@ -34,7 +34,9 @@ SOURCE_REGISTRY = ["source", "kind", "factors", "status", "first_seen", "n_uses"
 ORDER_LOG = ["date", "ticker", "ai_side", "ai_units", "decision", "side", "units", "reason"]
 INCIDENTS = ["date", "step", "error"]
 # logs/etf_views.csv: one view per ETF and day from the theme analysts (direction of the ETF or its underlying).
-ETF_VIEWS = ["date", "ticker", "direction", "confidence", "rationale", "counter_argument", "sources"]
+# catalyst_date and catalyst: the next scheduled event that can move the ETF, when the analyst found one (else empty).
+ETF_VIEWS = ["date", "ticker", "direction", "confidence", "rationale", "counter_argument", "sources",
+             "catalyst_date", "catalyst"]
 # logs/source_changes.csv: when a Macro/News source was added or removed, for before/after comparisons.
 SOURCE_CHANGES = ["date", "source", "change", "note"]
 # data/macro_exposure.csv: how much each ETF moves with each macro factor (before leverage).
@@ -300,6 +302,10 @@ def validate_etf_views(df: pd.DataFrame) -> pd.DataFrame:
     _require_between(df, "confidence", 0, 1, "etf_views")
     if not df["sources"].map(split_list).map(bool).all():
         raise ValueError("etf_views: every view needs at least one source")
+    dated = df[df["catalyst_date"].notna() & (df["catalyst_date"].astype(str).str.strip() != "")]
+    if pd.to_datetime(dated["catalyst_date"].astype(str), format="%Y-%m-%d", errors="coerce").isna().any():
+        raise ValueError("etf_views: catalyst_date must be a date (YYYY-MM-DD) or empty")
+    _require_text(dated, "catalyst", "etf_views")
     _require_unique(df, ["date", "ticker"], "etf_views")
     return df
 

@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from agents import macro_analysts, macro_llm, macro_news
+from agents import macro_analysts, macro_llm, macro_news, macro_tape
 from agents.macro_sources import _common, cftc_cot, collect_all, funding_rates, market_stress, polymarket, stablecoins
 from data import config as settings
 from data.config import MACRO_FACTORS
@@ -43,7 +43,8 @@ class FakeClaude:
         if "quant researcher" in request.get("system", ""):
             tickers = re.findall(r'^- "(.+?)":', request["messages"][0]["content"], flags=re.M)
             etfs = [{"ticker": t, "direction": self.direction, "confidence": 0.5, "rationale": f"{t} news",
-                     "counter_argument": "c", "sources": ["https://example.com/etf"]} for t in tickers]
+                     "counter_argument": "c", "sources": ["https://example.com/etf"],
+                     "next_catalyst": {"date": "2026-12-09", "event": "Fed rate decision"}} for t in tickers]
             return _response("```json\n" + json.dumps({"etfs": etfs}) + "\n```")
         if "format" in request.get("output_config", {}):
             views = [{"factor": f, "direction": self.direction, "confidence": 0.6, "rationale": "r",
@@ -71,13 +72,14 @@ def _http(handler) -> httpx.Client:
 
 # --- End to end ------------------------------------------------------------------------------
 
-def test_run_gives_50_signals_logs_and_a_report(tmp_path):
+def test_run_gives_two_scores_per_etf_logs_and_a_report(tmp_path):
     client = FakeClaude()
     summary, signals = macro_news.run(DAY, "lesson: be careful", tmp_path, client,
                                       {"stress": _number_collector, "broken": _broken_collector})
 
     validate_signals(signals)
-    assert len(signals) == 50 and set(signals["agent"]) == {"macro_news"}
+    assert len(signals) == 100 and set(signals["agent"]) == {"macro_market", "macro_etf"}
+    assert signals.groupby("agent")["ticker"].nunique().to_dict() == {"macro_etf": 50, "macro_market": 50}
     assert "Cost of this run: $" in summary
     assert "broken: RuntimeError: site down" in summary
     assert "explore_baltic_dry_index" in summary
@@ -254,7 +256,7 @@ def test_x_posts_are_searched_on_x_only(tmp_path):
 
 # --- ETF analysts ----------------------------------------------------------------------------
 
-def test_run_blends_the_theme_analysts(tmp_path):
+def test_run_scores_the_theme_analysts_separately(tmp_path):
     client = FakeClaude(direction=0.5)
     summary, signals = macro_news.run(DAY, "", tmp_path, client, {"stress": _number_collector})
 
@@ -268,25 +270,109 @@ def test_run_blends_the_theme_analysts(tmp_path):
     assert len(views) == 50
     assert views.loc["NASDAQ 3X", "direction"] == views.loc["NASDAQ", "direction"]
     assert views.loc["NASDAQ 3X", "rationale"].startswith("Same underlying as NASDAQ")
-    assert "## ETF analysts" in summary
+    assert "## ETF analysts" in summary and "| ETF | macro_market | macro_etf |" in summary
     validate_signals(signals)
-    assert signals["rationale"].str.contains("analyst").all()
+    by_agent = {agent: rows.set_index("ticker") for agent, rows in signals.groupby("agent")}
+    assert by_agent["macro_etf"]["rationale"].str.startswith("analyst +0.50").all()
+    assert by_agent["macro_market"]["rationale"].str.startswith("macro: ").all()
+    assert by_agent["macro_etf"].loc["WORLD", "score"] == 0.5  # the analyst's own call, not a blend
+    assert "no prices" in summary  # no price table given: the analysts judged from the news alone
+    assert by_agent["macro_etf"].loc["WORLD", "rationale"].startswith("analyst +0.50; next: 09 Dec Fed rate decision: ")
+    assert views.loc["WORLD", "catalyst_date"] == "2026-12-09" and views.loc["NASDAQ 3X", "catalyst"] == "Fed rate decision"
 
 
-def test_blend_applies_leverage_and_keeps_factor_score_without_a_view():
+def test_report_opens_with_a_brief_the_portfolio_manager_can_read_in_full(tmp_path):
+    summary, _ = macro_news.run(DAY, "", tmp_path, FakeClaude(direction=0.5), {"stress": _number_collector})
+    start, end = summary.index("## Brief for the Portfolio Manager"), summary.index("## Views")
+    assert summary.index("Cost of this run") < start < end < 4000  # the Portfolio Manager reads 4,000 characters
+    brief = summary[start:end]
+    assert "- Wed 09 Dec: Fed rate decision (" in brief and brief.count("Fed rate decision") == 1  # one event, many ETFs
+    assert brief.count("\n| ") == 1 + macro_news.BRIEF_CALLS  # the table header, then the strongest calls
+    assert "**Macro views** (+1 to -1): ecb_rates +0.50" in brief
+
+
+def test_a_catalyst_needs_an_event_and_a_date_inside_the_window():
+    assert macro_analysts._catalyst({"date": "2026-12-09", "event": " Fed  decision "}, DAY) == ("2026-12-09", "Fed decision")
+    for bad in ({"date": "2026-12-01", "event": "already past"}, {"date": "2027-02-01", "event": "too far"},
+                {"date": "next week", "event": "no date"}, {"date": "2026-12-09", "event": " "}, None, "Fed"):
+        assert macro_analysts._catalyst(bad, DAY) == (None, None)
+
+
+def test_analyst_score_applies_leverage_and_skips_etfs_without_a_view():
     exposure = macro_news.load_exposure()
-    factor = pd.DataFrame({"ticker": ["NASDAQ 3X", "STOXX SHORT", "WORLD"], "date": "2026-12-07",
-                           "agent": "macro_news", "score": [0.2, 0.2, 0.2], "confidence": [0.4, 0.4, 0.4],
-                           "rationale": "macro"})
-    views = pd.DataFrame({"date": "2026-12-07", "ticker": ["NASDAQ 3X", "STOXX SHORT"], "direction": [0.5, 0.5],
-                          "confidence": [0.8, 0.8], "rationale": "r", "counter_argument": "c",
-                          "sources": "https://example.com"})
-    blended, table = macro_analysts.blend(factor, views, exposure, share=0.5)
-    scores = blended.set_index("ticker")["score"]
-    assert scores["NASDAQ 3X"] == pytest.approx(0.5 * 0.2 + 0.5 * 1.0)  # 3 x 0.5 clipped to 1
-    assert scores["STOXX SHORT"] == pytest.approx(0.5 * 0.2 + 0.5 * -1.0)  # -2 x 0.5
-    assert scores["WORLD"] == pytest.approx(0.2)
-    assert table.set_index("ticker")["analyst"].isna()["WORLD"]
+    views = pd.DataFrame({"date": "2026-12-07", "ticker": ["NASDAQ 3X", "STOXX SHORT", "WORLD"],
+                          "direction": [0.5, 0.5, 0.2], "confidence": [0.8, 0.8, 0.3], "rationale": "r",
+                          "counter_argument": "c", "sources": "https://example.com"})
+    signals = macro_analysts.etf_signals(views, exposure, DAY, "macro_etf").set_index("ticker")
+    assert signals["score"].to_dict() == {"NASDAQ 3X": 1.0, "STOXX SHORT": -1.0, "WORLD": 0.2}  # 3 x 0.5 clipped, -2 x 0.5
+    assert signals.loc["WORLD", "confidence"] == 0.3 and set(signals["agent"]) == {"macro_etf"}
+    assert "GOLD" not in signals.index  # no view, no score: the Portfolio Manager uses the other agents
+
+
+# --- What the analysts read before they judge: the tape and their own record ---------------------
+
+def _closes(**series) -> pd.DataFrame:
+    """Prices of a few ETFs on consecutive days ending 2026-12-06 (the day before DAY)."""
+    rows = [{"date": (pd.Timestamp("2026-12-06") - pd.Timedelta(days=len(values) - 1 - i)).date(), "ticker": t,
+             "close_eur": v} for t, values in series.items() for i, v in enumerate(values)]
+    return pd.DataFrame(rows)
+
+
+def test_tape_shows_what_the_price_already_did_and_never_the_day_itself():
+    prices = _closes(WORLD=[100.0] * 19 + [100.0, 110.0, 99.0])
+    today = pd.DataFrame([{"date": DAY, "ticker": "WORLD", "close_eur": 500.0}])  # not known in the morning
+    table = macro_tape.closes(pd.concat([prices, today]), DAY)
+    assert table.index.max() == "2026-12-06"
+    line = macro_tape.tape_lines(table)["WORLD"]
+    assert line.startswith("tape: last close 06 Dec; 1 session -10.0%, 5 sessions -1.0%, 20 sessions -1.0%; volatility")
+    assert macro_tape.tape_lines(macro_tape.closes(None, DAY)) == {}
+
+
+def test_past_calls_are_graded_on_the_sessions_that_followed():
+    prices = _closes(WORLD=[100.0, 100.0, 102.0, 104.0, 108.0, 110.0], **{"STOXX SHORT": [50.0, 50.0, 49.0, 48.0, 47.0, 46.0]})
+    table = macro_tape.closes(prices, DAY)
+    views = pd.DataFrame({"date": ["2026-12-03", "2026-12-03", "2026-12-06", "2026-12-07"],
+                          "ticker": ["WORLD", "STOXX SHORT", "WORLD", "WORLD"],
+                          "direction": [-0.3, 0.4, 0.05, 0.9]})
+    leverage = pd.Series({"WORLD": 1.0, "STOXX SHORT": -2.0})
+    grades = macro_tape.grade_calls(views, table, leverage, sessions=3).set_index(["date", "ticker"])
+
+    # called on 3 Dec knowing the 2 Dec close (100): three sessions later the close is 108
+    assert grades.loc[("2026-12-03", "WORLD"), "ret"] == pytest.approx(0.08)
+    assert grades.loc[("2026-12-03", "WORLD"), "hit"] is False  # said down, went up
+    # a view of +0.4 on the index is a view of -0.8 on its -2x ETF, which fell: right
+    assert grades.loc[("2026-12-03", "STOXX SHORT"), "hit"] is True
+    # called on 6 Dec: only one session is known so far, and 0.05 is no call
+    assert grades.loc[("2026-12-06", "WORLD"), "sessions"] == 1 and grades.loc[("2026-12-06", "WORLD"), "hit"] is None
+    assert ("2026-12-07", "WORLD") not in grades.index  # today's call cannot be graded yet
+
+    grades = grades.reset_index()
+    assert macro_tape.record(grades) == (1, 2)
+    assert macro_tape.record_line(grades, ["WORLD"]) == "Your record on these ETFs so far: 0 of 1 calls right (0%)."
+    lines = macro_tape.scorecard_lines(grades)
+    assert lines["WORLD"] == ("your calls: 06 Dec +0.05 -> +1.9% over 1 session (no call); "
+                              "03 Dec -0.30 -> +8.0% over 3 sessions (wrong)")
+
+
+def test_analysts_read_the_tape_and_their_record(tmp_path):
+    prices = _closes(WORLD=[100.0, 101.0, 102.0, 103.0, 104.0, 105.0], GOLD=[50.0, 50.0, 50.0, 49.0, 48.0, 47.0])
+    pd.DataFrame({"date": "2026-12-03", "ticker": ["WORLD", "GOLD"], "direction": [0.4, 0.4], "confidence": 0.5,
+                  "rationale": "r", "counter_argument": "c", "sources": "https://example.com"}
+                 ).to_csv(tmp_path / "etf_views.csv", index=False)
+    client = FakeClaude()
+    summary, _ = macro_news.run(DAY, "", tmp_path, client, {"stress": _number_collector}, prices=prices)
+
+    asked = {c["system"].split(", covering ")[1].split(" ETFs")[0]: c["messages"][0]["content"]
+             for c in client.calls if "quant researcher" in c.get("system", "")}
+    world = asked["Global equity (benchmark)"]
+    assert "  tape: last close 06 Dec; 1 session +1.0%, 5 sessions +5.0%" in world
+    assert "  your calls: 03 Dec +0.40 -> +3.0% over 3 sessions (right)" in world
+    assert "Your record on these ETFs so far: 1 of 1 calls right (100%)." in world
+    assert "03 Dec +0.40 -> -4.0% over 3 sessions (wrong)" in asked["Precious metals"]  # 50 on 2 Dec, 48 on 5 Dec
+    assert "No call of yours on these ETFs can be graded yet." in asked["Financials"]
+    assert "next 3 trading sessions" in next(c["system"] for c in client.calls if "quant researcher" in c.get("system", ""))
+    assert "Analysts' record before today: 1 of 2 past calls right (50%)" in summary
+    assert len(pd.read_csv(tmp_path / "etf_views.csv")) == 2 + 50  # the old views stay, today's are added
 
 
 def test_a_failing_analyst_is_reported_and_the_run_goes_on(tmp_path):

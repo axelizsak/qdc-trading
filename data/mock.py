@@ -220,7 +220,9 @@ def mock_etf_views(as_of: str = "2026-11-30", seed: int = 0) -> pd.DataFrame:
     return validate_etf_views(pd.DataFrame([
         {"date": day, "ticker": t, "direction": round(float(rng.uniform(-1, 1)), 2),
          "confidence": round(float(rng.uniform(0, 1)), 2), "rationale": "mock", "counter_argument": "mock",
-         "sources": "https://example.com/mock"} for t in tickers()
+         "sources": "https://example.com/mock",
+         "catalyst_date": (day + pd.Timedelta(days=2)).isoformat() if i % 5 == 0 else np.nan,  # one ETF in five
+         "catalyst": "mock: central bank decision" if i % 5 == 0 else np.nan} for i, t in enumerate(tickers())
     ]))
 
 

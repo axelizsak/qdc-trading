@@ -143,7 +143,8 @@ def test_weights_stay_within_the_bounds():
 def test_learned_weights_are_logged_in_the_agent_weights_format(tmp_path, prices):
     history = mock_signals("2026-11-20", agents=settings.SIGNAL_AGENTS)
     history.to_csv(tmp_path / "signals.csv", index=False)
-    weights = portfolio_learning.update_agent_weights(tmp_path, prices, DAY, EQUAL)
+    prior = {a: 1 / len(settings.SIGNAL_AGENTS) for a in settings.SIGNAL_AGENTS}
+    weights = portfolio_learning.update_agent_weights(tmp_path, prices, DAY, prior)
     logged = validate_agent_weights(pd.read_csv(tmp_path / "agent_weights.csv"))
     assert dict(zip(logged["agent"], logged["weight"])) == pytest.approx(weights)
 
