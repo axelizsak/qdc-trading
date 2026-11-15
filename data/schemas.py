@@ -5,6 +5,8 @@ the Belfius short name from data/etf_universe.csv, never a Yahoo symbol.
 List columns (macro_views.sources, source_registry.factors) are stored as
 strings joined with LIST_SEP, so they survive a round trip through CSV.
 """
+import json
+
 import numpy as np
 import pandas as pd
 
@@ -42,8 +44,16 @@ MACRO_EXPOSURE = ["ticker", "multiplier", *MACRO_FACTORS]
 RISK_REPORT = ["date", "metric", "value", "limit", "status", "comment"]
 # logs/reviews.csv: every human answer at the three review gates, with the feedback sent back.
 REVIEWS = ["date", "round", "gate", "decision", "feedback"]
+# logs/logbook.csv: the audit trail, one row per event (signal, recommendation, risk flag, human decision, fill...),
+# append-only. Each row carries the hash of the one before it, so a change to an old row shows (agents/logbook.py).
+# `data` holds the event's numbers as a JSON object (empty when there are none), so tables can be built from the ledger.
+LOGBOOK = ["seq", "date", "kind", "actor", "ticker", "round", "gate", "title", "detail", "data", "source", "event_id",
+           "recorded_at", "prev_hash", "hash"]
 
 SIDES = {"BUY", "SELL"}
+LOGBOOK_KINDS = {"signals", "macro_report", "agent_weights", "recommendation", "risk_report", "risk_flag",
+                 "human_review", "order_decision", "fill", "valuation", "summary", "incident", "superseded",
+                 "target_allocation", "human_vs_ai", "lesson", "reassessment"}
 EVIDENCE_KINDS = {"number", "text", "exploration"}
 SOURCE_STATUSES = {"active", "testing", "dropped"}
 DECISIONS = {"approved", "modified", "rejected", "added"}
@@ -300,4 +310,25 @@ def validate_reviews(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("reviews: round must be 1 or more")
     _require_text(df[df["decision"] != "approved"], "feedback", "reviews")
     _require_unique(df, ["date", "round", "gate"], "reviews")
+    return df
+
+
+def validate_logbook(df: pd.DataFrame) -> pd.DataFrame:
+    """Logbook rows: known kinds, a title on each row, seq running 1, 2, 3... without gaps.
+    The hash chain itself is checked by agents/logbook.verify."""
+    _require_columns(df, LOGBOOK, "logbook")
+    _require_in(df, "kind", LOGBOOK_KINDS, "logbook")
+    _require_text(df, "title", "logbook")
+    _require_text(df, "event_id", "logbook")
+    for text in df["data"].dropna():
+        if str(text).strip():
+            try:
+                ok = isinstance(json.loads(text), dict)
+            except ValueError:
+                ok = False
+            if not ok:
+                raise ValueError("logbook: data must be a JSON object or empty")
+    seq = pd.to_numeric(df["seq"], errors="coerce")
+    if not (seq.to_numpy() == np.arange(1, len(df) + 1)).all():
+        raise ValueError("logbook: seq must run 1, 2, 3... without gaps")
     return df

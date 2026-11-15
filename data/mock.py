@@ -9,6 +9,7 @@ from data.config import DATA_DIR, MACRO_FACTORS, SIGNAL_AGENTS
 from data.schemas import (
     LIST_SEP,
     MACRO_EXPOSURE,
+    LOGBOOK,
     ORDER_LOG,
     REVIEWS,
     RISK_REPORT,
@@ -19,6 +20,7 @@ from data.schemas import (
     validate_features,
     validate_holdings,
     validate_incidents,
+    validate_logbook,
     validate_macro_exposure,
     validate_macro_views,
     validate_order_log,
@@ -249,6 +251,23 @@ def mock_reviews(as_of: str = "2026-12-07") -> pd.DataFrame:
     return validate_reviews(pd.DataFrame(rows, columns=REVIEWS))
 
 
+def mock_logbook(as_of: str = "2026-12-07") -> pd.DataFrame:
+    """Three events of one day. The hashes are placeholders: only agents/logbook.py writes a real chain. Format: Logbook."""
+    day = pd.Timestamp(as_of).date().isoformat()
+    rows = [
+        (1, day, "recommendation", "portfolio_manager", "WORLD", "1", "", "BUY 10 WORLD", "mock", "recommendations.csv"),
+        (2, day, "human_review", "human", "", "1", "orders", "orders: approved", "", "reviews.csv"),
+        (3, day, "fill", "code", "WORLD", "", "", "BUY 10 WORLD @ 100.00", "mock: computed fill", "orders.csv"),
+    ]
+    out = pd.DataFrame(rows, columns=["seq", "date", "kind", "actor", "ticker", "round", "gate", "title", "detail", "source"])
+    out["data"] = ""
+    out["event_id"] = [f"mock{i}" for i in out["seq"]]
+    out["recorded_at"] = "2026-12-07T08:00:00Z"
+    out["prev_hash"] = "mock"
+    out["hash"] = "mock"
+    return validate_logbook(out[LOGBOOK])
+
+
 MOCKS = {
     "prices": mock_prices,
     "signals": mock_signals,
@@ -267,6 +286,7 @@ MOCKS = {
     "etf_views": mock_etf_views,
     "risk_report": mock_risk_report,
     "reviews": mock_reviews,
+    "logbook": mock_logbook,
 }
 
 

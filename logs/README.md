@@ -17,5 +17,8 @@ Everything here is committed, because it is graded evidence of the AI suggestion
 | `incidents.csv` | Every pipeline step that failed and was replaced by its fallback |
 | `agent_weights.csv` | Agent weights after each review, with the hit rate that drove the change |
 | `lessons.md` | Lessons journal that the agents read before each decision |
+| `logbook.csv` | The audit trail: one row per event (signals, recommendations, risk flags, human decisions, computed fills, valuations), append-only, each row hashed with the one before it (Logbook format, `agents/logbook.py`) |
+| `logbook/<date>.md` | The day told in order, built from `logbook.csv` |
+| `logbook/INDEX.md` | One line per day: orders kept, changed, rejected and added by the human, risk warnings, portfolio value and return against the benchmark, and whether the hash chain is intact |
 
 Not committed: `checkpoints.sqlite` (the saved graph state, used to resume a day between reviews) and `mock/` (runs while any step is on a mock).
