@@ -203,10 +203,12 @@ def effective_cap(cap: float, budget: float, n: int) -> float:
 def candidates_for(final: pd.Series, universe: pd.DataFrame, held: set[str], priced: set[str],
                    exclude: set[str], pinned: set[str]) -> list[str]:
     """ETFs a code portfolio may buy, best score first: positive score above MIN_ENTRY_SCORE (MIN_HOLD_SCORE if
-    held), priced, not excluded or pinned, not cash, and never the benchmark ETF itself."""
+    held), priced, not excluded or pinned, not cash, and not the benchmark ETF itself unless BENCHMARK_ALLOWED."""
     out = []
     for ticker, score in final.sort_values(ascending=False).items():
-        if ticker == cfg.MARKET_TICKER or ticker in exclude or ticker in pinned or ticker not in priced:
+        if ticker in exclude or ticker in pinned or ticker not in priced:
+            continue
+        if ticker == cfg.MARKET_TICKER and not cfg.BENCHMARK_ALLOWED:
             continue
         if ticker not in universe.index or universe.loc[ticker, "family"] == "cash":
             continue

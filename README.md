@@ -58,7 +58,7 @@ Before any evidence, each family counts the same (technical 50%, macro 50%), spl
 
 ## Adjust the model
 
-Every setting is one line in one file. Change it, run `python -m graph.review_loop` to see how the scores did, or run a day on a copy of the logs (see Setup).
+Every setting is one line in one file. To know whether a change is worth making, test it in the backtest before you make it: add one line to `VARIANTS` in `backtest/system_backtest.py` and run it. It replays the code-only system on every 3-week window since 2022 with the competition's rules, and compares your variant with the current system on the same windows (see `backtest/README.md` for how to read it, and for what the first run found).
 
 | To change | Where |
 |---|---|
@@ -90,7 +90,8 @@ qdc-trading/
                logbook.py                                               the audit trail
   graph/       pipeline.py (one day, step by step) and review_loop.py (what the system learns)
   app/         the Streamlit cockpit: Portfolio, Orders, Research, Logbook
-  backtest/    backtests of the technical strategies
+  backtest/    system_backtest.py replays the whole code-only system on past 3-week windows (results in
+               backtest/results/); the other files are backtests of the technical strategies
   ml_library/  shared models for those backtests
   logs/        everything the agents said and the humans decided (graded evidence, see logs/README.md)
   tests/       one file per module; no test calls the network or Claude
@@ -163,6 +164,13 @@ See what the system has learned, without running a day:
 
 ```bash
 python -m graph.review_loop               # grades the past scores, writes logs/agent_weights.csv and logs/lessons.md
+```
+
+Test a setting or an idea on the past (about 10 minutes for every variant, 1 minute for one):
+
+```bash
+python -m backtest.system_backtest                        # every variant on every 3-week window since 2022
+python -m backtest.system_backtest --variants watch_zero  # one variant, merged into the results
 ```
 
 Run the Macro/News agent every business day. Claude is the only key it needs:

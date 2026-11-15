@@ -260,18 +260,40 @@ BRIEF_CALLS = 6
 BRIEF_CATALYSTS = 8
 
 
+GENERIC_WORDS = {"us", "euro", "area", "eurozone", "the", "of", "for", "and", "at", "in", "on", "to", "a", "after",
+                 "before", "plus", "data", "release", "report", "final", "flash", "meeting", "decision", "close",
+                 "november", "december", "october", "q1", "q2", "q3", "q4"}
+
+
+def _words(event: str) -> list[str]:
+    return ["".join(c for c in word if c.isalnum()) for word in event.lower().split()]
+
+
+def same_event(a: str, b: str) -> bool:
+    """Two analysts' wordings of one event: they start with the same name (Nvidia, ECB, OPEC...) or share two
+    words that mean something ('US payrolls' and 'US CPI' share none)."""
+    first, second = _words(a), _words(b)
+    if first and second and first[0] == second[0] and first[0] not in GENERIC_WORDS:
+        return True
+    return len((set(first) & set(second)) - GENERIC_WORDS - {""}) >= 2
+
+
 def catalysts(etf_views: pd.DataFrame | None) -> list[tuple[str, str, list[str]]]:
     """The dated events the analysts found, soonest first: (ISO date, event, ETFs it matters for).
-    Events of the same day that start with the same two words are one event (analysts word them differently)."""
+    Analysts word the same event differently: on a given day, wordings of one event are merged (same_event),
+    under the wording of the analyst with the strongest call."""
     if etf_views is None or etf_views.empty or "catalyst_date" not in etf_views:
         return []
     found = etf_views[etf_views["catalyst_date"].notna() & etf_views["catalyst"].notna()]
-    merged: dict[tuple[str, str], tuple[str, list[str]]] = {}
+    events: list[tuple[str, str, list[str]]] = []
     for view in found.sort_values("direction", key=abs, ascending=False).itertuples():
-        key = (str(view.catalyst_date)[:10], " ".join(str(view.catalyst).lower().split()[:2]))
-        event, tickers = merged.setdefault(key, (str(view.catalyst), []))
-        tickers.append(view.ticker)
-    return sorted((day, event, tickers) for (day, _), (event, tickers) in merged.items())
+        day, text = str(view.catalyst_date)[:10], str(view.catalyst)
+        known = next((e for e in events if e[0] == day and same_event(e[1], text)), None)
+        if known is None:
+            events.append((day, text, [view.ticker]))
+        else:
+            known[2].append(view.ticker)
+    return sorted(events)
 
 
 def brief(as_of: date, views: pd.DataFrame, etf_views: pd.DataFrame | None, signals: pd.DataFrame | None,
@@ -289,7 +311,8 @@ def brief(as_of: date, views: pd.DataFrame, etf_views: pd.DataFrame | None, sign
         lines += ["", "**Events ahead** (found by the ETF analysts in today's searches)", ""]
         for day, event, tickers in ahead[:BRIEF_CATALYSTS]:
             names = ", ".join(tickers[:5]) + (f" +{len(tickers) - 5}" if len(tickers) > 5 else "")
-            lines.append(f"- {date.fromisoformat(day):%a %d %b}: {event[:110]} ({names})")
+            what = event.split(". ")[0].rstrip(".")  # the event, without the analyst's comment on it
+            lines.append(f"- {date.fromisoformat(day):%a %d %b}: {what[:110]} ({names})")
     if etf_views is not None and signals is not None and len(etf_views):
         scores = signals.pivot(index="ticker", columns="agent", values="score").reindex(columns=AGENTS)
         calls = etf_views.set_index("ticker")
