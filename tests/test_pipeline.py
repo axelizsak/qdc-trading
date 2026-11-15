@@ -160,7 +160,11 @@ def test_failing_agent_gives_neutral_signals_and_an_incident(logs, monkeypatch):
 
 
 def test_switch_off_calls_the_real_module(logs, monkeypatch):
-    monkeypatch.setitem(settings.USE_MOCK, "portfolio", False)  # agents/portfolio.py is not written yet
+    def not_written(*args):  # a module that is not written yet: the switch must reach it
+        raise NotImplementedError
+
+    monkeypatch.setitem(settings.USE_MOCK, "portfolio", False)
+    monkeypatch.setitem(pipeline.REAL, "portfolio", not_written)
     pipeline.run_day(DAY, logs)
     incidents = pd.read_csv(logs / "incidents.csv")
     assert incidents["step"].tolist() == ["portfolio"]
