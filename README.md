@@ -16,7 +16,9 @@ The agents analyse the 50-ETF universe and propose trades. A human approves ever
 | 7–23 Dec 2026 | Trading window |
 | 16 Jan 2027, 23:59 | Final report + team organisation annex (the Belfius deck says 17 Jan) |
 
-> **To confirm with Belfius:** one slide says orders fill at the *previous day's* closing price, another says the *closing price of the trading day itself*.
+> **Fill price:** an order on day T fills at the last close before T, on the ETF's own exchange. The Belfius deck says both this and "the closing price of the trading day itself"; the team settled on the previous close, and every module values an order that way. After the first trading day, compare the fills on the Belfius platform with `logs/logbook/<date>.md`.
+>
+> **Units:** the Portfolio Manager sizes orders in fractional units (4 decimals). To confirm on the Belfius form before 7 December.
 
 ## How it works
 
@@ -42,7 +44,9 @@ Nothing is traded without three human reviews: the proposed orders, the risk aft
 | 2 | Technical | `agents/technical.py` | Prices + features | Two scores per ETF: deterministic (indicators + `ml_library` models) and LLM-interpreted | Interpretation layer |
 | 3 | Macro / News | `agents/macro_news.py` | Web search (Claude API) | Macro summary + signal per theme (rates, geopolitics, commodities) | Yes |
 | 4 | Portfolio Manager | `agents/portfolio.py` | All signals + agent weights + lessons journal + current portfolio + your feedback | Target weights + up to 5 proposed orders + investment memo | Yes |
-| 5 | Risk Manager | `agents/risk.py` | The orders you approved + portfolio | Risk of the portfolio after the orders: concentration, volatility, drawdown, exposure, leverage, liquidity | No |
+| 5 | Risk Manager | `agents/risk.py` | The orders you approved + portfolio + the day's macro views | Risk of the portfolio after the orders (concentration, volatility, drawdown, exposure, leverage, liquidity, the benchmark, outcome odds), a one-screen board, and an independent reading of the memo | Numbers: no. Reading: yes |
+
+The Logbook (`agents/logbook.py`, no LLM) joins every signal, recommendation, risk flag, human decision and computed fill into one append-only audit trail with a hash chain; the cockpit's Logbook page shows it.
 
 There is no separate Quant/ML agent. The ML models are in a shared library (`ml_library/`) that the agents call, and every model is scored by the same walk-forward backtest (`backtest/`).
 
@@ -82,6 +86,10 @@ These were fixed on day 1 and are defined in `data/schemas.py`. Build your modul
 | Incidents | `date, step, error` |
 | Risk report | `date, metric, value, limit, status [ok\|warning\|breach], comment` (one row per metric) |
 | Reviews | `date, round, gate [orders\|risk\|summary], decision [approved\|revised\|stopped], feedback` |
+| PM portfolios | `date, source [baseline\|optimizer\|llm\|final], ticker, weight` (what the Portfolio Manager built each day) |
+| Recommendations | `recommendation_id, created_at, date, ticker, side, units, price_eur, price_date, value_eur, weight_now, weight_target, impact, timing, why` (append-only) |
+| Risk forecasts | `date, kind [weight\|forecast], name, value` (what each risk assessment was made on, and what it forecast) |
+| Risk calibration | `date, vol_scale, days_graded, mean_ratio, floor_breaches, floor_days` |
 | Macro exposure | `ticker, multiplier, <one column per macro factor>` (`data/macro_exposure.csv`, a proposal for the team to review) |
 
 `factor` is one of `MACRO_FACTORS` in `data/config.py`. List columns (`sources`, `factors`) are `;`-joined strings.
@@ -107,6 +115,15 @@ python -m graph.pipeline                                      # today: agents ru
 python -m graph.pipeline --answer a.json                      # answer the review waiting (format in graph/pipeline.py)
 python -m graph.pipeline --approve-all                        # approve every review left, write the order log
 ```
+
+Every step now runs its real module, so a day writes to `logs/`, which is graded evidence. To try a strategy or a setting without touching it, point the whole system at a copy of the logs:
+
+```bash
+cp -R logs /tmp/trial && rm -f /tmp/trial/checkpoints.sqlite*
+QDC_LOGS_DIR=/tmp/trial streamlit run app/streamlit_app.py    # or: QDC_LOGS_DIR=/tmp/trial python -m graph.pipeline
+```
+
+A day costs about $0.10 of Claude on top of the Macro/News run: one Portfolio Manager call per round and one Risk Manager reading per round.
 
 Run the Macro/News agent every business day. Claude is the only key it needs:
 

@@ -11,7 +11,7 @@ from graph import pipeline
 
 STEPS = ["data", "technical", "macro_news", "portfolio", "risk"]
 STEP_LABELS = {"data": "Data", "technical": "Technical", "macro_news": "Macro / News", "portfolio": "Portfolio",
-               "risk": "Risk"}
+               "risk": "Risk", "logbook": "Logbook"}
 FACTOR_LABELS = {
     "ecb_rates": "ECB rates", "fed_us_rates": "Fed / US rates", "inflation": "Inflation",
     "growth_recession": "Growth", "eurusd": "EUR / USD", "oil": "Oil", "energy_weather": "Energy & weather",
@@ -146,6 +146,16 @@ def passed_reviews(state: dict) -> set[str]:
     """The reviews already approved in the current round."""
     round_ = state.get("round", 1)
     return {r["gate"] for r in state.get("reviews", []) if r["round"] == round_ and r["decision"] == "approved"}
+
+
+def incident_text(incident: dict) -> str:
+    return (f"{STEP_LABELS.get(incident['step'], incident['step'])} failed and was replaced by its fallback: "
+            f"{incident['error']}")
+
+
+def demote(markdown: str, levels: int = 2) -> str:
+    """Markdown with every heading `levels` smaller, so an agent's report fits inside a page section."""
+    return "\n".join("#" * levels + line if line.startswith("#") else line for line in markdown.splitlines())
 
 
 def step_cells(cells: list[tuple[str, str, str, str]]) -> None:

@@ -2,8 +2,10 @@
 
 1. Orders review: approve, modify or reject each proposed order and add your own. A reason is
    required to change an order. Checks: at most 5 orders, enough cash, enough units to sell.
-2. Risk review: the Risk Manager's view of the portfolio once those orders are filled.
-3. Summary review: the executive summary. Approving it writes the order log.
+   Units can be fractional (4 decimals). An order fills at the last close before the day.
+2. Risk review: the Risk Manager's board, its independent reading and every metric, for the
+   portfolio once those orders are filled.
+3. Summary review: the executive summary. Approving it writes the order log and the logbook.
 At every review you can also send the day back to the Portfolio Manager with your feedback,
 or stop it: no trade today.
 """
@@ -27,7 +29,8 @@ ui.page("Orders", "Three checks before anything is traded: the orders, the risk,
 
 def belfius_export(log: pd.DataFrame) -> bytes:
     executed = log[log["decision"] != "rejected"].merge(universe[["ticker", "isin"]], on="ticker", how="left")
-    form = pd.DataFrame({"Date": executed["date"], "Type": executed["side"], "Units": executed["units"].astype(int),
+    form = pd.DataFrame({"Date": executed["date"], "Type": executed["side"],
+                         "Units": executed["units"].map(pipeline.fmt_units),  # fractional units, never rounded
                          "Ticker": executed["ticker"], "ISIN": executed["isin"]})
     return form.to_csv(index=False).encode()
 
@@ -37,7 +40,7 @@ def compact(summary: str) -> str:
     lines = summary.splitlines()
     if lines and lines[0].startswith("# "):
         lines = lines[1:]
-    return "\n".join("#### " + line[3:] if line.startswith("## ") else line for line in lines)
+    return ui.demote("\n".join(lines))
 
 
 def show_reviews() -> None:
@@ -111,8 +114,7 @@ if pending["round"] > 1:
                f"{pending['revisions_left']} revision(s) left today")
 st.write("")
 for incident in pending["incidents"]:
-    st.warning(f"{ui.STEP_LABELS[incident['step']]} failed and was replaced by its fallback: {incident['error']}",
-               icon=":material/error:")
+    st.warning(ui.incident_text(incident), icon=":material/error:")
 
 if gate == "risk":
     orders = pd.DataFrame(pending["approved_orders"], columns=ORDERS)
@@ -126,16 +128,25 @@ if gate == "risk":
     if report.empty:
         st.info("No risk assessment today: the Risk Manager failed (see above).", icon=":material/info:")
     else:
+        if pending.get("risk_board"):
+            with st.container(border=True):  # one status per area, then positions, factors and odds
+                st.markdown(ui.demote("\n".join(pending["risk_board"].splitlines()[1:])))
+        if pending.get("risk_reading"):
+            with st.expander("Independent reading · what the memo claims against the numbers, events, scenarios",
+                             expanded=True):
+                st.markdown(ui.demote("\n".join(pending["risk_reading"].splitlines()[1:])))
+        ui.label("Every metric", f"{len(report)} checks · a warning is information, only a breach breaks a rule")
         st.dataframe(report.drop(columns="date").assign(status=report["status"].map(STATUS)), hide_index=True,
                      width="stretch", column_config={
                          "metric": st.column_config.TextColumn("Metric"),
-                         "value": st.column_config.NumberColumn("Value", format="%g"),
-                         "limit": st.column_config.NumberColumn("Limit", format="%g"),
+                         "value": st.column_config.NumberColumn("Value", format="%.4g"),
+                         "limit": st.column_config.NumberColumn("Reference level", format="%g"),
                          "status": st.column_config.TextColumn("Status"),
-                         "comment": st.column_config.TextColumn("Comment"),
+                         "comment": st.column_config.TextColumn("Comment", width="large"),
                      })
     ui.label("Orders you approved")
-    st.dataframe(orders.drop(columns="date"), hide_index=True, width="stretch")
+    st.dataframe(orders.drop(columns="date"), hide_index=True, width="stretch",
+                 column_config={"units": st.column_config.NumberColumn("units", format="%.4f")})
     ui.label("Your answer", "accept the risk, or send the day back with the limits you want")
     review_actions("Accept the risk")
     show_reviews()
@@ -156,17 +167,18 @@ if gate == "summary":
 # --- Orders review --------------------------------------------------------------------------
 proposed = pd.DataFrame(pending["proposed_orders"], columns=ORDERS)
 prices, _ = data.day_prices(as_of, state)
-close = data.last_close(prices, as_of)
+close = pipeline.fill_prices(prices, as_of)  # an order fills at the last close before the day
 holdings = pd.DataFrame(state.get("holdings", []), columns=HOLDINGS)
 cash = float(state.get("cash_eur", settings.START_CAPITAL_EUR))
 figures = st.empty()
 
 ui.label("Investment memo", "the Portfolio Manager's reasoning")
 with st.container(border=True):
-    st.markdown(pending["memo"])
+    st.markdown(ui.demote(pending["memo"]))
 
 ui.label("Proposed orders", "change the decision, side or units · a reason is required to modify or reject")
 editor = proposed.rename(columns={"side": "ai_side", "units": "ai_units"})[["ticker", "ai_side", "ai_units"]]
+editor["ai_units"] = editor["ai_units"].astype(float)  # the Portfolio Manager sizes orders in fractional units
 editor = editor.assign(decision="Approve", side=editor["ai_side"], units=editor["ai_units"], reason="")
 edited = st.data_editor(
     editor, hide_index=True, width="stretch", key=f"decisions_{pending['round']}",
@@ -174,10 +186,10 @@ edited = st.data_editor(
     column_config={
         "ticker": st.column_config.TextColumn("ETF"),
         "ai_side": st.column_config.TextColumn("AI side"),
-        "ai_units": st.column_config.NumberColumn("AI units"),
+        "ai_units": st.column_config.NumberColumn("AI units", format="%.4f"),
         "decision": st.column_config.SelectboxColumn("Decision", options=list(DECISION), required=True),
         "side": st.column_config.SelectboxColumn("Side", options=["BUY", "SELL"]),
-        "units": st.column_config.NumberColumn("Units", min_value=1, step=1),
+        "units": st.column_config.NumberColumn("Units", min_value=0.0001, step=0.0001, format="%.4f"),
         "reason": st.column_config.TextColumn("Reason"),
     },
 )
@@ -189,7 +201,7 @@ with st.expander("Add an order of your own"):
         column_config={
             "ticker": st.column_config.SelectboxColumn("ETF", options=universe["ticker"].tolist()),
             "side": st.column_config.SelectboxColumn("Side", options=["BUY", "SELL"]),
-            "units": st.column_config.NumberColumn("Units", min_value=1, step=1),
+            "units": st.column_config.NumberColumn("Units", min_value=0.0001, step=0.0001, format="%.4f"),
             "reason": st.column_config.TextColumn("Reason (required)"),
         },
     )
@@ -226,7 +238,7 @@ with figures.container():
         ("Review", "Orders", None, "hot"),
         ("Orders to submit", f"{len(executed)} / {settings.MAX_ORDERS_PER_DAY}"),
         ("Cash now", f"€{cash:,.0f}"),
-        ("Cash after", f"€{cash_after:,.0f}", f"{'−' if change < 0 else '+'}€{abs(change):,.0f} at last close"),
+        ("Cash after", f"€{cash_after:,.0f}", f"{'−' if change < 0 else '+'}€{abs(change):,.0f} at the fill prices"),
         ("Checks", "OK" if not problems else f"{len(problems)} to fix", None, None if not problems else "down"),
     ])
 

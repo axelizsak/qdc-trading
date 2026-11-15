@@ -69,14 +69,14 @@ def agent_weights(logs: Path) -> tuple[pd.DataFrame, bool]:
 
 def lessons(logs: Path) -> str | None:
     path = logs / "lessons.md"
-    return path.read_text() if path.exists() else None
+    return path.read_text(encoding="utf-8") if path.exists() else None
 
 
 def macro_report(day: date, *folders: Path) -> str | None:
     for folder in folders:
         path = folder / "macro" / f"{day.isoformat()}.md"
         if path.exists():
-            return path.read_text()
+            return path.read_text(encoding="utf-8")
     return None
 
 
@@ -95,25 +95,31 @@ BENCHMARK_LABEL = "MSCI World"
 
 
 def portfolio_history(log: pd.DataFrame | None, prices: pd.DataFrame) -> pd.DataFrame:
-    """Daily value of the portfolio and of €START_CAPITAL in the benchmark, from the first executed order on.
+    """Daily value of the portfolio and of €START_CAPITAL in the benchmark, from the fill of the first order on.
 
-    Columns: date, series ("Portfolio" | BENCHMARK_LABEL), value_eur. Fills at the close of the order date.
+    Columns: date, series ("Portfolio" | BENCHMARK_LABEL), value_eur. An order fills at the last close before
+    its day, so both lines start at €START_CAPITAL on that close.
     """
+    empty = pd.DataFrame(columns=["date", "series", "value_eur"])
     if log is None:
-        return pd.DataFrame(columns=["date", "series", "value_eur"])
+        return empty
     done = log[log["decision"] != "rejected"].copy()
     if done.empty:
-        return pd.DataFrame(columns=["date", "series", "value_eur"])
+        return empty
     done["date"] = done["date"].astype(str)
     done["signed"] = done["units"].astype(float).where(done["side"] == "BUY", -done["units"].astype(float))
-    close = (prices.assign(date=prices["date"].astype(str))
-             .pivot(index="date", columns="ticker", values="close_eur").sort_index().ffill())
-    close = close[close.index >= done["date"].min()]
+    quotes = (prices.assign(date=prices["date"].astype(str))
+              .pivot(index="date", columns="ticker", values="close_eur").sort_index())
+    before_first = quotes.index[quotes.index < done["date"].min()]
+    if len(before_first) == 0 or settings.BENCHMARK not in quotes.columns:
+        return empty
+    done["fill"] = [quotes.loc[quotes.index < d, t].dropna().iloc[-1] for d, t in zip(done["date"], done["ticker"])]
+    close = quotes.ffill()
+    close = close[close.index >= before_first[-1]]
     rows = []
     for day in close.index:
         so_far = done[done["date"] <= day]
-        fills = [close.loc[:d, t].dropna().iloc[-1] for d, t in zip(so_far["date"], so_far["ticker"])]
-        cash = settings.START_CAPITAL_EUR - float((so_far["signed"] * fills).sum())
+        cash = settings.START_CAPITAL_EUR - float((so_far["signed"] * so_far["fill"]).sum())
         units = so_far.groupby("ticker")["signed"].sum()
         value = cash + float((units * close.loc[day, units.index]).sum())
         rows.append({"date": day, "series": "Portfolio", "value_eur": value})

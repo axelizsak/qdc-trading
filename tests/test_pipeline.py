@@ -16,7 +16,7 @@ def logs(tmp_path):
     return tmp_path / "logs"
 
 
-def _boom(*args):
+def _boom(*args, **extra):
     raise RuntimeError("API down")
 
 
@@ -51,9 +51,9 @@ def test_day_goes_through_three_reviews_then_writes_the_logs(logs):
 def test_feedback_sends_the_day_back_to_the_portfolio_manager(logs, monkeypatch):
     received = []
 
-    def portfolio(*args):
+    def portfolio(*args, **extra):
         received.append(args[-1])
-        return pipeline._mock_portfolio(*args)
+        return pipeline._mock_portfolio(*args, **extra)
 
     monkeypatch.setitem(pipeline.MOCK, "portfolio", portfolio)
     pending = pipeline.run_day(DAY, logs)
@@ -117,7 +117,7 @@ def test_bad_order_decisions_are_refused_and_the_day_stays_paused(logs):
 
 
 def test_orders_breaking_the_trading_rules_become_an_incident(logs, monkeypatch):
-    def too_many(signals, weights, lessons, holdings, cash, prices, as_of, feedback):
+    def too_many(signals, weights, lessons, holdings, cash, prices, as_of, feedback, **extra):
         target, _, memo = pipeline._mock_portfolio(signals, weights, lessons, holdings, cash, prices, as_of, feedback)
         return target, pd.DataFrame({"date": as_of, "side": "BUY", "ticker": ["WORLD", "GOLD", "BITCOIN", "SEMIS",
                                                                              "INDIA", "KOREA"], "units": 1}), memo
@@ -129,7 +129,9 @@ def test_orders_breaking_the_trading_rules_become_an_incident(logs, monkeypatch)
 
 
 def test_check_orders_in_plain_words():
-    prices = pd.DataFrame({"date": [DAY] * 2, "ticker": ["WORLD", "GOLD"], "close_eur": [100.0, 50.0]})
+    before = date(2026, 12, 4)  # an order of DAY fills at the last close before DAY
+    prices = pd.DataFrame({"date": [before, before, DAY, DAY], "ticker": ["WORLD", "GOLD"] * 2,
+                           "close_eur": [100.0, 50.0, 999.0, 999.0]})
     holdings = pd.DataFrame({"ticker": ["GOLD"], "units": [2]})
     orders = pd.DataFrame({"date": DAY, "side": ["BUY", "SELL", "BUY"], "ticker": ["WORLD", "GOLD", "SEMIS"],
                            "units": [200, 3, 1]})
@@ -160,7 +162,7 @@ def test_failing_agent_gives_neutral_signals_and_an_incident(logs, monkeypatch):
 
 
 def test_switch_off_calls_the_real_module(logs, monkeypatch):
-    def not_written(*args):  # a module that is not written yet: the switch must reach it
+    def not_written(*args, **extra):  # a module that is not written yet: the switch must reach it
         raise NotImplementedError
 
     monkeypatch.setitem(settings.USE_MOCK, "portfolio", False)
@@ -289,3 +291,60 @@ def test_real_signal_steps_keep_their_signals_in_logs(logs, tmp_path, monkeypatc
 
     saved = pd.read_csv(real_logs / "signals.csv")
     assert set(saved["agent"]) == {"technical_det"} and len(saved) == 50
+
+
+def test_a_day_runs_end_to_end_on_the_real_portfolio_and_risk_managers(logs, monkeypatch):
+    """Mock prices and signals, real Portfolio Manager, Risk Manager and Logbook (no Claude key: code alone)."""
+    from agents import logbook
+    from data import schemas
+
+    monkeypatch.setitem(settings.USE_MOCK, "portfolio", False)
+    monkeypatch.setitem(settings.USE_MOCK, "risk", False)
+
+    pending = pipeline.run_day(DAY, logs)
+    assert pending["incidents"] == []
+    assert 0 < len(pending["proposed_orders"]) <= settings.MAX_ORDERS_PER_DAY
+    assert "Portfolio Manager" in pending["memo"]
+
+    pending = pipeline.resume_day(DAY, pipeline.approve(pending), logs)
+    assert pending["incidents"] == []
+    assert "## Risk board" in pending["risk_board"] and "### Positions" in pending["risk_board"]
+    assert "Not available" in pending["risk_reading"]  # no key in tests: the reading says so, the day goes on
+    assert {"orders", "cash_reserve"} <= {row["metric"] for row in pending["risk_report"]}
+
+    pending = pipeline.resume_day(DAY, pipeline.approve(pending), logs)
+    assert "## Risk board" in pending["summary"] and "### Independent reading" in pending["summary"]
+    assert pipeline.resume_day(DAY, pipeline.approve(pending), logs) is None
+
+    for name in ("pm_portfolios", "recommendations", "risk_forecasts", "risk_calibration", "reviews"):
+        getattr(schemas, f"validate_{name}")(pd.read_csv(logs / f"{name}.csv"))
+    schemas.validate_risk_report(pd.read_csv(logs / "risk_reports.csv"))
+    validate_order_log(pd.read_csv(logs / "orders.csv"))
+    assert (logs / "risk" / f"{DAY}.md").exists() and (logs / "logbook" / f"{DAY}.md").exists()
+    assert logbook.verify(logs) == []  # the hash chain is intact
+    assert not (logs / "incidents.csv").exists()
+
+    # the next day starts from the book those orders left, filled at the last close before the day
+    held, cash = pipeline.load_book(logs, pd.DataFrame(_state(logs)["prices"]), date(2026, 12, 10))
+    assert len(held) == len(pd.read_csv(logs / "orders.csv")) and 0 <= cash < settings.START_CAPITAL_EUR
+
+
+def test_every_module_fills_an_order_at_the_same_price():
+    from agents import portfolio, risk
+
+    prices = pipeline.mock.mock_prices(end=DAY.isoformat())
+    mine = pipeline.fill_prices(prices, DAY)
+    assert len(mine) == 50
+    pd.testing.assert_series_equal(mine, portfolio.last_closes(prices, DAY, before=True), check_names=False)
+    pd.testing.assert_series_equal(mine, risk.fill_prices(prices, DAY), check_names=False)
+    last_day = prices[prices["date"].astype(str) == prices["date"].astype(str).max()].set_index("ticker")["close_eur"]
+    assert not mine.equals(last_day.reindex(mine.index))  # strictly before the day, never the day's own close
+
+
+def test_a_failing_logbook_never_stops_the_day(logs, monkeypatch):
+    monkeypatch.setattr(pipeline.logbook, "record_round", _boom)
+    monkeypatch.setattr(pipeline.logbook, "record_day", _boom)
+    pipeline.approve_day(DAY, logs)
+    assert pipeline.run_day(DAY, logs) is None
+    assert set(pd.read_csv(logs / "incidents.csv")["step"]) == {"logbook"}
+    assert len(validate_order_log(pd.read_csv(logs / "orders.csv"))) > 0

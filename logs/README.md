@@ -7,6 +7,12 @@ Everything here is committed, because it is graded evidence of the AI suggestion
 | `orders.csv` | Every proposed order with the human decision, plus orders the human added (Order log format) |
 | `reviews.csv` | Every human review of the day (orders, risk, summary) with the feedback sent back (Reviews format) |
 | `summary/<date>.md` | The executive summary the human approved before the orders were submitted |
+| `pm_portfolios.csv` | The portfolios the Portfolio Manager built each day: the code's baseline and optimiser, the LLM's own, and the final blend (PM portfolios format) |
+| `recommendations.csv` | Every order the Portfolio Manager proposed, round by round, with its fill price and its reasons (Recommendations format, append-only) |
+| `risk_reports.csv` | The Risk Manager's report of each day, one row per metric (Risk report format) |
+| `risk/<date>.md` | The risk board and the independent reading the human saw at the risk review |
+| `risk_forecasts.csv` | The weights each risk assessment was made on and what it forecast, so it can be graded later (Risk forecasts format) |
+| `risk_calibration.csv` | The correction the Risk Manager learned for its volatility forecast (Risk calibration format) |
 | `signals.csv` | Every agent signal (Signals format), one row per agent × ETF × day |
 | `macro/<date>.md` | The Macro/News agent's report for the day: views, counter-arguments, sources, exploration findings, cost |
 | `evidence.csv` | Every fact and number the Macro/News agent collected (Evidence format) |

@@ -258,10 +258,10 @@ def main(argv: list[str] | None = None) -> None:
     if report.exists() and not args.force:
         print(f"{args.date}: already done, see {report} (use --force to run again)")
         return
-    lessons = (logs / "lessons.md").read_text() if (logs / "lessons.md").exists() else ""
+    lessons = (logs / "lessons.md").read_text(encoding="utf-8") if (logs / "lessons.md").exists() else ""
     summary, signals = run(args.date, lessons)
     report.parent.mkdir(parents=True, exist_ok=True)
-    report.write_text(summary)
+    report.write_text(summary, encoding="utf-8", newline="\n")
     _save(logs / "signals.csv", signals, args.date, keep=lambda old: old["agent"] == AGENT)
     print(summary.split("\n### ")[0])
     print(f"Report: {report}")

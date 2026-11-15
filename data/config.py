@@ -10,7 +10,9 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
-LOGS_DIR = ROOT / "logs"
+# logs/ is graded evidence. To try a strategy without touching it, point the whole system at a copy:
+#   cp -R logs /tmp/trial && QDC_LOGS_DIR=/tmp/trial streamlit run app/streamlit_app.py
+LOGS_DIR = Path(os.environ["QDC_LOGS_DIR"]).resolve() if os.getenv("QDC_LOGS_DIR") else ROOT / "logs"
 UNIVERSE_CSV = DATA_DIR / "etf_universe.csv"
 
 load_dotenv(ROOT / ".env")
@@ -41,8 +43,8 @@ USE_MOCK = {
     "data": False,
     "technical": False,
     "macro_news": False,
-    "portfolio": True,
-    "risk": True,
+    "portfolio": False,
+    "risk": False,
 }
 
 # Factors the Macro/News agent forms a view on (one macro_view per factor and day).

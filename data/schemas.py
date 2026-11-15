@@ -44,6 +44,18 @@ MACRO_EXPOSURE = ["ticker", "multiplier", *MACRO_FACTORS]
 RISK_REPORT = ["date", "metric", "value", "limit", "status", "comment"]
 # logs/reviews.csv: every human answer at the three review gates, with the feedback sent back.
 REVIEWS = ["date", "round", "gate", "decision", "feedback"]
+# logs/pm_portfolios.csv: the portfolios the Portfolio Manager built each day (the code's baseline and optimiser,
+# the LLM's own, and the final blend). It learns from them how far to trust the LLM. One set per date.
+PM_PORTFOLIOS = ["date", "source", "ticker", "weight"]
+# logs/recommendations.csv: every order the Portfolio Manager proposed, round by round, with its fill price and its
+# reasons. Append-only: each round gets a new recommendation_id. A round without an order is one row with side NONE.
+RECOMMENDATIONS = ["recommendation_id", "created_at", "date", "ticker", "side", "units", "price_eur", "price_date",
+                   "value_eur", "weight_now", "weight_target", "impact", "timing", "why"]
+# logs/risk_forecasts.csv: what each risk assessment was made on (kind weight, name = ticker) and what it forecast
+# (kind forecast, name = vol_raw, p5_5d, prob_below_start...), so the Risk Manager can grade itself later.
+RISK_FORECASTS = ["date", "kind", "name", "value"]
+# logs/risk_calibration.csv: the correction the Risk Manager learned for its volatility forecast, one row per date.
+RISK_CALIBRATION = ["date", "vol_scale", "days_graded", "mean_ratio", "floor_breaches", "floor_days"]
 # logs/logbook.csv: the audit trail, one row per event (signal, recommendation, risk flag, human decision, fill...),
 # append-only. Each row carries the hash of the one before it, so a change to an old row shows (agents/logbook.py).
 # `data` holds the event's numbers as a JSON object (empty when there are none), so tables can be built from the ledger.
@@ -61,6 +73,8 @@ SOURCE_CHANGE_KINDS = {"added", "removed"}
 RISK_STATUSES = {"ok", "warning", "breach"}
 REVIEW_GATES = ["orders", "risk", "summary"]  # in the order the human meets them
 REVIEW_DECISIONS = {"approved", "revised", "stopped"}  # revised: back to the Portfolio Manager; stopped: no trade
+PM_SOURCES = {"baseline", "optimizer", "llm", "final"}
+RISK_FORECAST_KINDS = {"weight", "forecast"}
 LIST_SEP = ";"
 
 # Proposed starting set of features, to validate with the data agent's owner. Not enforced.
@@ -331,4 +345,50 @@ def validate_logbook(df: pd.DataFrame) -> pd.DataFrame:
     seq = pd.to_numeric(df["seq"], errors="coerce")
     if not (seq.to_numpy() == np.arange(1, len(df) + 1)).all():
         raise ValueError("logbook: seq must run 1, 2, 3... without gaps")
+    return df
+
+
+def validate_pm_portfolios(df: pd.DataFrame) -> pd.DataFrame:
+    """Portfolio Manager portfolios: known sources, weights in [0, 1] that add up to at most 100% per portfolio."""
+    _require_columns(df, PM_PORTFOLIOS, "pm_portfolios")
+    _require_in(df, "source", PM_SOURCES, "pm_portfolios")
+    _require_between(df, "weight", 0, 1, "pm_portfolios")
+    _require_unique(df, ["date", "source", "ticker"], "pm_portfolios")
+    if (df.groupby([df["date"].astype(str), "source"])["weight"].sum() > 1 + 1e-6).any():
+        raise ValueError("pm_portfolios: the weights of a portfolio must add up to at most 1")
+    return df
+
+
+def validate_recommendations(df: pd.DataFrame) -> pd.DataFrame:
+    """Proposed orders with their reasons: an id on every row; a ticker, units > 0 and a price > 0 unless side is NONE."""
+    _require_columns(df, RECOMMENDATIONS, "recommendations")
+    _require_text(df, "recommendation_id", "recommendations")
+    _require_in(df, "side", SIDES | {"NONE"}, "recommendations")
+    orders = df[df["side"] != "NONE"]
+    _require_text(orders, "ticker", "recommendations")
+    for col in ("units", "price_eur"):
+        if not (pd.to_numeric(orders[col], errors="coerce") > 0).all():
+            raise ValueError(f"recommendations: {col} must be > 0 on every proposed order")
+    return df
+
+
+def validate_risk_forecasts(df: pd.DataFrame) -> pd.DataFrame:
+    """Weights and forecasts behind each risk assessment: a finite value, one row per (date, kind, name)."""
+    _require_columns(df, RISK_FORECASTS, "risk_forecasts")
+    _require_in(df, "kind", RISK_FORECAST_KINDS, "risk_forecasts")
+    _require_text(df, "name", "risk_forecasts")
+    if not np.isfinite(pd.to_numeric(df["value"], errors="coerce")).all():
+        raise ValueError("risk_forecasts: value must be a finite number")
+    _require_unique(df, ["date", "kind", "name"], "risk_forecasts")
+    return df
+
+
+def validate_risk_calibration(df: pd.DataFrame) -> pd.DataFrame:
+    """The learned volatility correction: vol_scale > 0, one row per date."""
+    _require_columns(df, RISK_CALIBRATION, "risk_calibration")
+    if not (pd.to_numeric(df["vol_scale"], errors="coerce") > 0).all():
+        raise ValueError("risk_calibration: vol_scale must be > 0")
+    if not (pd.to_numeric(df["days_graded"], errors="coerce") >= 0).all():
+        raise ValueError("risk_calibration: days_graded must be 0 or more")
+    _require_unique(df, ["date"], "risk_calibration")
     return df

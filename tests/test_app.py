@@ -12,7 +12,7 @@ from graph import pipeline
 
 APP = str(Path(__file__).resolve().parent.parent / "app" / "streamlit_app.py")
 DAY = date(2026, 12, 7)
-PAGES = ["home", "orders", "research"]
+PAGES = ["home", "orders", "research", "logbook"]
 
 
 @pytest.fixture
@@ -102,3 +102,21 @@ def test_no_trade_today_from_the_page(logs):
     assert status == "done" and state["outcome"] == "stopped"
     for name in PAGES:
         open_page(name)
+
+
+def test_pages_run_on_the_real_portfolio_and_risk_managers(logs, monkeypatch):
+    monkeypatch.setitem(settings.USE_MOCK, "portfolio", False)
+    monkeypatch.setitem(settings.USE_MOCK, "risk", False)
+    pipeline.run_day(DAY, logs)
+    at = open_page("orders")
+    for gate in ("orders", "risk", "summary"):  # the memo, then the risk board and reading, then the summary
+        assert pipeline.day_status(DAY, logs)[2]["gate"] == gate
+        for name in PAGES:
+            open_page(name)
+        at.button(key="submit").click().run()
+        assert not at.exception, at.exception
+    assert pipeline.day_status(DAY, logs)[0] == "done"
+    book = open_page("logbook")
+    assert any(">Intact<" in m.value for m in book.markdown)  # the hash chain of the day just recorded
+    assert not (logs / "incidents.csv").exists()
+
