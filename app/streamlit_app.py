@@ -17,6 +17,7 @@ navigation = st.navigation([
     st.Page("views/home.py", title="Portfolio", icon=":material/show_chart:", default=True),
     st.Page("views/orders.py", title="Orders", icon=":material/fact_check:"),
     st.Page("views/research.py", title="Research", icon=":material/insights:"),
+    st.Page("views/logbook.py", title="Logbook", icon=":material/menu_book:"),
 ], position="top")
 ui.header()
 navigation.run()

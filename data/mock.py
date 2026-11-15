@@ -11,7 +11,11 @@ from data.schemas import (
     MACRO_EXPOSURE,
     LOGBOOK,
     ORDER_LOG,
+    PM_PORTFOLIOS,
+    RECOMMENDATIONS,
     REVIEWS,
+    RISK_CALIBRATION,
+    RISK_FORECASTS,
     RISK_REPORT,
     STARTER_FEATURES,
     validate_agent_weights,
@@ -26,8 +30,12 @@ from data.schemas import (
     validate_order_log,
     validate_orders,
     validate_portfolio,
+    validate_pm_portfolios,
     validate_prices,
+    validate_recommendations,
     validate_reviews,
+    validate_risk_calibration,
+    validate_risk_forecasts,
     validate_risk_report,
     validate_signals,
     validate_source_changes,
@@ -268,6 +276,44 @@ def mock_logbook(as_of: str = "2026-12-07") -> pd.DataFrame:
     return validate_logbook(out[LOGBOOK])
 
 
+def mock_pm_portfolios(as_of: str = "2026-12-07") -> pd.DataFrame:
+    """The four portfolios of one day, three ETFs each. Format: PM portfolios."""
+    day = pd.Timestamp(as_of).date()
+    weights = {"baseline": [0.40, 0.30, 0.15], "optimizer": [0.35, 0.30, 0.20], "llm": [0.50, 0.20, 0.10],
+               "final": [0.44, 0.24, 0.14]}
+    rows = [(day, source, ticker, w) for source, ws in weights.items() for ticker, w in zip(["WORLD", "GOLD", "DEFENSE"], ws)]
+    return validate_pm_portfolios(pd.DataFrame(rows, columns=PM_PORTFOLIOS))
+
+
+def mock_recommendations(as_of: str = "2026-12-07") -> pd.DataFrame:
+    """A round with two proposed orders, then a round with none. Format: Recommendations."""
+    day = pd.Timestamp(as_of).date()
+    rows = [
+        ("REC-mock-1", f"{day}T08:00:00+00:00", day, "WORLD", "BUY", 12.5, 100.0, "2026-12-04", 1250.0, 0.0, 0.125,
+         0.004, 0.1, "mock: strongest combined score"),
+        ("REC-mock-1", f"{day}T08:00:00+00:00", day, "GOLD", "BUY", 4.0, 50.0, "2026-12-04", 200.0, 0.0, 0.02,
+         0.001, -0.2, "mock: hedge"),
+        ("REC-mock-2", f"{day}T09:00:00+00:00", day, np.nan, "NONE", np.nan, np.nan, np.nan, np.nan, np.nan, np.nan,
+         np.nan, np.nan, np.nan),
+    ]
+    return validate_recommendations(pd.DataFrame(rows, columns=RECOMMENDATIONS))
+
+
+def mock_risk_forecasts(as_of: str = "2026-12-07") -> pd.DataFrame:
+    """The weights one assessment was made on, and its forecasts. Format: Risk forecasts."""
+    day = pd.Timestamp(as_of).date()
+    rows = [(day, "weight", "WORLD", 0.44), (day, "weight", "GOLD", 0.24), (day, "forecast", "vol_raw", 0.14),
+            (day, "forecast", "p5_5d", -0.03), (day, "forecast", "prob_below_start", 0.45),
+            (day, "forecast", "horizon_days", 13.0)]
+    return validate_risk_forecasts(pd.DataFrame(rows, columns=RISK_FORECASTS))
+
+
+def mock_risk_calibration() -> pd.DataFrame:
+    """No correction before any forecast can be graded, then a first one. Format: Risk calibration."""
+    rows = [("2026-12-07", 1.0, 0, np.nan, 0, 0), ("2026-12-14", 1.1, 3, 1.2, 0, 3)]
+    return validate_risk_calibration(pd.DataFrame(rows, columns=RISK_CALIBRATION))
+
+
 MOCKS = {
     "prices": mock_prices,
     "signals": mock_signals,
@@ -286,6 +332,10 @@ MOCKS = {
     "etf_views": mock_etf_views,
     "risk_report": mock_risk_report,
     "reviews": mock_reviews,
+    "pm_portfolios": mock_pm_portfolios,
+    "recommendations": mock_recommendations,
+    "risk_forecasts": mock_risk_forecasts,
+    "risk_calibration": mock_risk_calibration,
     "logbook": mock_logbook,
 }
 

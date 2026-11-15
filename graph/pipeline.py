@@ -55,7 +55,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
-from agents import macro_news, portfolio, risk, technical
+from agents import logbook, macro_news, portfolio, risk, technical
 from data import config as settings
 from data import mock
 from data.schemas import (
@@ -87,6 +87,8 @@ class DayState(TypedDict, total=False):
     human_decisions: list[dict]  # one per proposed or added order, from the orders review
     approved_orders: list[dict]  # Orders format: what the human approved at the orders review
     risk_report: list[dict]
+    risk_board: str  # Markdown: the Risk Manager's one-screen view of the report
+    risk_reading: str  # Markdown: its independent reading of the memo, the events and three scenarios (LLM text)
     summary: str
     reviews: Annotated[list[dict], operator.add]  # Reviews format
     outcome: str  # "approved" or "stopped", once the day is done
@@ -101,7 +103,7 @@ def _real_data(as_of: date) -> tuple[pd.DataFrame, pd.DataFrame]:
     return prices, data_agent.compute_features(prices)
 
 
-def _mock_portfolio(signals, weights, lessons, holdings, cash_eur, prices, as_of, feedback):
+def _mock_portfolio(signals, weights, lessons, holdings, cash_eur, prices, as_of, feedback, **extra):
     revision = len(feedback.splitlines())  # another proposal after each piece of feedback
     memo = "Mock investment memo." + (f" Revised after: {feedback.splitlines()[-1]}" if feedback else "")
     return mock.mock_portfolio(seed=revision), mock.mock_orders(as_of.isoformat(), seed=revision), memo
@@ -112,19 +114,22 @@ MOCK = {
     "technical": lambda prices, features, as_of, lessons: mock.mock_signals(as_of.isoformat(), agents=TECHNICAL_AGENTS),
     "macro_news": lambda as_of, lessons: ("Mock macro summary.", mock.mock_signals(as_of.isoformat(), agents=MACRO_AGENTS)),
     "portfolio": _mock_portfolio,
-    "risk": lambda orders, holdings, cash_eur, prices, as_of: mock.mock_risk_report(as_of.isoformat()),
+    "risk": lambda orders, holdings, cash_eur, prices, as_of, **extra: (mock.mock_risk_report(as_of.isoformat()), {}),
 }
 REAL = {
     "data": lambda *args: _real_data(*args),
     "technical": lambda *args: technical.run(*args),
     "macro_news": lambda *args: macro_news.run(*args),
-    "portfolio": lambda *args: portfolio.run(*args),
-    "risk": lambda *args: risk.run(*args),
+    "portfolio": lambda *args, **extra: portfolio.run(*args, **extra),
+    "risk": lambda *args, **extra: risk.analyse(*args, **extra),  # (report, the details behind it)
+    # Optional LLM text on top of the report (one Claude call, about $0.05). It never fails the day.
+    "risk_reading": lambda report, *args, **extra: risk.render_assessment(risk.assess(report, *args, **extra)),
 }
 
 
-def _call(step: str, *args):
-    return (MOCK if settings.USE_MOCK[step] else REAL)[step](*args)
+def _call(step: str, *args, **extra):
+    """`extra`: the optional keyword inputs of the Portfolio Manager and the Risk Manager (logs folder, macro views...)."""
+    return (MOCK if settings.USE_MOCK[step] else REAL)[step](*args, **extra)
 
 
 # --- Helpers -------------------------------------------------------------------------------
@@ -225,7 +230,8 @@ def load_book(logs: Path, prices: pd.DataFrame, as_of: date,
     """Holdings and cash before `as_of` (or after its orders, `with_the_day`), rebuilt from the executed
     orders of the same book (see same_book) in <logs>/orders.csv.
 
-    Fills are valued at the close of the order date (the fill-price rule is still to confirm with Belfius).
+    An order fills at the last close before its day (see fill_prices), as in the Portfolio Manager,
+    the Risk Manager and the Logbook.
     """
     cash = float(settings.START_CAPITAL_EUR)
     path = logs / "orders.csv"
@@ -241,8 +247,8 @@ def load_book(logs: Path, prices: pd.DataFrame, as_of: date,
     units = done["units"].astype(float)
     signed = units.where(done["side"] == "BUY", -units)
     close = (prices.assign(date=prices["date"].astype(str))
-             .pivot(index="date", columns="ticker", values="close_eur").sort_index().ffill())
-    fills = [close.loc[:d, t].dropna().iloc[-1] for d, t in zip(done["date"].astype(str), done["ticker"])]
+             .pivot(index="date", columns="ticker", values="close_eur").sort_index())
+    fills = [close.loc[close.index < d, t].dropna().iloc[-1] for d, t in zip(done["date"].astype(str), done["ticker"])]
     cash -= float((signed * fills).sum())
     position = signed.groupby(done["ticker"]).sum()
     holdings = position[position > 0].rename("units").rename_axis("ticker").reset_index()
@@ -252,14 +258,16 @@ def load_book(logs: Path, prices: pd.DataFrame, as_of: date,
 GATE_NAMES = {"orders": "orders review", "risk": "risk review", "summary": "summary review"}
 
 
-def last_close(prices: pd.DataFrame, as_of: date) -> pd.Series:
-    """Latest close on or before `as_of`, per ticker."""
-    p = prices[prices["date"].astype(str) <= as_of.isoformat()].sort_values("date")
-    return p.groupby("ticker")["close_eur"].last()
+def fill_prices(prices: pd.DataFrame, as_of: date) -> pd.Series:
+    """The price an order of `as_of` fills at, per ticker: the last close before that day, on the ETF's
+    own exchange (the Belfius rule the team confirmed). Every module values an order this way."""
+    day = prices["date"].astype(str)
+    p = prices[day < as_of.isoformat()].assign(_day=day).sort_values("_day")
+    return p.groupby("ticker")["close_eur"].last().astype(float)
 
 
 def cash_after(orders: pd.DataFrame, cash_eur: float, close: pd.Series) -> float:
-    """Cash left once the orders are filled at the last close (orders without a price are left out)."""
+    """Cash left once the orders are filled at `close` (orders without a price are left out)."""
     value = orders["units"].astype(float) * orders["ticker"].map(close)
     return cash_eur - float(value.where(orders["side"] == "BUY", -value).sum())
 
@@ -267,7 +275,7 @@ def cash_after(orders: pd.DataFrame, cash_eur: float, close: pd.Series) -> float
 def check_orders(orders: pd.DataFrame, holdings: pd.DataFrame, cash_eur: float, prices: pd.DataFrame,
                  as_of: date) -> list[str]:
     """The trading rules, in plain words (empty when the orders pass): at most MAX_ORDERS_PER_DAY orders,
-    one per ETF, no selling more than held, enough cash at the last close."""
+    one per ETF, no selling more than held, enough cash at the fill prices (sells fund buys)."""
     problems = []
     if len(orders) > settings.MAX_ORDERS_PER_DAY:
         problems.append(f"{len(orders)} orders, the limit is {settings.MAX_ORDERS_PER_DAY} a day")
@@ -276,14 +284,14 @@ def check_orders(orders: pd.DataFrame, holdings: pd.DataFrame, cash_eur: float, 
         problems.append("More than one order on " + ", ".join(twice))
     held = dict(zip(holdings["ticker"], holdings["units"].astype(float)))
     for row in orders[orders["side"] == "SELL"].itertuples():
-        if float(row.units) > held.get(row.ticker, 0):
+        if float(row.units) > held.get(row.ticker, 0) + 1e-9:
             problems.append(f"Selling {float(row.units):g} {row.ticker}, but only {held.get(row.ticker, 0):g} held")
-    close = last_close(prices, as_of)
+    close = fill_prices(prices, as_of)
     missing = sorted(set(orders.loc[orders["ticker"].map(close).isna(), "ticker"]))
     if missing:
         problems.append("No price for " + ", ".join(missing))
     left = cash_after(orders, cash_eur, close)
-    if left < 0:
+    if left < -0.005:  # half a cent: the Portfolio Manager sizes its orders to the last cent of cash
         problems.append(f"Not enough cash: the orders need €{-left:,.0f} more than available")
     return problems
 
@@ -335,19 +343,25 @@ def order_notes(decisions: list[dict]) -> str:
             continue
         text = f"{d['decision']} {d['ticker']}"
         if d["decision"] == "modified" and d.get("units") is not None:
-            text += f" to {float(d['units']):g} units"
+            text += f" to {fmt_units(d['units'])} units"
         if d["decision"] == "added":
-            text += f" ({d.get('side')} {float(d.get('units') or 0):g})"
+            text += f" ({d.get('side')} {fmt_units(d.get('units') or 0)})"
         if str(d.get("reason") or "").strip():
             text += f": {d['reason']}"
         notes.append(text)
     return "; ".join(notes)
 
 
+def fmt_units(units) -> str:
+    """Units as the Belfius form takes them: up to 4 decimals, no trailing zeros ('3', '2.5', '0.1234')."""
+    return f"{float(units):.4f}".rstrip("0").rstrip(".")
+
+
 def executive_summary(state: DayState, as_of: date) -> str:
-    """The day on one page for the last human review: orders, why, risk, feedback. Built by code, no LLM."""
+    """The day on one page for the last human review: orders, why, risk, feedback. Built by code: the only
+    LLM text in it is quoted (the Portfolio Manager's memo and the Risk Manager's independent reading)."""
     orders = _frame(state.get("approved_orders", []), ORDERS)
-    close = last_close(_frame(state["prices"], PRICES), as_of)
+    close = fill_prices(_frame(state["prices"], PRICES), as_of)
     cash = float(state["cash_eur"])
     round_ = state.get("round", 1)
     lines = [f"# Executive summary · {as_of:%a %d %b %Y}" + (f" · round {round_}" if round_ > 1 else ""),
@@ -355,26 +369,35 @@ def executive_summary(state: DayState, as_of: date) -> str:
     if orders.empty:
         lines.append("No orders: the portfolio stays as it is.")
     else:
-        lines += ["| Side | ETF | Units | Value at the last close |", "|---|---|---:|---:|"]
+        lines += ["| Side | ETF | Units | Fill price | Value |", "|---|---|---:|---:|---:|"]
         for o in orders.itertuples():
             price = close.get(o.ticker)
-            value = f"€{float(o.units) * price:,.0f}" if price is not None and pd.notna(price) else "no price"
-            lines.append(f"| {o.side} | {o.ticker} | {float(o.units):g} | {value} |")
+            known = price is not None and pd.notna(price)
+            lines.append(f"| {o.side} | {o.ticker} | {fmt_units(o.units)} | {f'€{price:,.2f}' if known else 'no price'} "
+                         f"| {f'€{float(o.units) * price:,.0f}' if known else '—'} |")
+        lines += ["", "An order fills at the last close before the day."]
         lines += ["", f"Cash: €{cash:,.0f} now, €{cash_after(orders, cash, close):,.0f} after the orders."]
     changes = order_notes(state.get("human_decisions", []))
     if changes:
         lines += ["", "## Your changes to the AI proposal", ""] + [f"- {c}" for c in changes.split("; ")]
-    lines += ["", "## Why: the Portfolio Manager's memo", "", state.get("memo") or "No memo."]
-    lines += ["", "## Risk after the orders", ""]
+    memo = "\n".join("#" + line if line.startswith("#") else line  # its headings, one level down
+                     for line in (state.get("memo") or "No memo.").splitlines())
+    lines += ["", "## Why: the Portfolio Manager's memo", "", memo]
     report = state.get("risk_report", [])
+    if state.get("risk_board"):
+        lines += ["", state["risk_board"].rstrip(), "", "### Every risk metric", ""]
+    else:
+        lines += ["", "## Risk after the orders", ""]
     if report:
-        lines += ["| Metric | Value | Limit | Status | Comment |", "|---|---:|---:|---|---|"]
+        lines += ["| Metric | Value | Reference level | Status | Comment |", "|---|---:|---:|---|---|"]
         for r in report:
             limit = "—" if r.get("limit") is None or pd.isna(r["limit"]) else f"{float(r['limit']):g}"
             comment = str(r.get("comment") or "").replace("|", "/")
             lines.append(f"| {r['metric']} | {float(r['value']):g} | {limit} | {r['status']} | {comment} |")
     else:
         lines.append("The Risk Manager gave no assessment (see the incidents).")
+    if state.get("risk_reading"):
+        lines += ["", state["risk_reading"].rstrip()]
     sent_back = feedback_for_portfolio(state.get("reviews", []))
     if sent_back:
         lines += ["", "## Your feedback so far", ""] + [f"- {line}" for line in sent_back.splitlines()]
@@ -435,7 +458,7 @@ def data_step(state: DayState, config: RunnableConfig) -> dict:
         "holdings": _records(holdings),
         "cash_eur": cash,
         "agent_weights": load_agent_weights(logs, as_of),
-        "lessons": lessons_path.read_text() if lessons_path.exists() else "",
+        "lessons": lessons_path.read_text(encoding="utf-8") if lessons_path.exists() else "",
         "incidents": incidents,
     }
 
@@ -474,7 +497,7 @@ def macro_news_step(state: DayState, config: RunnableConfig) -> dict:
     summary_path = home / "macro" / f"{as_of.isoformat()}.md"
     cached = _read_signals(home, as_of, MACRO_AGENTS, "macro_news")
     if cached is not None:
-        summary = summary_path.read_text() if summary_path.exists() else ""
+        summary = summary_path.read_text(encoding="utf-8") if summary_path.exists() else ""
         return {"signals": _records(cached), "macro_summary": summary}
     try:
         if real and as_of != date.today():
@@ -483,7 +506,7 @@ def macro_news_step(state: DayState, config: RunnableConfig) -> dict:
         summary, signals = _call("macro_news", as_of, state["lessons"])
         _check_signals(signals, MACRO_AGENTS)
         summary_path.parent.mkdir(parents=True, exist_ok=True)
-        summary_path.write_text(summary)
+        summary_path.write_text(summary, encoding="utf-8", newline="\n")
         _write_signals(home, signals, as_of, MACRO_AGENTS)
         return {"signals": _records(signals), "macro_summary": summary}
     except Exception as exc:
@@ -492,25 +515,39 @@ def macro_news_step(state: DayState, config: RunnableConfig) -> dict:
                 "macro_summary": f"Macro/News agent failed: {incident['error']}", "incidents": [incident]}
 
 
+def _book(logs: Path, as_of: date, record, *args, **kwargs) -> list[dict]:
+    """Archive in the logbook. A failure is an incident: the logbook never stops the day."""
+    try:
+        record(logs, as_of, *args, **kwargs)
+        return []
+    except Exception as exc:
+        return [_incident(logs, as_of, "logbook", exc)]
+
+
 def portfolio_step(state: DayState, config: RunnableConfig) -> dict:
     as_of, logs = _day(state, config)
-    fresh = {"human_decisions": [], "approved_orders": [], "risk_report": [], "summary": ""}  # a new round
+    fresh = {"human_decisions": [], "approved_orders": [], "risk_report": [], "risk_board": "", "risk_reading": "",
+             "summary": ""}  # a new round
     holdings, prices = _frame(state["holdings"], HOLDINGS), _frame(state["prices"], PRICES)
     try:
+        # logs_dir: where it learns from (signals so far, its own past portfolios) and logs its proposals
         target, orders, memo = _call("portfolio", _frame(state["signals"], SIGNALS), state["agent_weights"],
                                      state["lessons"], holdings, state["cash_eur"], prices, as_of,
-                                     feedback_for_portfolio(state.get("reviews", [])))
+                                     feedback_for_portfolio(state.get("reviews", [])),
+                                     macro_summary=state.get("macro_summary", ""), logs_dir=logs)
         validate_portfolio(target)
         validate_orders(orders)
         problems = check_orders(orders, holdings, state["cash_eur"], prices, as_of)
         if problems:
             raise ValueError("the proposed orders break the trading rules: " + "; ".join(problems))
-        return {**fresh, "target_weights": _records(target[PORTFOLIO]), "proposed_orders": _records(orders[ORDERS]),
-                "memo": memo}
     except Exception as exc:
         incident = _incident(logs, as_of, "portfolio", exc)
         return {**fresh, "target_weights": [], "proposed_orders": [],
                 "memo": f"Portfolio Manager failed: {incident['error']}", "incidents": [incident]}
+    book = _book(logs, as_of, logbook.record_round, state.get("round", 1), target=target[PORTFOLIO], memo=memo,
+                 proposed=orders[ORDERS])
+    return {**fresh, "target_weights": _records(target[PORTFOLIO]), "proposed_orders": _records(orders[ORDERS]),
+            "memo": memo, "incidents": book}
 
 
 def _review(state: DayState, gate: str, show: dict) -> tuple[dict, dict]:
@@ -545,19 +582,41 @@ def orders_review_step(state: DayState) -> dict:
 
 
 def risk_step(state: DayState, config: RunnableConfig) -> dict:
+    """The risk report, its board and (real module only) the independent reading, also saved as
+    <logs>/risk/<date>.md. A failed board or reading is an incident: the report still reaches the human."""
     as_of, logs = _day(state, config)
+    orders, holdings = _frame(state["approved_orders"], ORDERS), _frame(state["holdings"], HOLDINGS)
+    prices, cash = _frame(state["prices"], PRICES), state["cash_eur"]
+    macro_home = _signals_home("macro_news", logs)  # where the Macro/News agent keeps its views and evidence
+    views_path = macro_home / "macro_views.csv"
     try:
-        report = _call("risk", _frame(state["approved_orders"], ORDERS), _frame(state["holdings"], HOLDINGS),
-                       state["cash_eur"], _frame(state["prices"], PRICES), as_of)
+        report, details = _call("risk", orders, holdings, cash, prices, as_of, logs_dir=logs,
+                                macro_views=pd.read_csv(views_path) if views_path.exists() else None)
         validate_risk_report(report)
-        return {"risk_report": _records(report[RISK_REPORT])}
     except Exception as exc:
-        return {"risk_report": [], "incidents": [_incident(logs, as_of, "risk", exc)]}
+        return {"risk_report": [], "risk_board": "", "risk_reading": "",
+                "incidents": [_incident(logs, as_of, "risk", exc)]}
+    board, reading, incidents = "", "", []
+    try:
+        board = risk.board(report, details)
+        if not settings.USE_MOCK["risk"]:
+            reading = REAL["risk_reading"](report, orders, holdings, cash, prices, as_of, memo=state.get("memo", ""),
+                                           macro_summary=state.get("macro_summary", ""), logs_dir=macro_home)
+            page = logs / "risk" / f"{as_of.isoformat()}.md"
+            page.parent.mkdir(parents=True, exist_ok=True)
+            page.write_text(f"{board}\n{reading}", encoding="utf-8", newline="\n")
+    except Exception as exc:
+        incidents.append(_incident(logs, as_of, "risk", exc))
+    incidents += _book(logs, as_of, logbook.record_round, state.get("round", 1), risk_report=report[RISK_REPORT])
+    return {"risk_report": _records(report[RISK_REPORT]), "risk_board": board, "risk_reading": reading,
+            "incidents": incidents}
 
 
 def risk_review_step(state: DayState) -> dict:
     return _review(state, "risk", {"approved_orders": state["approved_orders"],
-                                   "risk_report": state.get("risk_report", [])})[1]
+                                   "risk_report": state.get("risk_report", []),
+                                   "risk_board": state.get("risk_board", ""),
+                                   "risk_reading": state.get("risk_reading", "")})[1]
 
 
 def summary_step(state: DayState, config: RunnableConfig) -> dict:
@@ -585,8 +644,9 @@ def order_log_step(state: DayState, config: RunnableConfig) -> dict:
     if outcome == "approved":
         path = logs / "summary" / f"{as_of.isoformat()}.md"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(state["summary"])
-    return {"outcome": outcome}
+        path.write_text(state["summary"], encoding="utf-8", newline="\n")
+    # last: the logbook joins everything the day wrote into the audit trail, and computes the fills and the value
+    return {"outcome": outcome, "incidents": _book(logs, as_of, logbook.record_day, _frame(state["prices"], PRICES))}
 
 
 def _after(next_step: str):
@@ -746,7 +806,7 @@ def main(argv: list[str] | None = None) -> None:
         approve_day(args.date, logs)
         pending = None
     elif args.answer:
-        pending = resume_day(args.date, json.loads(args.answer.read_text()), logs)
+        pending = resume_day(args.date, json.loads(args.answer.read_text(encoding="utf-8")), logs)
     if pending is None:
         _print_done(args.date, logs)
     else:

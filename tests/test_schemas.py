@@ -152,3 +152,30 @@ def test_reviews_reject_bad_rows():
         schemas.validate_reviews(df.assign(gate="portfolio"))
     with pytest.raises(ValueError, match="duplicate"):
         schemas.validate_reviews(pd.concat([df, df.head(1)]))
+
+
+def test_portfolio_manager_logs_reject_bad_rows():
+    portfolios = MOCKS["pm_portfolios"]()
+    with pytest.raises(ValueError, match="unknown source"):
+        schemas.validate_pm_portfolios(portfolios.assign(source="human"))
+    with pytest.raises(ValueError, match="at most 1"):
+        schemas.validate_pm_portfolios(portfolios.assign(weight=0.5))
+    recommendations = MOCKS["recommendations"]()
+    with pytest.raises(ValueError, match="units"):
+        schemas.validate_recommendations(recommendations.assign(units=0))
+    with pytest.raises(ValueError, match="recommendation_id"):
+        schemas.validate_recommendations(recommendations.assign(recommendation_id=""))
+
+
+def test_risk_manager_logs_reject_bad_rows():
+    forecasts = MOCKS["risk_forecasts"]()
+    with pytest.raises(ValueError, match="unknown kind"):
+        schemas.validate_risk_forecasts(forecasts.assign(kind="guess"))
+    with pytest.raises(ValueError, match="finite"):
+        schemas.validate_risk_forecasts(forecasts.assign(value=np.inf))
+    calibration = MOCKS["risk_calibration"]()
+    with pytest.raises(ValueError, match="vol_scale"):
+        schemas.validate_risk_calibration(calibration.assign(vol_scale=0))
+    with pytest.raises(ValueError, match="duplicate"):
+        schemas.validate_risk_calibration(pd.concat([calibration, calibration.head(1)]))
+

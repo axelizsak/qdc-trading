@@ -34,7 +34,7 @@ figures += [("Cash", f"€{cash:,.0f}", f"{cash / total:.0%} of the portfolio" i
              "hot" if status == "waiting for approval" else None)]
 ui.kpis(figures)
 
-ui.label("Performance", "EUR · fills at the close of the order date")
+ui.label("Performance", "EUR · an order fills at the last close before its day")
 if history.empty:
     st.caption("No executed orders yet: the portfolio is all cash.")
 elif history["date"].nunique() < 2:
@@ -47,7 +47,7 @@ incidents = state.get("incidents", [])
 ui.label("Today", f"{as_of:%a %d %b}")
 ui.pipeline_strip(status, state, pending)
 for incident in incidents:
-    st.error(f"{ui.STEP_LABELS[incident['step']]} failed and was replaced by its fallback: {incident['error']}")
+    st.error(ui.incident_text(incident))
 st.write("")
 if status == "not started":
     if st.button("Run the day", type="primary", icon=":material/play_arrow:",
