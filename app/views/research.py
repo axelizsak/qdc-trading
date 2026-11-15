@@ -20,13 +20,13 @@ ui.page("Research", "What the agents want to trade, why, and how far to trust th
 _, state, _ = pipeline.day_status(as_of, logs)
 signals, signals_mock = data.day_signals(as_of, logs, state)
 universe = load_universe()
-# the weights the Portfolio Manager started the day from: only agents that gave a score take a share
-weights = state.get("agent_weights") or pipeline.load_agent_weights(logs, as_of, pipeline.scoring_agents(signals))
+# what the review loop learned so far, over the agents that gave a score today (else the starting weights)
+weights = pipeline.load_agent_weights(logs, as_of, pipeline.scoring_agents(signals))
 if not weights:  # a day logged before the agents had their current names
     weights = {agent: 1 / signals["agent"].nunique() for agent in sorted(signals["agent"].unique())}
 combined = combine_scores(signals, weights).rename("score").reset_index().merge(universe[["ticker", "theme"]])
 
-ui.label("Signals", "agents' votes at their starting weights: "
+ui.label("Signals", "agents' votes, weighted by the review loop: "
                     + " · ".join(f"{a} {w:.0%}" for a, w in weights.items()))
 ui.mock_note(signals_mock, "this day has not run yet")
 themes = st.multiselect("Themes", universe["theme"].unique().tolist(), placeholder="All themes",
@@ -158,11 +158,16 @@ graded_agents = agent_weights.dropna(subset=["hit_rate"])
 latest = graded_agents[graded_agents["date"] == graded_agents["date"].max()] if len(graded_agents) else graded_agents
 graded_sources = registry[registry["n_uses"] > 0]
 
-ui.label("Track record", "the review loop re-weights agents and sources after each trading day")
+ui.label("Track record", "the review loop grades every score and re-weights the agents before each day")
 ui.mock_note(weights_mock, "the review loop has not written logs/agent_weights.csv yet")
-st.caption("Agent weights")
-st.altair_chart(charts.lines(agent_weights, "date", "weight", "agent", "weight", ".0%", zero_based=True),
-                width="stretch")
+if agent_weights["date"].nunique() < 2:  # one review so far: the weights as numbers, the curve needs two
+    now = agent_weights.sort_values("weight", ascending=False)
+    st.caption("Agent weights · " + " · ".join(f"{r.agent} {r.weight:.0%}" for r in now.itertuples())
+               + " · the curve starts with the second review")
+else:
+    st.caption("Agent weights")
+    st.altair_chart(charts.lines(agent_weights, "date", "weight", "agent", "weight", ".0%", zero_based=True),
+                    width="stretch")
 agents_col, sources_col = st.columns(2, gap="large")
 with agents_col:
     st.caption("Agent hit rates · line = 50%")
@@ -176,7 +181,7 @@ with sources_col:
     st.caption(f"Source hit rates · {counts.get('active', 0)} active, {counts.get('testing', 0)} on trial, "
                f"{counts.get('dropped', 0)} dropped")
     if graded_sources.empty:
-        st.caption("Appears once the review loop has scored a trading day.")
+        st.caption("Appears once a macro view can be judged against the sessions that followed.")
     else:
         st.altair_chart(charts.hbars(graded_sources, "hit_rate", "source", ".0%",
                                      tooltip=["source", "status", "n_uses", "hit_rate"], rule_at=0.5),
@@ -186,8 +191,8 @@ with st.expander("Source registry"):
                  column_config={"hit_rate": st.column_config.ProgressColumn("hit rate", min_value=0, max_value=1,
                                                                             format="percent")})
 journal = data.lessons(macro_logs)
-with st.expander("Lessons journal"):
+with st.expander("Lessons journal · what the agents read before they decide"):
     if journal:
-        st.markdown(journal)
+        st.markdown(ui.demote("\n".join(journal.splitlines()[1:])))
     else:
-        st.caption("Empty: the review loop writes a lesson after each trading day.")
+        st.caption("Empty: the review loop writes it when a day runs (or: python -m graph.review_loop).")

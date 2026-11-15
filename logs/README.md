@@ -21,8 +21,8 @@ Everything here is committed, because it is graded evidence of the AI suggestion
 | `source_registry.csv` | Every source the Macro/News agent used: status (active, testing, dropped) and hit rate |
 | `source_changes.csv` | When each Macro/News source was added or removed, to compare results before and after |
 | `incidents.csv` | Every pipeline step that failed and was replaced by its fallback |
-| `agent_weights.csv` | Agent weights after each review, with the hit rate that drove the change |
-| `lessons.md` | Lessons journal that the agents read before each decision |
+| `agent_weights.csv` | The weight of each agent after each run of the review loop, with the hit rate behind it: the evidence of model re-assessment |
+| `lessons.md` | Lessons journal, written by the review loop (newest review first): which agent was right on which kind of call, the largest misses, the weakest sources. The agents read it before each decision |
 | `logbook.csv` | The audit trail: one row per event (signals, recommendations, risk flags, human decisions, computed fills, valuations), append-only, each row hashed with the one before it (Logbook format, `agents/logbook.py`) |
 | `logbook/<date>.md` | The day told in order, built from `logbook.csv` |
 | `logbook/INDEX.md` | One line per day: orders kept, changed, rejected and added by the human, risk warnings, portfolio value and return against the benchmark, and whether the hash chain is intact |

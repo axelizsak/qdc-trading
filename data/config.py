@@ -40,6 +40,11 @@ SIGNAL_AGENTS = ["technical_det", "technical_llm", "macro_market", "macro_etf"]
 # Starting weights, before any evidence: each family counts the same, split equally between its agents that
 # gave a score that day. An agent that gives no score takes no weight (graph/pipeline.py: load_agent_weights).
 AGENT_FAMILIES = {"technical": ["technical_det", "technical_llm"], "macro": ["macro_market", "macro_etf"]}
+# Every LLM score (macro_etf, technical_llm) is a view on the next HORIZON_SESSIONS trading sessions, and the
+# review loop grades every score on them.
+HORIZON_SESSIONS = 3
+# The review loop also judges the technical rule score on this many past quote days, recomputed from prices.
+REVIEW_BACKFILL_DAYS = 60
 
 # One switch per pipeline step (graph/pipeline.py). True = use the mock from data/mock.py.
 # Set your step to False once your real module works. While any step is on a mock,
@@ -106,7 +111,6 @@ MACRO_EXPLORE_SEARCHES = 6  # exploration budget (Sonnet)
 MACRO_EXPLORE_FETCHES = 4
 # ETF analysts: one Sonnet "hedge-fund quant" per theme of the universe, who searches and scores its ETFs.
 MACRO_ANALYST_SEARCHES = 6  # web searches per theme
-MACRO_HORIZON_SESSIONS = 3  # the analysts judge the move over this many trading sessions, and are graded on it
 MACRO_SCORECARD_CALLS = 5  # past calls per ETF an analyst sees with what happened next
 
 # Source registry: a source needs this many graded uses before its status can change.

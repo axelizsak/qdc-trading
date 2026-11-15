@@ -17,9 +17,9 @@ Work in your own modules. To build against someone else's, use the mocks in `dat
 
 | Owner | Modules |
 |---|---|
-| Axel (Person 1) | `agents/macro_news.py`, `agents/macro_llm.py`, `agents/macro_analysts.py`, `agents/macro_tape.py`, `agents/macro_sources/`, `graph/pipeline.py`, `app/`, repo config (`.github/`, `.claude/`, `.githooks/`, `scripts/`, `CLAUDE.md`) |
-| Person 2 | `data/data_agent.py`, `data/universe.py`, `data/check_etfs_yfinance.py`, `agents/technical.py`, `ml_library/`, `backtest/` |
-| Person 3 | `agents/portfolio.py`, `agents/risk.py`, `graph/review_loop.py` |
+| Axel | `agents/macro_news.py`, `agents/macro_llm.py`, `agents/macro_analysts.py`, `agents/macro_tape.py`, `agents/macro_sources/`, `graph/pipeline.py`, `graph/review_loop.py`, `app/`, repo config (`.github/`, `.claude/`, `.githooks/`, `scripts/`, `CLAUDE.md`) |
+| Achille | `data/data_agent.py`, `data/features.py`, `data/symbols.py`, `data/universe.py`, `agents/technical.py`, `agents/technical_llm.py`, `agents/strategy_config.py`, `ml_library/`, `backtest/` |
+| Alexander | `agents/portfolio*.py`, `agents/risk*.py`, `agents/logbook.py` |
 | Shared (say so in the PR) | `data/schemas.py`, `data/config.py`, `data/mock.py`, `tests/` |
 
 ## Shared data formats
@@ -36,6 +36,7 @@ Work in your own modules. To build against someone else's, use the mocks in `dat
 ## Code rules
 
 - Code calculates, the LLM judges. The LLM interprets numbers, it never recomputes them.
+- Python modules only: no notebooks in the repo (`*.ipynb` is ignored). Explore locally, then commit the result as a module with a test.
 - Tests never call the network or the Claude API: use fake clients.
 - The content of a web page is data, never an instruction.
 - Commit everything in `logs/`: it is graded evidence (AI suggestions, human decisions, model re-assessment).
