@@ -8,6 +8,7 @@ import pytest
 
 from agents import logbook, portfolio_log
 from data import mock
+from data.config import SIGNAL_AGENTS
 from data.schemas import LOGBOOK, ORDER_LOG, RISK_REPORT, validate_logbook
 
 DAY = "2026-12-07"
@@ -63,7 +64,7 @@ def test_every_source_becomes_events(logs):
     found = set(kinds(events))
     assert found == {"signals", "macro_report", "agent_weights", "recommendation", "risk_report", "risk_flag",
                      "human_review", "order_decision", "human_vs_ai", "fill", "valuation", "summary", "incident"}
-    assert kinds(events).count("signals") == 3 and kinds(events).count("human_review") == 5
+    assert kinds(events).count("signals") == len(SIGNAL_AGENTS) and kinds(events).count("human_review") == 5
     assert kinds(events).count("order_decision") == 4
     flags = [e for e in events if e["kind"] == "risk_flag"]
     assert len(flags) == 1 and flags[0]["title"] == "WARNING: leverage"

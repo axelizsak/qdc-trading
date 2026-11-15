@@ -1,13 +1,16 @@
 date,source,change,note
 2026-11-08,cftc_cot,added,"v2 collector: CFTC Commitments of Traders, speculative net positions (gold, copper, WTI, S&P 500, Nasdaq, 10y Treasuries, euro, bitcoin); flagged by exploration on 2026-11-08 (gold)"
 2026-11-08,defillama_stablecoins,added,"v2 collector: total stablecoin supply, 7- and 30-day change"
-2026-11-08,binance_funding,added,"v2 collector: bitcoin and ether perpetual funding rates"
-2026-11-08,tsmc_revenue,added,"v2 Claude search topic: TSMC monthly revenue (published around the 10th)"
+2026-11-08,binance_funding,added,v2 collector: bitcoin and ether perpetual funding rates
+2026-11-08,tsmc_revenue,added,v2 Claude search topic: TSMC monthly revenue (published around the 10th)
 2026-11-08,korea_exports,added,"v2 Claude search topic: Korean exports, first 20 days (published around the 21st)"
-2026-11-08,btc_etf_flows,added,"v2 Claude search topic: US spot Bitcoin ETF flows; flagged by exploration on 2026-11-08"
-2026-11-08,gold_flows,added,"v2 Claude search topic: central bank gold purchases and gold ETF flows"
-2026-11-08,uranium_market,added,"v2 Claude search topic: uranium prices and Sprott Physical Uranium Trust purchases"
-2026-11-08,fda_calendar,added,"v2 Claude search topic: FDA decision calendar"
-2026-11-08,container_freight,added,"v2 Claude search topic: container freight indices"
+2026-11-08,btc_etf_flows,added,v2 Claude search topic: US spot Bitcoin ETF flows; flagged by exploration on 2026-11-08
+2026-11-08,gold_flows,added,v2 Claude search topic: central bank gold purchases and gold ETF flows
+2026-11-08,uranium_market,added,v2 Claude search topic: uranium prices and Sprott Physical Uranium Trust purchases
+2026-11-08,fda_calendar,added,v2 Claude search topic: FDA decision calendar
+2026-11-08,container_freight,added,v2 Claude search topic: container freight indices
 2026-11-08,x_posts,added,"v2 Claude search topic restricted to x.com (no free X API, no scraping)"
-2026-11-10,etf_analysts,added,"20 Sonnet theme analysts (hedge-fund quant prompt) score their ETFs from the news; blended 50/50 into macro_news"
+2026-11-10,etf_analysts,added,20 Sonnet theme analysts (hedge-fund quant prompt) score their ETFs from the news; blended 50/50 into macro_news
+2026-11-15,macro_market_and_macro_etf,added,"The single macro_news score (50% factor views, 50% ETF analysts) is now two scores the Portfolio Manager weights itself: macro_market and macro_etf. The days from 8 to 14 November were split from their logged views (their macro_news rows stay in signals.csv)."
+2026-11-15,analyst_tape_and_record,added,"Each ETF analyst now reads what its ETFs already did (returns over 1, 5 and 20 sessions, from prices) and its own past calls graded against the next 3 sessions, and judges the next 3 sessions. Record before this change: 27 of 49 calls right."
+2026-11-16,analyst_catalysts_and_brief,added,"Each ETF analyst now gives the next scheduled event of its ETFs with its date, and the report opens with a brief (events ahead, strongest calls, macro views) short enough for the Portfolio Manager, which reads the first 4,000 characters, to read in full."

@@ -4,6 +4,7 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+from agents import macro_news
 from agents.portfolio import combine_scores
 from app import charts, data, ui
 from data.config import MACRO_FACTOR_MEANING, SIGNAL_AGENTS
@@ -19,10 +20,14 @@ ui.page("Research", "What the agents want to trade, why, and how far to trust th
 _, state, _ = pipeline.day_status(as_of, logs)
 signals, signals_mock = data.day_signals(as_of, logs, state)
 universe = load_universe()
-weights = state.get("agent_weights") or pipeline.load_agent_weights(logs, as_of)
+# the weights the Portfolio Manager started the day from: only agents that gave a score take a share
+weights = state.get("agent_weights") or pipeline.load_agent_weights(logs, as_of, pipeline.scoring_agents(signals))
+if not weights:  # a day logged before the agents had their current names
+    weights = {agent: 1 / signals["agent"].nunique() for agent in sorted(signals["agent"].unique())}
 combined = combine_scores(signals, weights).rename("score").reset_index().merge(universe[["ticker", "theme"]])
 
-ui.label("Signals", "agents' votes, weighted: " + " · ".join(f"{a} {w:.0%}" for a, w in weights.items()))
+ui.label("Signals", "agents' votes at their starting weights: "
+                    + " · ".join(f"{a} {w:.0%}" for a, w in weights.items()))
 ui.mock_note(signals_mock, "this day has not run yet")
 themes = st.multiselect("Themes", universe["theme"].unique().tolist(), placeholder="All themes",
                         label_visibility="collapsed")
@@ -102,11 +107,16 @@ with st.container(border=True):
 
 etf_views, etf_mock = data.etf_views(macro_logs)
 day_etf = etf_views[etf_views["date"].astype(str) == day]
-ui.label("ETF analysts", "one hedge-fund-style analyst per theme · blended 50/50 into the macro score")
+ui.label("ETF analysts", "one hedge-fund-style analyst per theme · their calls are the macro_etf score")
 ui.mock_note(etf_mock, "no analyst run yet")
 if day_etf.empty:
     st.caption("No analyst views in this run.")
 else:
+    ahead = macro_news.catalysts(day_etf)
+    if ahead:  # the dated events the analysts found in their searches, soonest first
+        st.caption("Events ahead · " + " · ".join(
+            f"**{date.fromisoformat(d):%a %d %b}** {event} ({len(tickers)} ETF{'s' if len(tickers) > 1 else ''})"
+            for d, event, tickers in ahead[:6]))
     theme_of = universe.set_index("ticker")["theme"]
     ranked_etf = day_etf.assign(weight=day_etf["direction"].abs() * day_etf["confidence"]).sort_values(
         "weight", ascending=False).set_index("ticker")
@@ -120,6 +130,9 @@ else:
                     unsafe_allow_html=True)
         st.caption(f"{theme_of.get(pick, '')} analyst · for leveraged and inverse ETFs, the view is on the underlying")
         st.markdown(etf_view["rationale"])
+        if isinstance(etf_view["catalyst"], str) and etf_view["catalyst"].strip():
+            st.markdown(f"**Next catalyst** · {date.fromisoformat(str(etf_view['catalyst_date'])[:10]):%a %d %b}: "
+                        f"{etf_view['catalyst']}")
         st.markdown(f"**Counter-argument** · {etf_view['counter_argument']}")
         st.markdown("**Sources** · " + " · ".join(
             f"[{i + 1}]({u})" for i, u in enumerate(split_list(etf_view["sources"])[:6])))

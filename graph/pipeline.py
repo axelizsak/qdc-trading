@@ -66,7 +66,7 @@ from data.schemas import (
 from data.universe import tickers
 
 TECHNICAL_AGENTS = ["technical_det", "technical_llm"]
-MACRO_AGENTS = ["macro_news"]
+MACRO_AGENTS = ["macro_market", "macro_etf"]  # the views through the exposure table, the ETF analysts
 _FILE_LOCK = threading.Lock()  # technical and macro_news run in parallel and share log files
 
 
@@ -112,14 +112,15 @@ def _mock_portfolio(signals, weights, lessons, holdings, cash_eur, prices, as_of
 MOCK = {
     "data": lambda as_of: (mock.mock_prices(end=as_of.isoformat()), mock.mock_features(as_of.isoformat())),
     "technical": lambda prices, features, as_of, lessons: mock.mock_signals(as_of.isoformat(), agents=TECHNICAL_AGENTS),
-    "macro_news": lambda as_of, lessons: ("Mock macro summary.", mock.mock_signals(as_of.isoformat(), agents=MACRO_AGENTS)),
+    "macro_news": lambda as_of, lessons, **extra: ("Mock macro summary.",
+                                                   mock.mock_signals(as_of.isoformat(), agents=MACRO_AGENTS)),
     "portfolio": _mock_portfolio,
     "risk": lambda orders, holdings, cash_eur, prices, as_of, **extra: (mock.mock_risk_report(as_of.isoformat()), {}),
 }
 REAL = {
     "data": lambda *args: _real_data(*args),
     "technical": lambda *args: technical.run(*args),
-    "macro_news": lambda *args: macro_news.run(*args),
+    "macro_news": lambda *args, **extra: macro_news.run(*args, **extra),
     "portfolio": lambda *args, **extra: portfolio.run(*args, **extra),
     "risk": lambda *args, **extra: risk.analyse(*args, **extra),  # (report, the details behind it)
     # Optional LLM text on top of the report (one Claude call, about $0.05). It never fails the day.
@@ -195,7 +196,7 @@ def _read_signals(logs: Path, as_of: date, agents: list[str], step: str) -> pd.D
     rows = df[(df["date"].astype(str) == as_of.isoformat()) & df["agent"].isin(agents)]
     if not settings.USE_MOCK[step] and (rows["rationale"] == "mock").any():
         return None
-    return rows if set(rows["agent"]) == set(agents) else None
+    return rows if len(rows) else None  # an agent may give only some of its scores (no technical_llm yet)
 
 
 def _write_signals(logs: Path, signals: pd.DataFrame, as_of: date, agents: list[str]) -> None:
@@ -203,17 +204,36 @@ def _write_signals(logs: Path, signals: pd.DataFrame, as_of: date, agents: list[
                   lambda old: ~((old["date"].astype(str) == as_of.isoformat()) & old["agent"].isin(agents)))
 
 
-def load_agent_weights(logs: Path, as_of: date) -> dict[str, float]:
-    """Latest weights on or before `as_of` from <logs>/agent_weights.csv (written by the review loop),
-    else equal weights."""
+def scoring_agents(signals: pd.DataFrame) -> list[str]:
+    """The known agents that gave a real score in `signals`: not the neutral rows of an agent that failed."""
+    real = signals[~signals["rationale"].astype(str).str.startswith("agent failed")]
+    return [a for a in settings.SIGNAL_AGENTS if a in set(real["agent"])]
+
+
+def starting_weights(agents: list[str]) -> dict[str, float]:
+    """Weights before any evidence: each family (technical, macro) counts the same, split equally between
+    its agents in `agents`. A family without an agent gives its share to the other."""
+    families = {name: [a for a in members if a in agents] for name, members in settings.AGENT_FAMILIES.items()}
+    families = {name: members for name, members in families.items() if members}
+    return {a: 1 / len(families) / len(members) for members in families.values() for a in members}
+
+
+def load_agent_weights(logs: Path, as_of: date, agents: list[str] | None = None) -> dict[str, float]:
+    """Weights of `agents` (default: every agent), summing to 1. An agent that gives no score takes no weight.
+
+    The latest weights on or before `as_of` in <logs>/agent_weights.csv (written by the review loop), rescaled
+    over `agents`; else the starting weights. The Portfolio Manager then learns from there every day."""
+    agents = list(settings.SIGNAL_AGENTS) if agents is None else agents
     path = logs / "agent_weights.csv"
     if path.exists():
         df = validate_agent_weights(pd.read_csv(path))
         df = df[df["date"].astype(str) <= as_of.isoformat()]
         if len(df):
             latest = df[df["date"].astype(str) == df["date"].astype(str).max()]
-            return dict(zip(latest["agent"], latest["weight"].astype(float)))
-    return {a: 1 / len(settings.SIGNAL_AGENTS) for a in settings.SIGNAL_AGENTS}
+            logged = {a: float(w) for a, w in zip(latest["agent"], latest["weight"]) if a in agents}
+            if set(logged) == set(agents) and sum(logged.values()) > 0:
+                return {a: w / sum(logged.values()) for a, w in logged.items()}
+    return starting_weights(agents)
 
 
 def same_book(log: pd.DataFrame, as_of: date) -> pd.DataFrame:
@@ -503,7 +523,8 @@ def macro_news_step(state: DayState, config: RunnableConfig) -> dict:
         if real and as_of != date.today():
             raise ValueError(f"no Macro/News run for {as_of}: it reads the news of the day, so it only runs "
                              f"on {as_of} itself (in the cockpit or with python -m agents.macro_news)")
-        summary, signals = _call("macro_news", as_of, state["lessons"])
+        # prices: the analysts read what each ETF already did, and how their past calls turned out
+        summary, signals = _call("macro_news", as_of, state["lessons"], prices=_frame(state["prices"], PRICES))
         _check_signals(signals, MACRO_AGENTS)
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(summary, encoding="utf-8", newline="\n")
@@ -529,9 +550,12 @@ def portfolio_step(state: DayState, config: RunnableConfig) -> dict:
     fresh = {"human_decisions": [], "approved_orders": [], "risk_report": [], "risk_board": "", "risk_reading": "",
              "summary": ""}  # a new round
     holdings, prices = _frame(state["holdings"], HOLDINGS), _frame(state["prices"], PRICES)
+    signals = _frame(state["signals"], SIGNALS)
+    weights = load_agent_weights(logs, as_of, scoring_agents(signals))  # only the agents that scored today
+    fresh["agent_weights"] = weights
     try:
         # logs_dir: where it learns from (signals so far, its own past portfolios) and logs its proposals
-        target, orders, memo = _call("portfolio", _frame(state["signals"], SIGNALS), state["agent_weights"],
+        target, orders, memo = _call("portfolio", signals, weights,
                                      state["lessons"], holdings, state["cash_eur"], prices, as_of,
                                      feedback_for_portfolio(state.get("reviews", [])),
                                      macro_summary=state.get("macro_summary", ""), logs_dir=logs)

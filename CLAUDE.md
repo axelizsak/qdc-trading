@@ -17,7 +17,7 @@ Work in your own modules. To build against someone else's, use the mocks in `dat
 
 | Owner | Modules |
 |---|---|
-| Axel (Person 1) | `agents/macro_news.py`, `agents/macro_sources/`, `graph/pipeline.py`, `app/`, repo config (`.github/`, `.claude/`, `.githooks/`, `scripts/`, `CLAUDE.md`) |
+| Axel (Person 1) | `agents/macro_news.py`, `agents/macro_llm.py`, `agents/macro_analysts.py`, `agents/macro_tape.py`, `agents/macro_sources/`, `graph/pipeline.py`, `app/`, repo config (`.github/`, `.claude/`, `.githooks/`, `scripts/`, `CLAUDE.md`) |
 | Person 2 | `data/data_agent.py`, `data/universe.py`, `data/check_etfs_yfinance.py`, `agents/technical.py`, `ml_library/`, `backtest/` |
 | Person 3 | `agents/portfolio.py`, `agents/risk.py`, `graph/review_loop.py` |
 | Shared (say so in the PR) | `data/schemas.py`, `data/config.py`, `data/mock.py`, `tests/` |

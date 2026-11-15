@@ -42,7 +42,7 @@ Nothing is traded without three human reviews: the proposed orders, the risk aft
 |---|---|---|---|---|---|
 | 1 | Data | `data/data_agent.py` | ISIN list | ETF mapping (ISIN → Yahoo ticker), prices, returns, volatility, drawdowns, correlations | No |
 | 2 | Technical | `agents/technical.py` | Prices + features | Two scores per ETF: deterministic (indicators + `ml_library` models) and LLM-interpreted | Interpretation layer |
-| 3 | Macro / News | `agents/macro_news.py` | Web search (Claude API) | Macro summary + signal per theme (rates, geopolitics, commodities) | Yes |
+| 3 | Macro / News | `agents/macro_news.py` | Web search (Claude API) + prices (what each ETF already did, and how its past calls turned out) | Macro summary + two scores per ETF: `macro_market` (macro views through the exposure table) and `macro_etf` (the ETF analysts' own call over the next 3 sessions) | Yes |
 | 4 | Portfolio Manager | `agents/portfolio.py` | All signals + agent weights + lessons journal + current portfolio + your feedback | Target weights + up to 5 proposed orders + investment memo | Yes |
 | 5 | Risk Manager | `agents/risk.py` | The orders you approved + portfolio + the day's macro views | Risk of the portfolio after the orders (concentration, volatility, drawdown, exposure, leverage, liquidity, the benchmark, outcome odds), a one-screen board, and an independent reading of the memo | Numbers: no. Reading: yes |
 
@@ -80,7 +80,7 @@ These were fixed on day 1 and are defined in `data/schemas.py`. Build your modul
 | Agent weights | `date, agent, weight, hit_rate` (weights sum to 1 per date) |
 | Evidence | `date, factor, source, kind [number\|text\|exploration], value, summary, url` |
 | Macro views | `date, factor, direction [-1,1], confidence, rationale, counter_argument, sources` |
-| ETF views | `date, ticker, direction [-1,1], confidence, rationale, counter_argument, sources` (theme analysts) |
+| ETF views | `date, ticker, direction [-1,1], confidence, rationale, counter_argument, sources, catalyst_date, catalyst` (theme analysts; the catalyst is the next scheduled event for the ETF, when one was found) |
 | Source registry | `source, kind, factors, status [active\|testing\|dropped], first_seen, n_uses, hit_rate` |
 | Order log | `date, ticker, ai_side, ai_units, decision [approved\|modified\|rejected\|added], side, units, reason` |
 | Incidents | `date, step, error` |
@@ -96,7 +96,7 @@ These were fixed on day 1 and are defined in `data/schemas.py`. Build your modul
 
 `ticker` is always the Belfius short name from `data/etf_universe.csv` (e.g. `WORLD`, `NASDAQ 3X`), never the Yahoo symbol.
 
-`agent` is one of `technical_det`, `technical_llm` or `macro_news` (see `SIGNAL_AGENTS` in `data/config.py`). The Technical agent writes two rows per ETF, so the Portfolio Manager gives the deterministic score and the LLM score separate weights, and the review loop can tell whether the LLM layer adds value.
+`agent` is one of `technical_det`, `technical_llm`, `macro_market` or `macro_etf` (see `SIGNAL_AGENTS` in `data/config.py`). Each agent family writes two rows per ETF, so the Portfolio Manager weights every score on its own and learns which one predicts better. Before any evidence, each family (technical, macro) counts the same, split between its agents that gave a score that day: an agent that gives no score takes no weight. Rows with agent `macro_news` in `logs/signals.csv` are the single blended score used until 14 November.
 
 ## Setup
 

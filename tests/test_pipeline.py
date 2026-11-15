@@ -156,9 +156,11 @@ def test_failing_agent_gives_neutral_signals_and_an_incident(logs, monkeypatch):
     incidents = pd.read_csv(logs / "incidents.csv")
     assert incidents["step"].tolist() == ["macro_news"]
     assert "API down" in incidents["error"][0]
-    macro = [s for s in _state(logs)["signals"] if s["agent"] == "macro_news"]
-    assert len(macro) == 50
+    macro = [s for s in _state(logs)["signals"] if s["agent"] in pipeline.MACRO_AGENTS]
+    assert len(macro) == 100  # two macro scores per ETF
     assert all(s["score"] == 0 and s["confidence"] == 0 for s in macro)
+    # a failed agent takes no weight: the Portfolio Manager started from the technical scores alone
+    assert _state(logs)["agent_weights"] == {"technical_det": 0.5, "technical_llm": 0.5}
 
 
 def test_switch_off_calls_the_real_module(logs, monkeypatch):
@@ -255,7 +257,7 @@ def test_real_macro_news_reuses_the_days_run_from_logs(logs, tmp_path, monkeypat
 
     assert not (logs / "incidents.csv").exists()
     assert _state(logs)["macro_summary"] == "# Macro report of the day"
-    assert {s["rationale"] for s in _state(logs)["signals"] if s["agent"] == "macro_news"} == {"real run"}
+    assert {s["rationale"] for s in _state(logs)["signals"] if s["agent"] in pipeline.MACRO_AGENTS} == {"real run"}
 
 
 def test_real_macro_news_never_runs_for_another_day(logs, tmp_path, monkeypatch):
@@ -348,3 +350,30 @@ def test_a_failing_logbook_never_stops_the_day(logs, monkeypatch):
     assert pipeline.run_day(DAY, logs) is None
     assert set(pd.read_csv(logs / "incidents.csv")["step"]) == {"logbook"}
     assert len(validate_order_log(pd.read_csv(logs / "orders.csv"))) > 0
+
+
+def test_starting_weights_go_only_to_agents_that_gave_a_score(logs, monkeypatch):
+    def technical_det_only(prices, features, as_of, lessons):  # the LLM technical score does not exist yet
+        return pipeline.mock.mock_signals(as_of.isoformat(), agents=["technical_det"])
+
+    monkeypatch.setitem(pipeline.MOCK, "technical", technical_det_only)
+    pipeline.run_day(DAY, logs)
+    # each family counts the same; technical_llm gave nothing, so technical_det carries its family's half
+    assert _state(logs)["agent_weights"] == {"technical_det": 0.5, "macro_market": 0.25, "macro_etf": 0.25}
+    assert pipeline.starting_weights(settings.SIGNAL_AGENTS) == dict.fromkeys(settings.SIGNAL_AGENTS, 0.25)
+    assert not (logs / "incidents.csv").exists()
+
+    # a rerun reads the day's signals back from the logs, even though one technical score is missing
+    monkeypatch.setitem(pipeline.MOCK, "technical", _boom)
+    assert pipeline.run_day(DAY, logs, rerun=True) is not None
+    assert not (logs / "incidents.csv").exists()
+
+
+def test_logged_weights_are_rescaled_over_the_agents_that_scored(logs):
+    logs.mkdir(parents=True)
+    pd.DataFrame({"date": "2026-12-04", "agent": settings.SIGNAL_AGENTS, "weight": [0.4, 0.2, 0.3, 0.1],
+                  "hit_rate": [0.6, 0.5, 0.5, 0.4]}).to_csv(logs / "agent_weights.csv", index=False)
+    weights = pipeline.load_agent_weights(logs, DAY, ["technical_det", "macro_market", "macro_etf"])
+    assert weights == pytest.approx({"technical_det": 0.5, "macro_market": 0.375, "macro_etf": 0.125})
+    assert pipeline.load_agent_weights(logs, date(2026, 12, 1), ["technical_det"]) == {"technical_det": 1.0}
+

@@ -33,8 +33,13 @@ TRADING_DAYS = [
 
 # --- Agents ------------------------------------------------------------------
 # Signal sources the Portfolio Manager combines, one weight each (Σ weights = 1).
-# The Technical agent emits two: a deterministic score and an LLM-interpreted one.
-SIGNAL_AGENTS = ["technical_det", "technical_llm", "macro_news"]
+# Agents that give every ETF a score. The Technical agent emits two (a deterministic score and an LLM-interpreted
+# one), the Macro/News agent two (macro_market: the day's macro views through the exposure table; macro_etf: the
+# ETF analysts' own call). The Portfolio Manager weights each one and learns which predicts better.
+SIGNAL_AGENTS = ["technical_det", "technical_llm", "macro_market", "macro_etf"]
+# Starting weights, before any evidence: each family counts the same, split equally between its agents that
+# gave a score that day. An agent that gives no score takes no weight (graph/pipeline.py: load_agent_weights).
+AGENT_FAMILIES = {"technical": ["technical_det", "technical_llm"], "macro": ["macro_market", "macro_etf"]}
 
 # One switch per pipeline step (graph/pipeline.py). True = use the mock from data/mock.py.
 # Set your step to False once your real module works. While any step is on a mock,
@@ -101,7 +106,8 @@ MACRO_EXPLORE_SEARCHES = 6  # exploration budget (Sonnet)
 MACRO_EXPLORE_FETCHES = 4
 # ETF analysts: one Sonnet "hedge-fund quant" per theme of the universe, who searches and scores its ETFs.
 MACRO_ANALYST_SEARCHES = 6  # web searches per theme
-MACRO_ANALYST_SHARE = 0.5  # macro_news score = (1 - share) x factor views + share x ETF analysts
+MACRO_HORIZON_SESSIONS = 3  # the analysts judge the move over this many trading sessions, and are graded on it
+MACRO_SCORECARD_CALLS = 5  # past calls per ETF an analyst sees with what happened next
 
 # Source registry: a source needs this many graded uses before its status can change.
 SOURCE_MIN_USES = 3
