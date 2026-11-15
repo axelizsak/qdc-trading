@@ -173,7 +173,18 @@ def analyse(orders: pd.DataFrame, holdings: pd.DataFrame, cash_eur: float, price
     returns = table.pct_change(fill_method=None).iloc[1:]
     known = [t for t in weights.index if t in returns.columns and returns[t].count() >= cfg.MIN_RETURNS]
     short_history = sorted(set(weights.index) - set(known))
-    note = (f" History under {cfg.MIN_RETURNS} days, counted as flat: {', '.join(short_history)}." if short_history else "")
+    note = ""
+    if short_history and len(returns):
+        # An ETF without enough history is never counted as riskless: it moves like the benchmark times its
+        # leverage, or at the default volatility when the benchmark has no history either.
+        market = returns[MARKET_TICKER] if MARKET_TICKER in returns.columns else pd.Series(dtype=float)
+        swing = pd.Series(np.where(np.arange(len(returns)) % 2 == 0, 1.0, -1.0), index=returns.index)
+        stand_in = market.fillna(0.0) if market.count() >= cfg.MIN_RETURNS else swing * cfg.DEFAULT_VOL / np.sqrt(252)
+        how = f"{MARKET_TICKER} times its leverage" if market.count() >= cfg.MIN_RETURNS else f"{cfg.DEFAULT_VOL:.0%} volatility a year times its leverage"
+        for t in short_history:
+            returns[t] = stand_in * abs(float(universe.loc[t, "leveraged"])) * (1.0 if float(universe.loc[t, "leveraged"]) > 0 else -1.0)
+        known = list(weights.index)
+        note = f" History under {cfg.MIN_RETURNS} days, so counted as {how}: {', '.join(short_history)}."
     port = (returns[known].fillna(0.0) * weights[known]).sum(axis=1) if known else pd.Series(0.0, index=returns.index)
     enough = len(port) >= cfg.MIN_RETURNS
     fixed: dict[str, tuple[float, str]] = {}
@@ -220,7 +231,7 @@ def analyse(orders: pd.DataFrame, holdings: pd.DataFrame, cash_eur: float, price
                                      "No independent bets to count: the portfolio is all cash or has no history.")
 
     # Volatility and drawdown, absolute
-    path = (1 + port).cumprod()
+    path = pd.concat([pd.Series([1.0]), (1 + port).cumprod()], ignore_index=True)  # the peak can be the start
     drawdown = float((path / path.cummax() - 1).min()) if enough else 0.0
     vol_raw = float(port.std() * np.sqrt(252)) if enough else 0.0
     vol = vol_raw * scale
@@ -263,7 +274,7 @@ def analyse(orders: pd.DataFrame, holdings: pd.DataFrame, cash_eur: float, price
     if bench_ok:
         bench = bench.reindex(port.index).fillna(0.0)
         bench_vol = float(bench.std() * np.sqrt(252))
-        bench_path = (1 + bench).cumprod()
+        bench_path = pd.concat([pd.Series([1.0]), (1 + bench).cumprod()], ignore_index=True)
         bench_dd = float((bench_path / bench_path.cummax() - 1).min())
         beta = float(np.cov(port, bench)[0, 1] / bench.var()) if bench.var() > 0 else 0.0
         relative["volatility_vs_benchmark"] = (vol / bench_vol if bench_vol > 0 else 0.0,
@@ -328,6 +339,15 @@ def analyse(orders: pd.DataFrame, holdings: pd.DataFrame, cash_eur: float, price
 
     rows = hard + rows_for(as_of, {k: v for k, v in cfg.FIXED.items() if k != "cash_reserve"}, fixed)
     rows += rows_for(as_of, cfg.RELATIVE, relative) + extra
+    if short_history:
+        share = float(weights[short_history].sum())
+        rows.append({"date": as_of, "metric": "short_history", "value": share, "limit": 0.0, "status": "warning",
+                     "comment": f"{pct(share)} of the portfolio is in ETFs with under {cfg.MIN_RETURNS} days of prices "
+                                f"({', '.join(short_history)}): their risk is a stand-in, not a measure.{note}"})
+    if len(weights) and not enough:
+        rows.append({"date": as_of, "metric": "price_history", "value": float(len(port)), "limit": float(cfg.MIN_RETURNS),
+                     "status": "warning", "comment": f"Only {len(port)} days of returns: volatility, drawdown and the outcome "
+                                                     f"odds cannot be estimated (they need {cfg.MIN_RETURNS}) and show as 0."})
     if not bench_ok:
         rows.append({"date": as_of, "metric": "benchmark_data", "value": 0.0, "limit": np.nan, "status": "warning",
                      "comment": f"Not enough {MARKET_TICKER} prices to compare with the benchmark; those rows are left out."})

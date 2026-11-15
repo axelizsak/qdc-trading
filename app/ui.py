@@ -11,7 +11,8 @@ from graph import pipeline
 
 STEPS = ["data", "technical", "macro_news", "portfolio", "risk"]
 STEP_LABELS = {"data": "Data", "technical": "Technical", "macro_news": "Macro / News", "portfolio": "Portfolio",
-               "risk": "Risk", "logbook": "Logbook", "review": "Review loop"}
+               "risk": "Risk", "logbook": "Logbook", "review": "Review loop",
+               "dividends": "Ex-dividend dates"}
 FACTOR_LABELS = {
     "ecb_rates": "ECB rates", "fed_us_rates": "Fed / US rates", "inflation": "Inflation",
     "growth_recession": "Growth", "eurusd": "EUR / USD", "oil": "Oil", "energy_weather": "Energy & weather",

@@ -21,6 +21,9 @@ load_dotenv(ROOT / ".env")
 START_CAPITAL_EUR = 10_000
 BENCHMARK = "WORLD"  # iShares Core MSCI World, "Global equity (benchmark)" in the Belfius ETF list
 MAX_ORDERS_PER_DAY = 5
+# Decimals of an order's units. 4 = fractional units (what the team understood from Belfius, to confirm on the
+# order form). Set it to 0 if the form only takes whole units: the Portfolio Manager then sizes in whole units.
+ORDER_UNIT_DECIMALS = 4
 MAX_REVISIONS = 2  # times a day can go back to the Portfolio Manager with human feedback
 TRANSACTION_COST = 0.0
 TRADING_DAYS = [

@@ -595,3 +595,27 @@ def test_the_pipeline_accepts_the_real_risk_manager(tmp_path, monkeypatch):
     assert pending["gate"] == "risk" and pending["incidents"] == []
     got = pd.DataFrame(pending["risk_report"])
     assert len(got) >= 12 and {"volatility", "volatility_vs_benchmark", "dividend_payers"} <= set(got["metric"])
+
+
+# --- An ETF without history is never riskless, and a fall from the first day counts ---------------------------------
+
+def test_an_etf_with_a_short_history_is_not_counted_as_riskless(prices):
+    recent = prices[(prices["ticker"] != "NASDAQ 3X") | (pd.to_datetime(prices["date"]) >= pd.Timestamp("2026-11-25"))]
+    order = buy(prices, **{"NASDAQ 3X": 3_000})
+    rows = report(order, recent)
+    assert rows.loc["volatility", "value"] > 0.05  # it used to be 0%: now the benchmark times its leverage
+    assert rows.loc["short_history", "status"] == "warning" and "NASDAQ 3X" in rows.loc["short_history", "comment"]
+    assert "counted as WORLD times its leverage" in rows.loc["volatility", "comment"]
+    assert "short_history" not in report(order, prices).index  # with a full history: no stand-in, no warning
+
+
+def test_a_fall_from_the_first_day_is_a_drawdown(prices):
+    falling = prices.copy()
+    days = sorted(falling["date"].unique())[-61:]
+    mine = (falling["ticker"] == "GOLD") & falling["date"].isin(days)
+    path = dict(zip(days, 100 * 0.995 ** np.arange(len(days))))  # down half a percent every day, from the first one
+    falling.loc[mine, "close_eur"] = falling.loc[mine, "date"].map(path)
+    falling.loc[mine, "adj_close_eur"] = falling.loc[mine, "close_eur"]
+    rows = report(buy(falling, GOLD=5_000), falling)  # half the portfolio
+    expected = (1 - 0.005 * 0.5) ** 60 - 1  # the whole fall counts, starting at the first day of the window
+    assert rows.loc["drawdown", "value"] == pytest.approx(expected, rel=0.01)

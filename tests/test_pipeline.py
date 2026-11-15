@@ -377,3 +377,23 @@ def test_logged_weights_are_rescaled_over_the_agents_that_scored(logs):
     assert weights == pytest.approx({"technical_det": 0.5, "macro_market": 0.375, "macro_etf": 0.125})
     assert pipeline.load_agent_weights(logs, date(2026, 12, 1), ["technical_det"]) == {"technical_det": 1.0}
 
+
+
+def test_the_risk_manager_gets_the_ex_dividend_dates(logs, monkeypatch):
+    seen = {}
+
+    def risk(orders, holdings, cash_eur, prices, as_of, **extra):
+        seen.update(extra)
+        return pipeline.mock.mock_risk_report(as_of.isoformat()), {}
+
+    monkeypatch.setitem(pipeline.MOCK, "risk", risk)
+    pending = pipeline.run_day(DAY, logs)
+    pipeline.resume_day(DAY, pipeline.approve(pending), logs)
+    assert seen["ex_dividends"]["ticker"].tolist() == ["DIVIDEND LEADERS", "BEL 20"]
+
+    # when the dates cannot be read, it is an incident and the Risk Manager is told there are none
+    monkeypatch.setitem(pipeline.EX_DIVIDENDS_SOURCE, True, _boom)
+    pending = pipeline.run_day(DAY, logs, rerun=True)
+    assert [i["step"] for i in pending["incidents"]] == ["dividends"] and len(pending["proposed_orders"]) > 0
+    pipeline.resume_day(DAY, pipeline.approve(pending), logs)
+    assert seen["ex_dividends"] is None

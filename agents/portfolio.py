@@ -32,6 +32,7 @@ daily record of the portfolios), client, use_llm, extra_history.
 
 import re
 from datetime import date, datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 
@@ -187,6 +188,12 @@ def floor4(values):
     return np.floor(np.asarray(values, dtype=float) * 1e4 + 1e-9) / 1e4
 
 
+def floor_units(values):
+    """Units rounded down to what the order form takes (ORDER_UNIT_DECIMALS in data/config.py: 4, or 0 for whole units)."""
+    step = 10 ** settings.ORDER_UNIT_DECIMALS
+    return np.floor(np.asarray(values, dtype=float) * step + 1e-9) / step
+
+
 def effective_cap(cap: float, budget: float, n: int) -> float:
     """A code portfolio's cap per ETF, relaxed when few ETFs qualify: never below twice an equal share of the
     budget, so the weights are still a choice and not forced to be equal."""
@@ -268,16 +275,31 @@ def baseline_target(final: pd.Series, vol: pd.Series, universe: pd.DataFrame, cu
     return result[result > 0], {"exposure": exposure, "market_score": market}
 
 
+@lru_cache(maxsize=1)
+def leveraged_tickers() -> frozenset[str]:
+    """The leveraged and inverse ETFs of the universe (leverage other than 1)."""
+    universe = load_universe()
+    return frozenset(universe.loc[universe["leveraged"].astype(int) != 1, "ticker"])
+
+
 def apply_constraints(weights: pd.Series, current: pd.Series, priced: set[str], exclude: set[str],
                       pinned: set[str], max_weight: dict[str, float]) -> pd.Series:
-    """The human's constraints and the cash cushion, applied to any target: excluded and unpriced ETFs go,
-    pinned ETFs stay as they are, max_weight clips, and the rest is scaled down to leave EXPOSURE_MAX at most invested."""
+    """The human's constraints, the hard limits and the cash cushion, applied to any target (the code's, the
+    LLM's, the final blend): excluded and unpriced ETFs go, pinned ETFs stay as they are, max_weight clips, no ETF
+    is above MAX_POSITION, leveraged and inverse ETFs together stay within MAX_LEVERAGED_SHARE (what a limit cuts
+    stays in cash), and the rest is scaled down to leave EXPOSURE_MAX at most invested."""
     free = weights.astype(float)
     free = free[[t for t in free.index if t in priced and t not in exclude and t not in pinned]]
     for ticker, cap in max_weight.items():
         if ticker in free.index:
             free[ticker] = min(free[ticker], cap)
     kept = pd.Series({t: float(current.get(t, 0.0)) for t in pinned}, dtype=float)
+    free = free.clip(upper=cfg.MAX_POSITION)
+    geared = leveraged_tickers()
+    mine = [t for t in free.index if t in geared]
+    allowed = max(cfg.MAX_LEVERAGED_SHARE - float(kept[[t for t in kept.index if t in geared]].sum()), 0.0)
+    if mine and free[mine].sum() > allowed:
+        free[mine] = free[mine] * allowed / free[mine].sum()
     room = max(cfg.EXPOSURE_MAX - float(kept.sum()), 0.0)
     if free.sum() > room and free.sum() > 0:
         free = free * room / free.sum()
@@ -404,7 +426,7 @@ def build_orders(target: pd.Series, units: pd.Series, fill: pd.Series, buy_price
         held = float(units.get(t["ticker"], 0.0))
         if t["side"] == "SELL":
             n = held if t["exit"] or abs(t["change"]) * nav / fill[t["ticker"]] >= held else \
-                float(floor4(abs(t["change"]) * nav / fill[t["ticker"]]))
+                float(floor_units(abs(t["change"]) * nav / fill[t["ticker"]]))
         else:
             n = abs(t["change"]) * nav / buy_price[t["ticker"]]
         rows.append({**t, "units": n})
@@ -415,7 +437,7 @@ def build_orders(target: pd.Series, units: pd.Series, fill: pd.Series, buy_price
     out = []
     for r in rows:
         n = r["units"] if r["side"] == "SELL" and (r["exit"] or r["units"] == float(units.get(r["ticker"], 0.0))) \
-            else float(floor4(r["units"] * (scale if r["side"] == "BUY" else 1.0)))
+            else float(floor_units(r["units"] * (scale if r["side"] == "BUY" else 1.0)))
         if n > 0 and n * fill[r["ticker"]] >= 1.0:
             out.append({**r, "units": n, "price": float(fill[r["ticker"]]), "value": n * float(fill[r["ticker"]])})
     columns = ["ticker", "side", "units", "price", "value", "now", "to", "exit", "change", "gain", "timing"]
@@ -539,8 +561,11 @@ def day_status(as_of: date) -> str:
 
 ASSUMPTIONS = [
     "An order fills at the last close before its day, on the ETF's own exchange; costs are zero.",
-    "Fractional units are allowed; sells fund buys on the same day; cash never goes below zero.",
+    ("Fractional units are allowed" if settings.ORDER_UNIT_DECIMALS else "Orders are in whole units")
+    + "; sells fund buys on the same day; cash never goes below zero.",
     "At most 5 orders a day; no shorting (inverse ETFs are ordinary ETFs here).",
+    f"Hard limits: no ETF above {cfg.MAX_POSITION:.0%} of the portfolio, and at most {cfg.MAX_LEVERAGED_SHARE:.0%} in "
+    "leveraged and inverse ETFs together; what a limit cuts stays in cash.",
     "Dividends are not credited to cash: a distributing ETF loses its price drop on the ex-dividend day.",
     "This is a recommendation for the human to review, not an instruction to trade.",
 ]

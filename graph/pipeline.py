@@ -62,8 +62,8 @@ from agents import logbook, macro_news, portfolio, risk, technical
 from data import config as settings
 from data import mock
 from data.schemas import (
-    FEATURES, HOLDINGS, INCIDENTS, ORDER_LOG, ORDERS, PORTFOLIO, PRICES, REVIEW_DECISIONS, REVIEWS, RISK_REPORT,
-    SIGNALS, validate_agent_weights, validate_features, validate_holdings, validate_incidents, validate_order_log,
+    EX_DIVIDENDS, FEATURES, HOLDINGS, INCIDENTS, ORDER_LOG, ORDERS, PORTFOLIO, PRICES, REVIEW_DECISIONS, REVIEWS, RISK_REPORT,
+    SIGNALS, validate_agent_weights, validate_ex_dividends, validate_features, validate_holdings, validate_incidents, validate_order_log,
     validate_orders, validate_portfolio, validate_prices, validate_reviews, validate_risk_report, validate_signals,
 )
 from data.universe import tickers
@@ -80,6 +80,7 @@ class DayState(TypedDict, total=False):
     prices: list[dict]
     indicators: list[dict]  # Features format
     holdings: list[dict]
+    ex_dividends: list[dict] | None  # Ex-dividends format; None when the dates could not be read
     cash_eur: float
     signals: Annotated[list[dict], operator.add]  # technical and macro_news both add rows
     macro_summary: str
@@ -114,6 +115,14 @@ def _mock_portfolio(signals, weights, lessons, holdings, cash_eur, prices, as_of
     memo = "Mock investment memo." + (f" Revised after: {feedback.splitlines()[-1]}" if feedback else "")
     return mock.mock_portfolio(seed=revision), mock.mock_orders(as_of.isoformat(), seed=revision), memo
 
+
+def _real_ex_dividends(as_of: date) -> pd.DataFrame:
+    from data import dividends
+    return dividends.expected_ex_dividends(as_of, settings.TRADING_DAYS[-1] + timedelta(days=7), today=as_of)
+
+
+# The ex-dividend dates come with the data step: its mock while USE_MOCK["data"] is on.
+EX_DIVIDENDS_SOURCE = {True: lambda as_of: mock.mock_ex_dividends(as_of.isoformat()), False: _real_ex_dividends}
 
 MOCK = {
     "data": lambda as_of: (mock.mock_prices(end=as_of.isoformat()), mock.mock_features(as_of.isoformat())),
@@ -295,7 +304,8 @@ def cash_after(orders: pd.DataFrame, cash_eur: float, close: pd.Series) -> float
 def check_orders(orders: pd.DataFrame, holdings: pd.DataFrame, cash_eur: float, prices: pd.DataFrame,
                  as_of: date) -> list[str]:
     """The trading rules, in plain words (empty when the orders pass): at most MAX_ORDERS_PER_DAY orders,
-    one per ETF, no selling more than held, enough cash at the fill prices (sells fund buys)."""
+    one per ETF, units with at most ORDER_UNIT_DECIMALS decimals, no selling more than held, enough cash at
+    the fill prices (sells fund buys)."""
     problems = []
     if len(orders) > settings.MAX_ORDERS_PER_DAY:
         problems.append(f"{len(orders)} orders, the limit is {settings.MAX_ORDERS_PER_DAY} a day")
@@ -303,6 +313,13 @@ def check_orders(orders: pd.DataFrame, holdings: pd.DataFrame, cash_eur: float, 
     if twice:
         problems.append("More than one order on " + ", ".join(twice))
     held = dict(zip(holdings["ticker"], holdings["units"].astype(float)))
+    step = 10 ** settings.ORDER_UNIT_DECIMALS
+    scaled = orders["units"].astype(float) * step
+    exits = (orders["side"] == "SELL") & ((orders["units"].astype(float) - orders["ticker"].map(held).fillna(-1.0)).abs() < 1e-9)
+    finer = sorted(set(orders.loc[((scaled - scaled.round()).abs() > 1e-6) & ~exits, "ticker"]))  # selling all one holds is fine
+    if finer:
+        problems.append(("Whole units only: " if settings.ORDER_UNIT_DECIMALS == 0 else
+                         f"At most {settings.ORDER_UNIT_DECIMALS} decimals in the units: ") + ", ".join(finer))
     for row in orders[orders["side"] == "SELL"].itertuples():
         if float(row.units) > held.get(row.ticker, 0) + 1e-9:
             problems.append(f"Selling {float(row.units):g} {row.ticker}, but only {held.get(row.ticker, 0):g} held")
@@ -373,8 +390,10 @@ def order_notes(decisions: list[dict]) -> str:
 
 
 def fmt_units(units) -> str:
-    """Units as the Belfius form takes them: up to 4 decimals, no trailing zeros ('3', '2.5', '0.1234')."""
-    return f"{float(units):.4f}".rstrip("0").rstrip(".")
+    """Units as the Belfius form takes them: up to ORDER_UNIT_DECIMALS decimals, no trailing zeros
+    ('3', '2.5', '0.1234')."""
+    text = f"{float(units):.{settings.ORDER_UNIT_DECIMALS}f}"
+    return text.rstrip("0").rstrip(".") if "." in text else text
 
 
 def executive_summary(state: DayState, as_of: date) -> str:
@@ -471,11 +490,17 @@ def data_step(state: DayState, config: RunnableConfig) -> dict:
         incidents.append(_incident(logs, as_of, "data", exc))
         prices, features = pd.DataFrame(columns=PRICES), pd.DataFrame(columns=FEATURES)
         holdings, cash = pd.DataFrame(columns=HOLDINGS), float(settings.START_CAPITAL_EUR)
+    try:  # without the dates the Risk Manager warns about every distributing ETF: a failure here costs nothing else
+        ex_dividends = _records(validate_ex_dividends(EX_DIVIDENDS_SOURCE[settings.USE_MOCK["data"]](as_of)))
+    except Exception as exc:
+        ex_dividends = None
+        incidents.append(_incident(logs, as_of, "dividends", exc))
     lessons_path = logs / "lessons.md"
     return {
         "prices": _records(prices),
         "indicators": _records(features),
         "holdings": _records(holdings),
+        "ex_dividends": ex_dividends,
         "cash_eur": cash,
         "agent_weights": load_agent_weights(logs, as_of),
         "lessons": lessons_path.read_text(encoding="utf-8") if lessons_path.exists() else "",
@@ -628,8 +653,10 @@ def risk_step(state: DayState, config: RunnableConfig) -> dict:
     macro_home = _signals_home("macro_news", logs)  # where the Macro/News agent keeps its views and evidence
     views_path = macro_home / "macro_views.csv"
     try:
+        dated = state.get("ex_dividends")
         report, details = _call("risk", orders, holdings, cash, prices, as_of, logs_dir=logs,
-                                macro_views=pd.read_csv(views_path) if views_path.exists() else None)
+                                macro_views=pd.read_csv(views_path) if views_path.exists() else None,
+                                ex_dividends=None if dated is None else _frame(dated, EX_DIVIDENDS))
         validate_risk_report(report)
     except Exception as exc:
         return {"risk_report": [], "risk_board": "", "risk_reading": "",

@@ -14,6 +14,7 @@ Two families, so the team can read the portfolio against a fixed yardstick and a
 RISK_DAYS = 60            # daily returns used for volatility, drawdown, beta, risk shares and tracking error
 LIQUIDITY_DAYS = 20       # days of traded volume behind the liquidity measure
 MIN_RETURNS = 20          # returns needed before a risk figure is calculated
+DEFAULT_VOL = 0.20        # annualised: stands in for an ETF without that history when the benchmark has none either
 
 FIXED = {
     "largest_position": (0.30, "max"),      # share of the portfolio in one ETF
