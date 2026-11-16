@@ -29,42 +29,36 @@ ui.kpis([
      "no order yet" if edge is None else "ahead" if edge >= 0 else "behind",
      None if edge is None else "up" if edge >= 0 else "down"),
     ("Cash", f"€{cash:,.0f}", f"{cash / total:.0%} of the portfolio" if total else None),
-    ("Today", (data.day_outcome(data.day_record(as_of, logs)) if ui.READ_ONLY
-               else ui.day_label(status, state, pending)).capitalize(), None,
-     "wait" if status == "waiting for approval" and not ui.READ_ONLY else None),
+    ("Today", ui.day_label(status, state, pending).capitalize(), None,
+     "wait" if status == "waiting for approval" else None),
 ])
 
-if ui.READ_ONLY:
-    st.caption("Read-only: this page shows what the team's logs hold. The team runs the days and reviews the orders "
-               "on its own machine.")
-else:
-    ui.label("Today", f"{as_of:%A %d %B}")
-    ui.day_steps(status, state, pending)
+ui.label("Today", f"{as_of:%A %d %B}")
+ui.day_steps(status, state, pending)
 for incident in state.get("incidents", []):
     st.error(ui.incident_text(incident), icon=":material/error:")
-if not ui.READ_ONLY:
-    st.write("")
-    go, again, _ = st.columns([2, 1, 2])
-    if status == "not started":
-        if go.button("Run the day", type="primary", icon=":material/play_arrow:", width="stretch",
-                     help="Runs every agent, then pauses for your first review on the Today page"):
-            with st.spinner("The agents are running (about a minute)..."):
-                pipeline.run_day(as_of, logs)
-            st.rerun()
+st.write("")
+go, again, _ = st.columns([2, 1, 2])
+if status == "not started":
+    if go.button("Run the day", type="primary", icon=":material/play_arrow:", width="stretch",
+                 help="Runs every agent, then pauses for your first review on the Today page"):
+        with st.spinner("The agents are running (about a minute)..."):
+            pipeline.run_day(as_of, logs)
+        st.rerun()
+else:
+    if status == "waiting for approval":
+        what = {"orders": f"Review the {len(state.get('proposed_orders', []))} proposed orders",
+                "risk": "Review the risk", "summary": "Sign off the summary"}[pending["gate"]]
+        go.page_link("views/today.py", label=what, icon=":material/arrow_forward:")
+    elif state.get("outcome") == "stopped":
+        go.page_link("views/today.py", label="No trade today: see why", icon=":material/block:")
     else:
-        if status == "waiting for approval":
-            what = {"orders": f"Review the {len(state.get('proposed_orders', []))} proposed orders",
-                    "risk": "Review the risk", "summary": "Sign off the summary"}[pending["gate"]]
-            go.page_link("views/today.py", label=what, icon=":material/arrow_forward:")
-        elif state.get("outcome") == "stopped":
-            go.page_link("views/today.py", label="No trade today: see why", icon=":material/block:")
-        else:
-            go.page_link("views/today.py", label="Approved: export the orders", icon=":material/task_alt:")
-        if again.button("Run again", icon=":material/replay:",
-                        help="Starts the day again. Scores already logged are read back: no new Claude calls"):
-            with st.spinner("Running again from the logs..."):
-                pipeline.run_day(as_of, logs, rerun=True)
-            st.rerun()
+        go.page_link("views/today.py", label="Approved: export the orders", icon=":material/task_alt:")
+    if again.button("Run again", icon=":material/replay:",
+                    help="Starts the day again. Scores already logged are read back: no new Claude calls"):
+        with st.spinner("Running again from the logs..."):
+            pipeline.run_day(as_of, logs, rerun=True)
+        st.rerun()
 
 ui.label("Performance", f"€ · an order fills at {settings.fill_rule()}")
 if history.empty:

@@ -17,8 +17,7 @@ report = record["risk_report"] if len(record["risk_report"]) else pd.DataFrame(s
 page = record["risk_page"] or f"{state.get('risk_board', '')}\n{state.get('risk_reading', '')}"
 if report.empty:
     st.info("The Risk Manager runs after the orders review: nothing yet for this day.", icon=":material/info:")
-    if not ui.READ_ONLY:
-        st.page_link("views/today.py", label="Go to your review", icon=":material/arrow_forward:")
+    st.page_link("views/today.py", label="Go to your review", icon=":material/arrow_forward:")
     st.stop()
 
 counts = report["status"].value_counts()

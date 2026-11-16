@@ -13,8 +13,7 @@ ui.page("Portfolio Manager", "It combines the four scores with their weights, bu
                              "and with Claude, blends both, then picks at most 5 orders.")
 memo = record["memo"] or state.get("memo", "")
 if not memo:
-    st.info("The Portfolio Manager has not run for this day." + ("" if ui.READ_ONLY else " Run the day from the dashboard."),
-            icon=":material/info:")
+    st.info("The Portfolio Manager has not run for this day: run the day from the dashboard.", icon=":material/info:")
     st.stop()
 
 target = record["target"] if len(record["target"]) else pd.DataFrame(state.get("target_weights", []), columns=PORTFOLIO)

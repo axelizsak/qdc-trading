@@ -53,13 +53,8 @@ To try something without touching the graded logs, point everything at a copy: `
 ## The cockpit
 
 Dashboard · **Today** (your three reviews) · one page per agent · **Learning** (the weights and the backtest) ·
-**How it works** (the diagram: click a box to see what it does and its code) · Logbook.
-
-**Online, read-only.** With `QDC_READ_ONLY=1` the cockpit runs nothing and shows what the committed logs hold. To put
-it on Streamlit Community Cloud (free, the repo stays private): on [share.streamlit.io](https://share.streamlit.io)
-create an app from `axelizsak/qdc-trading`, branch `main`, file `app/streamlit_app.py`, Python 3.12; put
-`QDC_READ_ONLY = "1"` in its Secrets, and nothing else; choose who sees it in Settings → Sharing. It redeploys at each
-merge.
+**How it works** (the diagram: click a box to see what it does and its code) · Logbook. A finished day is read from
+its files in `logs/`, so any past day can be opened.
 
 ## Change the model
 
