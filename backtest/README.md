@@ -18,7 +18,15 @@ look into the future. They are judged forward only, by the review loop.
 python -m backtest.system_backtest                                   # every variant, every window since 2022 (about 10 minutes)
 python -m backtest.system_backtest --variants current watch_zero     # only these
 python -m backtest.system_backtest --since 2024-01-01
+python -m backtest.system_backtest --daily                           # one book over the whole history, valued every day
 ```
+
+**Daily mode (`--daily`).** The windows answer "what would our competition result have been". The daily mode
+answers "is the strategy good": one book from 2022 to today, never reset to cash, a decision every Monday and
+Thursday with the same rules, valued at every close. The Sharpe ratio comes from daily returns above the
+overnight rate (the `OVERNIGHT CASH` ETF), and two variants are compared on the same days, with a t-value on
+the gap between their Sharpe ratios. Results: `system_backtest_daily.csv` (one row per variant and close) and
+`system_backtest_daily_summary.csv`.
 
 **To test an idea:** add one line to `VARIANTS` (a setting to change), and a function to `SCORES` if the idea
 is a new way to turn the technical sheet into a score. Every variant runs on the same windows.
@@ -92,6 +100,24 @@ Return and risk are per 3-week window; risk is the spread of a window's return. 
 | momentum 13612: bottom fifth | -0.00% | +0.01% | -0.14% | -0.02% | +0.01% |
 
 Only two answers point the same way in both halves with some size: a "buy" is worth a little, a "watch" costs a little. Trend strength and the mean-reversion measures change sign from one half to the other. So `technical_llm` is no longer told to lower a buy because an ETF looks overbought: it is given the table instead.
+
+**5. The daily book (16 November 2026): Sharpe ratio from daily returns.** 4.9 years, 508 decision days, 23
+variants, no rule broken. Sharpe = return a year above the overnight rate (+0.9% a year on average) / volatility a year.
+
+| | Sharpe | First half | Second half | Return a year | Volatility | Worst fall |
+|---|---:|---:|---:|---:|---:|---:|
+| The system now | 1.18 | 0.63 | 1.72 | +13.3% | 10.3% | -10.1% |
+| The settings before 16 November | 0.74 | 0.00 | 1.48 | +8.2% | 10.3% | -19.7% |
+| The benchmark (WORLD) | 0.73 | 0.53 | 0.93 | +10.6% | 14.0% | -21.7% |
+
+No variant beats the system now by a Sharpe gap with a t-value of 2. The best, `skip_overbought` (1.32, t +1.0),
+is ahead only in the first half. A Sharpe ratio measured on 4.9 years is known to about 0.6 either way.
+
+**Letting the backtest pick the settings does not help.** Each year (or quarter), take the variant with the best
+Sharpe ratio so far and trade it in the next period: from 2023 on, that gives a Sharpe ratio of 1.19 (picked every
+year) or 1.36 (every quarter), against 1.35 for the settings before 16 November kept fixed. The best variant of the
+past is rarely the best of the next year. (The system now scores 1.70 over the same years, but its settings were
+chosen after seeing this history, so that number flatters it.)
 
 ## The strategy backtests (Achille)
 

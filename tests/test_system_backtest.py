@@ -89,6 +89,39 @@ def test_the_fill_rule_study_measures_what_ordering_after_the_open_is_worth(mark
     assert "trading days of the morning picks" in sb.show_fill_rule(study)
 
 
+def test_the_daily_book_carries_over_and_is_valued_at_every_close(market):
+    data, _ = market
+    days = sorted(data.sheets)
+    assert days == sb.decision_days(data.closes, SINCE) and {d.weekday() for d in days} == {0, 3}
+    book = sb.run_continuous(data, sb.VARIANTS[0])
+    closes = data.closes[data.closes.index >= data.fill_day(days[0])]
+    assert book["date"].tolist() == [d.date().isoformat() for d in closes.index]  # every close, from the first fill
+    first = book.iloc[0]
+    assert first["value"] == settings.START_CAPITAL_EUR and first["bench"] == settings.START_CAPITAL_EUR
+    assert book["broken_rules"].sum() == 0 and book["failed_days"].sum() == 0
+    assert 0 < book["orders"].sum() <= settings.MAX_ORDERS_PER_DAY * len(days)
+    assert book["orders"].max() <= settings.MAX_ORDERS_PER_DAY * 2  # at most two decisions between two closes
+    assert book["invested"].between(0, 1).all() and book["invested"].iloc[-1] > 0  # it holds ETFs across decisions
+    world = closes["WORLD"].ffill()
+    assert book["bench"].iloc[-1] == pytest.approx(settings.START_CAPITAL_EUR * world.iloc[-1] / world.iloc[0])
+
+
+def test_the_daily_summary_ranks_on_the_sharpe_ratio(market):
+    data, _ = market
+    variants = [sb.VARIANTS[0], sb.Variant("idle_in_cash", "idle budget stays in cash",
+                                           {"portfolio_config.IDLE_TO_BENCHMARK": 0.0})]
+    daily = sb.run_daily(data, variants, workers=1)
+    summary = sb.summarise_daily(daily, variants)
+    assert summary["variant"].tolist() == ["current", "idle_in_cash"]
+    assert summary["sharpe_vs_first"].iloc[0] == 0 and pd.isna(summary["t_sharpe_vs_first"].iloc[0])
+    assert summary["sharpe"].notna().all() and (summary["max_drawdown"] <= 0).all()
+    returns = daily[daily["variant"] == "current"]["value"].pct_change().dropna()
+    riskfree = daily[daily["variant"] == "current"]["riskfree"].pct_change().dropna()
+    excess = returns - riskfree
+    assert summary["sharpe"].iloc[0] == pytest.approx(excess.mean() / excess.std() * 252 ** 0.5)
+    assert "benchmark" in sb.show_daily(summary)
+
+
 def test_the_other_fill_rule_is_a_variant(market):
     data, starts = market
     same_day = next(v for v in sb.VARIANTS if v.name == "fill_same_day")
