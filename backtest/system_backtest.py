@@ -128,7 +128,9 @@ VARIANTS = [
     Variant("momentum_rank", "buy setups ranked by their momentum instead of all scored +1", score="momentum_rank"),
     Variant("confirmed_only", "a buy counts only with both confirmations", score="confirmed_only"),
     # The score of each rule signal (found by the signal study: "watch" ETFs lag, "avoid" ETFs do not)
-    Variant("watch_zero", "a 'watch' signal scores 0 instead of +0.5",
+    Variant("watch_half", "a 'watch' signal scores +0.5, as before 16 November 2026",
+            {"strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": 0.5, "neutral": 0.0, "avoid": -1.0}}),
+    Variant("watch_zero", "a 'watch' signal scores 0 (the current setting since 16 November 2026)",
             {"strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": 0.0, "neutral": 0.0, "avoid": -1.0}}),
     Variant("watch_negative", "a 'watch' signal scores -0.5 instead of +0.5",
             {"strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": -0.5, "neutral": 0.0, "avoid": -1.0}}),

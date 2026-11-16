@@ -64,7 +64,7 @@ looks better by a tenth of a percent with a t-value under 1 is not a finding.
 
 Return and risk are per 3-week window; risk is the spread of a window's return.
 
-**4. The most consistent lead: a "watch" signal should not count as a buy.** The ETFs the rule calls "watch" lagged the average ETF, and scoring them 0 gave a higher return with less risk and a smaller worst window. It is a lead, not a proof.
+**4. The most consistent lead: a "watch" signal should not count as a buy.** The ETFs the rule calls "watch" lagged the average ETF, and scoring them 0 gave a higher return with less risk and a smaller worst window. It is a lead, not a proof. It is applied since 16 November 2026 (`SIGNAL_SCORES` in `agents/strategy_config.py`): in the tables of this run, `current` is the system before that change and `watch_zero` the system after it. To go back, set `"watch": 0.5`.
 
 **5. What each answer of the technical sheet was worth:** the return of the ETFs with that answer over the next sessions, minus the average ETF (* = at least 2 standard errors from zero; with 50 cells tested, two or three stars are expected by luck alone).
 
