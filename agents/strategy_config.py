@@ -52,11 +52,14 @@ RANGE_EFFICIENCY_MAX = 0.2
 
 # Suggested signal, and the number sent in the Signals table (technical_det)
 #   buy     : buy setup, market above its SMA 200 and a trend that is not absent (ADX >= 20)
-#   watch   : buy setup, but the market is below its SMA 200 or the trend is absent
+#   watch   : buy setup, but the market is below its SMA 200 or the trend is absent (shown, not scored)
 #   For an inverse ETF the market filter is reversed: it is in its favour when the market is below its SMA 200.
 #   neutral : no setup
 #   avoid   : avoid setup (long and medium term both down)
-SIGNAL_SCORES = {"buy": 1.0, "watch": 0.5, "neutral": 0.0, "avoid": -1.0}
+# "watch" scores 0 since 16 November 2026: in the system backtest the ETFs called "watch" lagged the average ETF
+# in both halves of the history. It goes with IDLE_TO_BENCHMARK in agents/portfolio_config.py: the money they
+# no longer take follows the benchmark instead of sitting in cash (variant buys_plus_benchmark, backtest/README.md).
+SIGNAL_SCORES = {"buy": 1.0, "watch": 0.0, "neutral": 0.0, "avoid": -1.0}
 
 # ETFs the agent does not score
 SKIP_FAMILIES = ["cash"]   # OVERNIGHT CASH is the parking, not an investment

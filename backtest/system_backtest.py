@@ -102,6 +102,9 @@ class Variant:
 
 VARIANTS = [
     Variant("current", "the system as it is"),
+    Variant("before_16_nov", "the settings before 16 November 2026: 'watch' scores +0.5, idle budget stays in cash",
+            {"portfolio_config.IDLE_TO_BENCHMARK": 0.0, "portfolio_config.BENCHMARK_CAP": 0.30,
+             "strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": 0.5, "neutral": 0.0, "avoid": -1.0}}),
     # The Portfolio Manager's settings
     Variant("anchor_baseline", "portfolio sized by score / volatility instead of the mean-variance optimiser",
             {"portfolio_config.ANCHOR": "baseline"}),
@@ -118,14 +121,11 @@ VARIANTS = [
     Variant("no_leverage", "no leveraged or inverse ETF at all", {"portfolio_config.MAX_LEVERAGED_SHARE": 0.0}),
     Variant("benchmark_allowed", "the code portfolios may buy the benchmark ETF itself",
             {"portfolio_config.BENCHMARK_ALLOWED": True}),
-    # Money without an idea follows the market instead of sitting in cash (the leaderboard ranks on return)
-    Variant("idle_to_benchmark", "idle budget goes into the benchmark ETF, up to 30% of the portfolio",
-            {"portfolio_config.IDLE_TO_BENCHMARK": 1.0}),
-    Variant("idle_to_benchmark_60", "idle budget goes into the benchmark ETF, up to 60% of the portfolio",
-            {"portfolio_config.IDLE_TO_BENCHMARK": 1.0, "portfolio_config.BENCHMARK_CAP": 0.60}),
-    Variant("buys_plus_benchmark", "'watch' scores 0 and the idle budget goes into the benchmark ETF, up to 60%",
-            {"portfolio_config.IDLE_TO_BENCHMARK": 1.0, "portfolio_config.BENCHMARK_CAP": 0.60,
-              "strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": 0.0, "neutral": 0.0, "avoid": -1.0}}),
+    # Where the money without an idea goes (the leaderboard ranks on return)
+    Variant("idle_in_cash", "idle budget stays in cash instead of following the benchmark",
+            {"portfolio_config.IDLE_TO_BENCHMARK": 0.0}),
+    Variant("benchmark_cap_30", "the benchmark top-up stops at 30% of the portfolio instead of 60%",
+            {"portfolio_config.BENCHMARK_CAP": 0.30}),
     # The competition's fill rule (to confirm with Belfius): the same system if an order fills at its own day's close
     Variant("fill_same_day", "an order fills at the close of its own day instead of the close before",
             {"config.FILL_AT_PREVIOUS_CLOSE": False}),
@@ -136,9 +136,7 @@ VARIANTS = [
     Variant("momentum_rank", "buy setups ranked by their momentum instead of all scored +1", score="momentum_rank"),
     Variant("confirmed_only", "a buy counts only with both confirmations", score="confirmed_only"),
     # The score of each rule signal (found by the signal study: "watch" ETFs lag, "avoid" ETFs do not)
-    Variant("watch_zero", "a 'watch' signal scores 0 instead of +0.5",
-            {"strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": 0.0, "neutral": 0.0, "avoid": -1.0}}),
-    Variant("watch_negative", "a 'watch' signal scores -0.5 instead of +0.5",
+    Variant("watch_negative", "a 'watch' signal scores -0.5 instead of 0",
             {"strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": -0.5, "neutral": 0.0, "avoid": -1.0}}),
     Variant("buy_only", "only 'buy' scores: 'watch' and 'avoid' score 0",
             {"strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": 0.0, "neutral": 0.0, "avoid": 0.0}}),
