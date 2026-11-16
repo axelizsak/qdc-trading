@@ -116,12 +116,9 @@ def show_record(record: dict) -> None:
             "feedback": st.column_config.TextColumn("Feedback", width="large")})
 
 
-if ui.READ_ONLY or status == "done":
-    record = data.day_record(as_of, logs)
-    if data.day_outcome(record) in ("approved", "no trade today"):
-        show_record(record)
-    else:
-        st.info("This day's reviews are not in the logs.", icon=":material/info:")
+record = data.day_record(as_of, logs)
+if status == "done" or data.day_outcome(record) in ("approved", "no trade today"):  # finished: what the logs hold
+    show_record(record)
     st.stop()
 
 if status == "not started":
