@@ -100,3 +100,21 @@ def test_run_gives_both_technical_scores_when_the_llm_answers():
     assert both.groupby("agent")["ticker"].nunique().to_dict() == {"technical_det": 42, "technical_llm": 42}
     assert set(technical.run(prices, features, as_of, use_llm=False)["agent"]) == {"technical_det"}
     assert set(technical.run(prices, features, as_of)["agent"]) == {"technical_det"}  # no key: the rule score alone
+
+
+def test_the_llm_is_given_what_each_answer_has_been_worth(sheet, tmp_path, monkeypatch):
+    study = tmp_path / "signals.csv"
+    pd.DataFrame([{"group": "rule: buy", "sessions": 3, "edge": 0.0016, "t": 2.44, "calls": 3279, "days": 392},
+                  {"group": "rule: buy", "sessions": 10, "edge": 0.0027, "t": 1.4, "calls": 3270, "days": 390},
+                  {"group": "rule: watch", "sessions": 3, "edge": -0.0012, "t": -2.01, "calls": 2723, "days": 476}]
+                 ).to_csv(study, index=False)
+    assert technical_llm.record_lines(study).splitlines() == [
+        "- rule: buy: +0.16% after 3 sessions (t +2.4), +0.27% after 10 sessions (t +1.4)",
+        "- rule: watch: -0.12% after 3 sessions (t -2.0)"]
+    assert technical_llm.record_lines(tmp_path / "missing.csv") == ""
+
+    monkeypatch.setattr(technical_llm, "STUDY_CSV", study)
+    client = FakeClaude()
+    technical_llm.interpret(sheet, DAY, "", client)
+    assert "- rule: watch: -0.12% after 3 sessions (t -2.0)" in client.calls[0]["messages"][0]["content"]
+    assert "Use the record" in client.calls[0]["system"]

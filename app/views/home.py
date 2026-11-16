@@ -34,7 +34,7 @@ figures += [("Cash", f"€{cash:,.0f}", f"{cash / total:.0%} of the portfolio" i
              "hot" if status == "waiting for approval" else None)]
 ui.kpis(figures)
 
-ui.label("Performance", "EUR · an order fills at the last close before its day")
+ui.label("Performance", f"EUR · an order fills at {settings.fill_rule()}")
 if history.empty:
     st.caption("No executed orders yet: the portfolio is all cash.")
 elif history["date"].nunique() < 2:

@@ -53,6 +53,7 @@ RANGE_EFFICIENCY_MAX = 0.2
 # Suggested signal, and the number sent in the Signals table (technical_det)
 #   buy     : buy setup, market above its SMA 200 and a trend that is not absent (ADX >= 20)
 #   watch   : buy setup, but the market is below its SMA 200 or the trend is absent
+#   For an inverse ETF the market filter is reversed: it is in its favour when the market is below its SMA 200.
 #   neutral : no setup
 #   avoid   : avoid setup (long and medium term both down)
 SIGNAL_SCORES = {"buy": 1.0, "watch": 0.5, "neutral": 0.0, "avoid": -1.0}

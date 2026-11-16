@@ -304,7 +304,8 @@ def write_rationale(row: dict) -> str:
         text = text + f"; strength n/a, {row['confirmations']}/2"
     else:
         text = text + f"; strength {row['trend_strength']} (ADX {row['adx_14']:.0f}), {row['confirmations']}/2"
-    text = text + f"; market {labels[row['market_trend']]} -> {row['suggested_signal']}"
+    side = "market" if row["leveraged"] >= 0 else "market (reversed for an inverse ETF)"
+    text = text + f"; {side} {labels[row['market_trend']]} -> {row['suggested_signal']}"
     if row.get("mr_setup") is not None and row["mr_setup"] != "n/a":
         text = text + f" | regime {labels.get(row['regime'], row['regime'])}; mean reversion {row['mr_setup']}"
         if row["mr_oversold"] != "":
@@ -388,8 +389,9 @@ def sheet_for_one_etf(etf: pd.Series, prices: pd.DataFrame, indicators: pd.DataF
         row[key] = val
     row["momentum_13612"] = momentum_13612(own_prices)
     row["vol_60"] = vol
-    row["market_trend"] = market
-    row["suggested_signal"] = suggest_signal(momentum["momentum_setup"], market, momentum["trend_strength"])
+    # An inverse ETF rises when the market falls: for it the market filter is read the other way round
+    row["market_trend"] = reverse_answer(market) if inverse else market
+    row["suggested_signal"] = suggest_signal(momentum["momentum_setup"], row["market_trend"], momentum["trend_strength"])
 
     # Strategy 2: mean reversion (equities only, never on leveraged or inverse ETFs)
     applicable = bool(etf["use_timing"]) and int(etf["leveraged"]) == 1

@@ -179,6 +179,9 @@ def test_inverse_etf_is_read_on_its_index_and_reversed(sheet_and_signals):
     short = sheet[sheet["ticker"] == "S&P 500 SHORT"].iloc[0]
     assert short["read_on"] == "S&P 500"
     assert short["momentum_setup"] == "avoid"       # the S&P 500 rises, so its inverse is avoided
+    world = sheet[sheet["ticker"] == "WORLD"].iloc[0]
+    assert world["market_trend"] == "up" and short["market_trend"] == "down"  # a rising market is against an inverse ETF
+    assert "market (reversed for an inverse ETF) down" in short["rationale"]
 
 
 def test_bonds_and_cash_are_not_scored(sheet_and_signals):
@@ -205,3 +208,18 @@ def test_run_returns_valid_signals(sheet_and_signals):
     for score in signals["score"]:
         assert score in cfg.SIGNAL_SCORES.values()
     assert signals["confidence"].between(0, 1).all()
+
+
+def test_a_falling_market_is_in_favour_of_an_inverse_etf():
+    prices = made_up_prices()
+    days = np.arange(320)
+    for ticker, shape in {"WORLD": 0.999 ** days, "S&P 500": 0.9985 ** days}.items():  # the market falls all year
+        rows = prices["ticker"] == ticker
+        close = 100 * shape * (1 + 0.002 * np.sin(days))
+        for column, factor in (("close_eur", 1), ("adj_close_eur", 1), ("open_eur", 1), ("high_eur", 1.005), ("low_eur", 0.995)):
+            prices.loc[rows, column] = close * factor
+    sheet = technical.build_sheet(prices, compute_features(prices), pd.to_datetime(prices["date"]).max().date())
+    short = sheet[sheet["ticker"] == "S&P 500 SHORT"].iloc[0]
+    assert short["momentum_setup"] == "buy" and short["market_trend"] == "up"  # "up" for the inverse ETF itself
+    # before the fix, a falling market cut this buy to "watch": the filter was read the wrong way round
+    assert short["suggested_signal"] == ("watch" if short["trend_strength"] == "absent" else "buy")

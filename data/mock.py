@@ -7,6 +7,7 @@ import pandas as pd
 
 from data.config import DATA_DIR, MACRO_FACTORS, SIGNAL_AGENTS
 from data.schemas import (
+    EX_DIVIDENDS,
     LIST_SEP,
     MACRO_EXPOSURE,
     LOGBOOK,
@@ -21,6 +22,7 @@ from data.schemas import (
     validate_agent_weights,
     validate_etf_views,
     validate_evidence,
+    validate_ex_dividends,
     validate_features,
     validate_holdings,
     validate_incidents,
@@ -316,6 +318,14 @@ def mock_risk_calibration() -> pd.DataFrame:
     return validate_risk_calibration(pd.DataFrame(rows, columns=RISK_CALIBRATION))
 
 
+def mock_ex_dividends(as_of: str = "2026-12-07") -> pd.DataFrame:
+    """One dividend already paid and one expected inside the trading window. Format: Ex-dividends."""
+    day = pd.Timestamp(as_of).date()
+    rows = [("DIVIDEND LEADERS", (day - pd.Timedelta(days=4)).isoformat(), 0.27, "paid"),
+            ("BEL 20", (day + pd.Timedelta(days=2)).isoformat(), 0.85, "expected: paid on 09 Dec 2025 a year earlier")]
+    return validate_ex_dividends(pd.DataFrame(rows, columns=EX_DIVIDENDS))
+
+
 MOCKS = {
     "prices": mock_prices,
     "signals": mock_signals,
@@ -338,6 +348,7 @@ MOCKS = {
     "recommendations": mock_recommendations,
     "risk_forecasts": mock_risk_forecasts,
     "risk_calibration": mock_risk_calibration,
+    "ex_dividends": mock_ex_dividends,
     "logbook": mock_logbook,
 }
 

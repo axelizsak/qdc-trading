@@ -46,6 +46,9 @@ MACRO_EXPOSURE = ["ticker", "multiplier", *MACRO_FACTORS]
 RISK_REPORT = ["date", "metric", "value", "limit", "status", "comment"]
 # logs/reviews.csv: every human answer at the three review gates, with the feedback sent back.
 REVIEWS = ["date", "round", "gate", "decision", "feedback"]
+# Ex-dividend dates of the distributing ETFs (data/dividends.py), for the Risk Manager: dividends are not credited.
+# basis says what a row rests on: "paid", or "expected: ..." when it is estimated from last year's schedule.
+EX_DIVIDENDS = ["ticker", "ex_date", "amount_eur", "basis"]
 # logs/pm_portfolios.csv: the portfolios the Portfolio Manager built each day (the code's baseline and optimiser,
 # the LLM's own, and the final blend). It learns from them how far to trust the LLM. One set per date.
 PM_PORTFOLIOS = ["date", "source", "ticker", "weight"]
@@ -398,3 +401,17 @@ def validate_risk_calibration(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("risk_calibration: days_graded must be 0 or more")
     _require_unique(df, ["date"], "risk_calibration")
     return df
+
+
+def validate_ex_dividends(df: pd.DataFrame) -> pd.DataFrame:
+    """Ex-dividend dates: a real date, an amount above 0 or empty, what the row rests on, one row per (ticker, ex_date)."""
+    _require_columns(df, EX_DIVIDENDS, "ex_dividends")
+    if pd.to_datetime(df["ex_date"].astype(str), format="%Y-%m-%d", errors="coerce").isna().any():
+        raise ValueError("ex_dividends: ex_date must be a date (YYYY-MM-DD)")
+    amount = pd.to_numeric(df["amount_eur"], errors="coerce")
+    if not (df["amount_eur"].isna() | (amount > 0)).all():
+        raise ValueError("ex_dividends: amount_eur must be above 0, or empty when it is not known")
+    _require_text(df, "basis", "ex_dividends")
+    _require_unique(df, ["ticker", "ex_date"], "ex_dividends")
+    return df
+

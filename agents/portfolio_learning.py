@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from agents import portfolio_config as cfg
+from data import config as settings
 from data.schemas import AGENT_WEIGHTS, SIGNALS, validate_agent_weights, validate_signals
 
 
@@ -32,7 +33,7 @@ def return_table(prices: pd.DataFrame, as_of) -> pd.DataFrame:
 def forward_return(table: pd.DataFrame, decision_date: str, horizon: int) -> pd.Series | None:
     """Return from the fill price of `decision_date` (last close before it) `horizon` quotes ahead.
     None when those quotes are not known yet."""
-    before = np.flatnonzero(table.index < decision_date)
+    before = np.flatnonzero(settings.fills_from(table.index, decision_date))
     if len(before) == 0 or before[-1] + horizon >= len(table):
         return None
     start = before[-1]

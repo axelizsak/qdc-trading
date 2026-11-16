@@ -2,7 +2,7 @@
 
 1. Orders review: approve, modify or reject each proposed order and add your own. A reason is
    required to change an order. Checks: at most 5 orders, enough cash, enough units to sell.
-   Units can be fractional (4 decimals). An order fills at the last close before the day.
+   Units have ORDER_UNIT_DECIMALS decimals (data/config.py). An order fills at the last close before the day.
 2. Risk review: the Risk Manager's board, its independent reading and every metric, for the
    portfolio once those orders are filled.
 3. Summary review: the executive summary. Approving it writes the order log and the logbook.
@@ -20,6 +20,8 @@ from graph import pipeline
 
 DECISION = {"Approve": "approved", "Modify": "modified", "Reject": "rejected"}
 STATUS = {"ok": "✓ ok", "warning": "▲ warning", "breach": "✕ breach"}
+UNIT_STEP = float(10 ** -settings.ORDER_UNIT_DECIMALS)  # 0.0001 for fractional units, 1 for whole units
+UNIT_FORMAT = f"%.{settings.ORDER_UNIT_DECIMALS}f"
 
 as_of, logs = ui.as_of(), ui.pipeline_logs()
 status, state, pending = pipeline.day_status(as_of, logs)
@@ -146,7 +148,7 @@ if gate == "risk":
                      })
     ui.label("Orders you approved")
     st.dataframe(orders.drop(columns="date"), hide_index=True, width="stretch",
-                 column_config={"units": st.column_config.NumberColumn("units", format="%.4f")})
+                 column_config={"units": st.column_config.NumberColumn("units", format=UNIT_FORMAT)})
     ui.label("Your answer", "accept the risk, or send the day back with the limits you want")
     review_actions("Accept the risk")
     show_reviews()
@@ -186,10 +188,10 @@ edited = st.data_editor(
     column_config={
         "ticker": st.column_config.TextColumn("ETF"),
         "ai_side": st.column_config.TextColumn("AI side"),
-        "ai_units": st.column_config.NumberColumn("AI units", format="%.4f"),
+        "ai_units": st.column_config.NumberColumn("AI units", format=UNIT_FORMAT),
         "decision": st.column_config.SelectboxColumn("Decision", options=list(DECISION), required=True),
         "side": st.column_config.SelectboxColumn("Side", options=["BUY", "SELL"]),
-        "units": st.column_config.NumberColumn("Units", min_value=0.0001, step=0.0001, format="%.4f"),
+        "units": st.column_config.NumberColumn("Units", min_value=UNIT_STEP, step=UNIT_STEP, format=UNIT_FORMAT),
         "reason": st.column_config.TextColumn("Reason"),
     },
 )
@@ -201,7 +203,7 @@ with st.expander("Add an order of your own"):
         column_config={
             "ticker": st.column_config.SelectboxColumn("ETF", options=universe["ticker"].tolist()),
             "side": st.column_config.SelectboxColumn("Side", options=["BUY", "SELL"]),
-            "units": st.column_config.NumberColumn("Units", min_value=0.0001, step=0.0001, format="%.4f"),
+            "units": st.column_config.NumberColumn("Units", min_value=UNIT_STEP, step=UNIT_STEP, format=UNIT_FORMAT),
             "reason": st.column_config.TextColumn("Reason (required)"),
         },
     )

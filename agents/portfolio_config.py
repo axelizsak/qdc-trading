@@ -12,13 +12,20 @@ from datetime import date
 
 # --- Market and window ---------------------------------------------------------------------------------
 MARKET_TICKER = "WORLD"       # the benchmark. Its score is the market view. It is not needed in the portfolio.
+BENCHMARK_ALLOWED = False     # True lets the code portfolios buy the benchmark ETF itself when it scores well
 VALUATION_END = date(2026, 12, 23)   # last day of the competition window (assumption: valued at this close)
 
 # --- The code's baseline portfolio (a suggestion the LLM may ignore) ---------------------------------------
+# Hard limits on every portfolio the Portfolio Manager builds: the code's, the LLM's and the final blend.
+# What a limit cuts stays in cash. They are the Risk Manager's reference levels; set one to 1.0 to switch it off.
+MAX_POSITION = 0.30           # largest share of the portfolio in one ETF
+MAX_LEVERAGED_SHARE = 0.15    # largest share in leveraged and inverse ETFs together
+
 EXPOSURE_BASE = 0.85          # invested share when the market view is neutral
 EXPOSURE_SLOPE = 0.30         # + this x the market ETF's final score (in [-1, 1])
 EXPOSURE_MIN = 0.40
 EXPOSURE_MAX = 0.99           # a cash cushion of 1 %: the fill price is only known to the cent
+SAME_DAY_CUSHION = 0.05       # only when an order fills at the close of its own day: a buy is funded 5 % above the last close, a sell 5 % below
 BASELINE_POSITIONS = 8        # ETFs in the baseline
 BASELINE_CAP = 0.30           # baseline only: largest single weight
 MIN_ENTRY_SCORE = 0.15        # baseline only: final score needed to enter

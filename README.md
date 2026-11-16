@@ -16,9 +16,9 @@ The agents analyse the 50-ETF universe and propose trades. A human approves ever
 | 7–23 Dec 2026 | Trading window |
 | 16 Jan 2027, 23:59 | Final report + team organisation annex (the Belfius deck says 17 Jan) |
 
-> **Fill price:** an order on day T fills at the last close before T, on the ETF's own exchange. The Belfius deck says both this and "the closing price of the trading day itself"; the team settled on the previous close, and every module values an order that way. After the first trading day, compare the fills on the Belfius platform with `logs/logbook/<date>.md`.
+> **Fill price:** an order on day T fills at the last close before T, on the ETF's own exchange. The Belfius deck says both this and "the closing price of the trading day itself"; the team settled on the previous close. It is one setting, `FILL_AT_PREVIOUS_CLOSE` in `data/config.py`, that every module follows, and the system is tested under both rules. Which rule applies, and until what time an order is accepted, matters more than any other setting: see finding 1 in `backtest/README.md`. After the first trading day, compare the fills on the Belfius platform with `logs/logbook/<date>.md`.
 >
-> **Units:** the Portfolio Manager sizes orders in fractional units (4 decimals). To confirm on the Belfius form before 7 December.
+> **Units:** the Portfolio Manager sizes orders in fractional units (4 decimals). To confirm on the Belfius form before 7 December: if it only takes whole units, set `ORDER_UNIT_DECIMALS = 0` in `data/config.py`.
 
 ## How it works
 
@@ -30,7 +30,7 @@ Four scores per ETF, one portfolio, three human reviews, and a review loop that 
 
 | # | Step | What it does | Code | LLM? |
 |---|---|---|---|---|
-| 1 | Data | Real prices of the 50 ETFs and 37 indicators | `data/data_agent.py`, `data/features.py` | No |
+| 1 | Data | Real prices of the 50 ETFs, 37 indicators, and the ex-dividend dates of the distributing ETFs | `data/data_agent.py`, `data/features.py`, `data/dividends.py` | No |
 | 2 | Review loop | Grades every past score against what the ETFs then did, re-weights the agents, writes the lessons | `graph/review_loop.py` | No |
 | 3 | Technical | Two scores from prices: `technical_det` (rules: momentum and mean reversion) and `technical_llm` (Claude weighs the rules' answers when they disagree) | `agents/technical.py`, `agents/technical_llm.py` | Second score only |
 | 4 | Macro / News | Two scores from the news: `macro_market` (15 macro views through the exposure table) and `macro_etf` (20 theme analysts, each reading the news, the price tape and its own past calls) | `agents/macro_news.py` and `agents/macro_*.py` | Yes |
@@ -58,7 +58,7 @@ Before any evidence, each family counts the same (technical 50%, macro 50%), spl
 
 ## Adjust the model
 
-Every setting is one line in one file. Change it, run `python -m graph.review_loop` to see how the scores did, or run a day on a copy of the logs (see Setup).
+Every setting is one line in one file. To know whether a change is worth making, test it in the backtest before you make it: add one line to `VARIANTS` in `backtest/system_backtest.py` and run it. It replays the code-only system on every 3-week window since 2022 with the competition's rules, and compares your variant with the current system on the same windows (see `backtest/README.md` for how to read it, and for what the first run found).
 
 | To change | Where |
 |---|---|
@@ -66,7 +66,10 @@ Every setting is one line in one file. Change it, run `python -m graph.review_lo
 | What the LLM technical layer is asked to weigh | the prompt in `agents/technical_llm.py` |
 | The macro factors, and how much each ETF moves with each factor | `MACRO_FACTORS` in `data/config.py`, `data/macro_exposure.csv` |
 | What the macro searches look for, and the analysts' brief per theme | `CROSS_TOPICS` in `agents/macro_llm.py`, `THEME_BRIEFS` and the prompt in `agents/macro_analysts.py` |
-| How the portfolio is built: invested share, number of positions, caps, risk aversion, timing | `agents/portfolio_config.py` |
+| How the portfolio is built: invested share, number of positions, risk aversion, timing | `agents/portfolio_config.py` |
+| The hard limits on every portfolio: one ETF at most 30%, leveraged and inverse ETFs at most 15% together | `MAX_POSITION`, `MAX_LEVERAGED_SHARE` in `agents/portfolio_config.py` |
+| Fractional or whole units in the orders | `ORDER_UNIT_DECIMALS` in `data/config.py` (4, or 0 for whole units) |
+| The price an order fills at: the close before its day, or the close of its day | `FILL_AT_PREVIOUS_CLOSE` in `data/config.py` |
 | How fast the agent weights move, and their bounds | `LEARN_*` and `AGENT_WEIGHT_*` in `agents/portfolio_config.py` |
 | The starting weight of each family of agents | `AGENT_FAMILIES` in `data/config.py` |
 | The horizon every score is judged on, and the days of prices the technical score is replayed on | `HORIZON_SESSIONS`, `REVIEW_BACKFILL_DAYS` in `data/config.py` |
@@ -88,7 +91,8 @@ qdc-trading/
                logbook.py                                               the audit trail
   graph/       pipeline.py (one day, step by step) and review_loop.py (what the system learns)
   app/         the Streamlit cockpit: Portfolio, Orders, Research, Logbook
-  backtest/    backtests of the technical strategies
+  backtest/    system_backtest.py replays the whole code-only system on past 3-week windows (results in
+               backtest/results/); the other files are backtests of the technical strategies
   ml_library/  shared models for those backtests
   logs/        everything the agents said and the humans decided (graded evidence, see logs/README.md)
   tests/       one file per module; no test calls the network or Claude
@@ -121,6 +125,7 @@ These were fixed on day 1 and are defined in `data/schemas.py`. Build your modul
 | Recommendations | `recommendation_id, created_at, date, ticker, side, units, price_eur, price_date, value_eur, weight_now, weight_target, impact, timing, why` (append-only) |
 | Risk forecasts | `date, kind [weight\|forecast], name, value` (what each risk assessment was made on, and what it forecast) |
 | Risk calibration | `date, vol_scale, days_graded, mean_ratio, floor_breaches, floor_days` |
+| Ex-dividends | `ticker, ex_date, amount_eur, basis` (distributing ETFs; `basis` is "paid" or "expected: ..." when estimated from last year's schedule) |
 | Macro exposure | `ticker, multiplier, <one column per macro factor>` (`data/macro_exposure.csv`, a proposal for the team to review) |
 
 `factor` is one of `MACRO_FACTORS` in `data/config.py`. List columns (`sources`, `factors`) are `;`-joined strings.
@@ -160,6 +165,13 @@ See what the system has learned, without running a day:
 
 ```bash
 python -m graph.review_loop               # grades the past scores, writes logs/agent_weights.csv and logs/lessons.md
+```
+
+Test a setting or an idea on the past (about 10 minutes for every variant, 1 minute for one):
+
+```bash
+python -m backtest.system_backtest                        # every variant on every 3-week window since 2022
+python -m backtest.system_backtest --variants watch_zero  # one variant, merged into the results
 ```
 
 Run the Macro/News agent every business day. Claude is the only key it needs:

@@ -448,3 +448,21 @@ def test_a_ticker_copied_with_its_name_is_still_matched():
     assert macro_analysts._match("gold miners", expected) == "GOLD MINERS"
     assert macro_analysts._match("GOLD MINERS · VanEck", expected) == "GOLD MINERS"
     assert macro_analysts._match("SILVER", expected) is None
+
+
+def test_two_wordings_of_one_event_are_listed_once():
+    assert macro_news.same_event("Nvidia Q3 earnings after the US close", "Nvidia earnings after the close, plus US retail sales")
+    assert macro_news.same_event("ECB decision", "ECB policy meeting and press conference")
+    assert not macro_news.same_event("US November payrolls", "US October CPI")
+    assert not macro_news.same_event("Euro area flash consumer confidence", "Euro area final HICP")
+    view = {"date": "2026-11-16", "confidence": 0.5, "rationale": "r", "counter_argument": "c", "sources": "https://e.com"}
+    views = pd.DataFrame([
+        {**view, "ticker": "SEMIS", "direction": 0.3, "catalyst_date": "2026-11-17", "catalyst": "Nvidia Q3 earnings after the US close. Binary."},
+        {**view, "ticker": "NASDAQ", "direction": 0.1, "catalyst_date": "2026-11-17", "catalyst": "Nvidia earnings, plus US retail sales"},
+        {**view, "ticker": "S&P 500", "direction": 0.2, "catalyst_date": "2026-11-17", "catalyst": "US October retail sales"},
+        {**view, "ticker": "GOLD", "direction": 0.0, "catalyst_date": np.nan, "catalyst": np.nan},
+    ])
+    events = macro_news.catalysts(views)
+    assert [(day, tickers) for day, _, tickers in events] == [("2026-11-17", ["SEMIS", "NASDAQ"]), ("2026-11-17", ["S&P 500"])]
+    lines = macro_news.brief(DAY, _views(oil=0.5), views, None, None)
+    assert "- Tue 17 Nov: Nvidia Q3 earnings after the US close (SEMIS, NASDAQ)" in lines

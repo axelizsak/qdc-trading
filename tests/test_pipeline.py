@@ -1,6 +1,7 @@
 """The LangGraph pipeline on mocks: three human reviews, feedback loops, fallbacks and replay from the logs."""
 from datetime import date
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -377,3 +378,55 @@ def test_logged_weights_are_rescaled_over_the_agents_that_scored(logs):
     assert weights == pytest.approx({"technical_det": 0.5, "macro_market": 0.375, "macro_etf": 0.125})
     assert pipeline.load_agent_weights(logs, date(2026, 12, 1), ["technical_det"]) == {"technical_det": 1.0}
 
+
+
+def test_the_risk_manager_gets_the_ex_dividend_dates(logs, monkeypatch):
+    seen = {}
+
+    def risk(orders, holdings, cash_eur, prices, as_of, **extra):
+        seen.update(extra)
+        return pipeline.mock.mock_risk_report(as_of.isoformat()), {}
+
+    monkeypatch.setitem(pipeline.MOCK, "risk", risk)
+    pending = pipeline.run_day(DAY, logs)
+    pipeline.resume_day(DAY, pipeline.approve(pending), logs)
+    assert seen["ex_dividends"]["ticker"].tolist() == ["DIVIDEND LEADERS", "BEL 20"]
+
+    # when the dates cannot be read, it is an incident and the Risk Manager is told there are none
+    monkeypatch.setitem(pipeline.EX_DIVIDENDS_SOURCE, True, _boom)
+    pending = pipeline.run_day(DAY, logs, rerun=True)
+    assert [i["step"] for i in pending["incidents"]] == ["dividends"] and len(pending["proposed_orders"]) > 0
+    pipeline.resume_day(DAY, pipeline.approve(pending), logs)
+    assert seen["ex_dividends"] is None
+
+
+def test_the_fill_rule_is_one_setting_that_every_module_follows(logs, monkeypatch):
+    from agents import logbook, portfolio, portfolio_learning, risk
+
+    prices = pipeline.mock.mock_prices(end=DAY.isoformat())
+    day_before = prices[prices["date"].astype(str) < DAY.isoformat()]
+    own_day = prices[prices["date"].astype(str) == DAY.isoformat()].set_index("ticker")["close_eur"]
+    last_before = day_before.sort_values("date").groupby("ticker")["close_eur"].last()
+    table = portfolio_learning.return_table(prices, date(2026, 12, 20))
+    closes = prices.assign(date=prices["date"].astype(str)).pivot(index="date", columns="ticker", values="close_eur")
+
+    for previous_close, expected in ((True, last_before), (False, own_day)):
+        monkeypatch.setattr(settings, "FILL_AT_PREVIOUS_CLOSE", previous_close)
+        assert pipeline.fill_prices(prices, DAY)["WORLD"] == expected["WORLD"]
+        assert risk.fill_prices(prices, DAY)["WORLD"] == expected["WORLD"]
+        assert portfolio.last_closes(prices, DAY, before=settings.FILL_AT_PREVIOUS_CLOSE)["WORLD"] == expected["WORLD"]
+        assert logbook.fill_price(closes, "WORLD", DAY.isoformat())[0] == expected["WORLD"]
+        start = table["WORLD"].iloc[np.flatnonzero(settings.fills_from(table.index, DAY.isoformat()))[-1]]
+        assert start == expected["WORLD"]  # the grading starts from the same price
+        # the prices end on DAY: its return is known when the order filled the day before, not when it fills at DAY's close
+        assert (portfolio_learning.forward_return(table, DAY.isoformat(), 1) is not None) == previous_close
+        assert ("before its day" in settings.fill_rule()) == previous_close
+
+    # the book follows the rule too: the same order costs the close of its own day when the rule says so
+    logs.mkdir(parents=True)
+    pd.DataFrame([{"date": DAY.isoformat(), "ticker": "WORLD", "ai_side": "BUY", "ai_units": 10, "decision": "approved",
+                   "side": "BUY", "units": 10, "reason": ""}]).to_csv(logs / "orders.csv", index=False)
+    monkeypatch.setattr(settings, "FILL_AT_PREVIOUS_CLOSE", True)
+    assert pipeline.load_book(logs, prices, date(2026, 12, 10))[1] == pytest.approx(10_000 - 10 * last_before["WORLD"])
+    monkeypatch.setattr(settings, "FILL_AT_PREVIOUS_CLOSE", False)
+    assert pipeline.load_book(logs, prices, date(2026, 12, 10))[1] == pytest.approx(10_000 - 10 * own_day["WORLD"])
