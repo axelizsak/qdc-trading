@@ -13,6 +13,8 @@ from datetime import date
 # --- Market and window ---------------------------------------------------------------------------------
 MARKET_TICKER = "WORLD"       # the benchmark. Its score is the market view. It is not needed in the portfolio.
 BENCHMARK_ALLOWED = False     # True lets the code portfolios buy the benchmark ETF itself when it scores well
+IDLE_TO_BENCHMARK = 0.0       # share of the budget left idle that goes into the benchmark ETF (0 = it stays in cash)
+BENCHMARK_CAP = 0.30          # largest share of the portfolio that top-up may put in the benchmark ETF
 VALUATION_END = date(2026, 12, 23)   # last day of the competition window (assumption: valued at this close)
 
 # --- The code's baseline portfolio (a suggestion the LLM may ignore) ---------------------------------------

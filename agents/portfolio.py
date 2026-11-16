@@ -310,6 +310,24 @@ def apply_constraints(weights: pd.Series, current: pd.Series, priced: set[str], 
     return out[out > 0]
 
 
+def top_up_with_benchmark(weights: pd.Series, budget: float, priced: set[str], exclude: set[str],
+                          pinned: set[str]) -> pd.Series:
+    """Put IDLE_TO_BENCHMARK of the budget the portfolio leaves idle into the benchmark ETF, up to BENCHMARK_CAP
+    in it: money without a better idea then follows the market instead of sitting in cash. `budget` is the share
+    the code meant to invest given its market view, so a negative market view still keeps more cash."""
+    ticker = cfg.MARKET_TICKER
+    if ticker not in priced or ticker in exclude or ticker in pinned:
+        return weights
+    idle = max(min(budget, cfg.EXPOSURE_MAX) - float(weights.sum()), 0.0)
+    held = float(weights.get(ticker, 0.0))
+    wanted = min(held + cfg.IDLE_TO_BENCHMARK * idle, max(cfg.BENCHMARK_CAP, held))
+    if wanted - held < cfg.MIN_LLM_WEIGHT:
+        return weights
+    out = weights.copy()
+    out[ticker] = float(floor4(wanted))
+    return out[out > 0]
+
+
 def blend(llm: pd.Series | None, baseline: pd.Series, trust: float) -> pd.Series:
     """trust x the LLM's weights + (1 - trust) x the baseline's. Without an LLM portfolio: the baseline."""
     if llm is None or llm.empty:
@@ -749,6 +767,8 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
                                               pinned, max_weight)
     portfolios["final"] = apply_constraints(blend(portfolios.get("llm"), portfolios[cfg.ANCHOR], trust), weights_now,
                                             priced, exclude, pinned, max_weight)
+    if cfg.IDLE_TO_BENCHMARK > 0:
+        portfolios["final"] = top_up_with_benchmark(portfolios["final"], info["exposure"], priced, exclude, pinned)
     final = portfolios["final"]
     if logs_dir is not None:
         portfolio_learning.record_portfolios(logs_dir, as_of, portfolios)

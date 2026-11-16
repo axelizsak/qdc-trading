@@ -118,6 +118,14 @@ VARIANTS = [
     Variant("no_leverage", "no leveraged or inverse ETF at all", {"portfolio_config.MAX_LEVERAGED_SHARE": 0.0}),
     Variant("benchmark_allowed", "the code portfolios may buy the benchmark ETF itself",
             {"portfolio_config.BENCHMARK_ALLOWED": True}),
+    # Money without an idea follows the market instead of sitting in cash (the leaderboard ranks on return)
+    Variant("idle_to_benchmark", "idle budget goes into the benchmark ETF, up to 30% of the portfolio",
+            {"portfolio_config.IDLE_TO_BENCHMARK": 1.0}),
+    Variant("idle_to_benchmark_60", "idle budget goes into the benchmark ETF, up to 60% of the portfolio",
+            {"portfolio_config.IDLE_TO_BENCHMARK": 1.0, "portfolio_config.BENCHMARK_CAP": 0.60}),
+    Variant("buys_plus_benchmark", "'watch' scores 0 and the idle budget goes into the benchmark ETF, up to 60%",
+            {"portfolio_config.IDLE_TO_BENCHMARK": 1.0, "portfolio_config.BENCHMARK_CAP": 0.60,
+              "strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": 0.0, "neutral": 0.0, "avoid": -1.0}}),
     # The competition's fill rule (to confirm with Belfius): the same system if an order fills at its own day's close
     Variant("fill_same_day", "an order fills at the close of its own day instead of the close before",
             {"config.FILL_AT_PREVIOUS_CLOSE": False}),
@@ -301,7 +309,7 @@ STUDY_GROUPS = {  # what the technical sheet says about an ETF -> the column and
 }
 
 
-def signal_study(market: Market, horizons: list[int] | None = None) -> pd.DataFrame:
+def signal_study(market: Market, horizons: list[int] | None = None, days: list[date] | None = None) -> pd.DataFrame:
     """Where the technical sheet has predictive value, and over how many sessions: for each thing it says
     about an ETF (STUDY_GROUPS, and the top and bottom fifth by momentum), the mean return of those ETFs over
     the next sessions MINUS the mean return of all scored ETFs on the same day. One row per group and horizon:
@@ -311,6 +319,8 @@ def signal_study(market: Market, horizons: list[int] | None = None) -> pd.DataFr
     closes = market.closes.ffill()
     samples: dict[tuple[str, int], list[tuple[float, int]]] = {}
     for day, sheet in market.sheets.items():
+        if days is not None and day not in days:
+            continue
         before = int((closes.index < pd.Timestamp(day)).sum())
         if sheet.empty or before == 0:
             continue
@@ -342,6 +352,24 @@ def signal_study(market: Market, horizons: list[int] | None = None) -> pd.DataFr
     order = {name: i for i, name in enumerate([*STUDY_GROUPS, "momentum 13612: top fifth", "momentum 13612: bottom fifth"])}
     return pd.DataFrame(rows).sort_values(["group", "sessions"], key=lambda c: c.map(order) if c.name == "group" else c
                                           ).reset_index(drop=True)
+
+
+def study_by_half(market: Market, sessions: int | None = None) -> pd.DataFrame:
+    """The signal study over the first and the second half of the decision days, at one horizon: one row per
+    group with its edge and t-value in each half. An answer of the sheet is worth trusting when both agree."""
+    sessions = settings.HORIZON_SESSIONS if sessions is None else sessions
+    days = sorted(market.sheets)
+    halves = [signal_study(market, [sessions], part).set_index("group") for part in (days[:len(days) // 2], days[len(days) // 2:])]
+    out = pd.DataFrame({"edge_h1": halves[0]["edge"], "t_h1": halves[0]["t"], "edge_h2": halves[1]["edge"], "t_h2": halves[1]["t"]})
+    out["same_sign"] = (out["edge_h1"] * out["edge_h2"]) > 0
+    return out.reset_index()
+
+
+def show_by_half(table: pd.DataFrame) -> str:
+    lines = [f"{'':<38}{'first half':>16}{'second half':>16}{'agree':>8}"]
+    for r in table.itertuples():
+        lines.append(f"{r.group:<38}{r.edge_h1:>+9.2%} ({r.t_h1:+.1f}){r.edge_h2:>+9.2%} ({r.t_h2:+.1f}){'yes' if r.same_sign else 'no':>8}")
+    return "\n".join(lines)
 
 
 def show_study(study: pd.DataFrame) -> str:
@@ -441,6 +469,7 @@ def summarise(results: pd.DataFrame, market: Market, variants: list[Variant]) ->
             return float(series.mean() / (spread / np.sqrt(independent))) if spread and spread > 0 else np.nan
 
         gap = (mine["ret"] - reference).dropna()
+        halves = [gap.iloc[:len(gap) // 2], gap.iloc[len(gap) // 2:]]  # the windows are sorted by date
         with overrides(variant.settings):  # a variant may change what each rule signal scores
             quality = score_quality(market, variant.score)
         rows.append({"variant": variant.name, "what": variant.what, "windows": n,
@@ -453,6 +482,9 @@ def summarise(results: pd.DataFrame, market: Market, variants: list[Variant]) ->
                      "bench_ret_per_risk": mine["bench_ret"].mean() / mine["bench_ret"].std() if n > 1 else np.nan,
                      "beta": float(np.polyfit(mine["bench_ret"], mine["ret"], 1)[0]) if n > 2 else np.nan,
                      "vs_first": gap.mean(), "t_vs_first": t_value(gap),
+                     "vs_first_h1": halves[0].mean(), "vs_first_h2": halves[1].mean(),
+                     "holds": bool(halves[0].mean() > 0 and halves[1].mean() > 0),
+                     "ret_h1": mine["ret"].iloc[:n // 2].mean(), "ret_h2": mine["ret"].iloc[n // 2:].mean(),
                      "mean_invested": mine["invested"].mean(), "mean_orders": mine["orders"].mean(),
                      "broken_rules": int(mine["broken_rules"].sum()), "failed_days": int(mine["failed_days"].sum()),
                      "score_ic": quality["ic"], "buy_hit_rate": quality["buy_hit_rate"],
@@ -462,17 +494,20 @@ def summarise(results: pd.DataFrame, market: Market, variants: list[Variant]) ->
 
 def show(summary: pd.DataFrame) -> str:
     """The summary as text: risk is the spread of a window's return, ret/risk the return per unit of it, beta the
-    share of the benchmark's move the portfolio takes, and the last columns compare with the first variant on
-    the same windows (a t-value of 2 or more means the difference is unlikely to be luck)."""
+    share of the benchmark's move the portfolio takes. The last columns compare with the first variant on the same
+    windows: over all of them (a t-value of 2 or more means the difference is unlikely to be luck), then over
+    the first and the second half of the history. A variant "holds" only when it is ahead in both halves: one
+    that is ahead in a single half has found a kind of market, not an improvement."""
     first = summary["variant"].iloc[0]
-    lines = [f"{'variant':<19}{'return':>8}{'excess':>8}{'t':>6}{'worst':>8}{'risk':>7}{'ret/risk':>9}{'beta':>6}{'invested':>9}"
-             f"{f'vs {first}':>12}{'t':>6}{'IC':>8}"]
+    lines = [f"{'variant':<19}{'return':>8}{'excess':>8}{'worst':>8}{'risk':>7}{'ret/risk':>9}{'beta':>6}{'invested':>9}"
+             f"{f'vs {first}':>12}{'t':>6}{'1st half':>10}{'2nd half':>10}{'holds':>7}"]
     for r in summary.itertuples():
-        lines.append(f"{r.variant:<19}{r.mean_ret:>+8.2%}{r.mean_excess:>+8.2%}{r.t_excess:>+6.1f}{r.worst_ret:>+8.1%}"
+        holds = "" if r.variant == first else ("yes" if r.holds else "no")
+        lines.append(f"{r.variant:<19}{r.mean_ret:>+8.2%}{r.mean_excess:>+8.2%}{r.worst_ret:>+8.1%}"
                      f"{r.risk:>7.2%}{r.ret_per_risk:>9.2f}{r.beta:>6.2f}{r.mean_invested:>9.0%}"
-                     f"{r.vs_first:>+12.2%}{r.t_vs_first:>+6.1f}{r.score_ic:>+8.3f}")
+                     f"{r.vs_first:>+12.2%}{r.t_vs_first:>+6.1f}{r.vs_first_h1:>+10.2%}{r.vs_first_h2:>+10.2%}{holds:>7}")
     r = summary.iloc[0]
-    lines.append(f"{'benchmark':<19}{r.mean_bench:>+8.2%}{'':>22}{r.bench_risk:>7.2%}{r.bench_ret_per_risk:>9.2f}{1:>6.2f}{1:>9.0%}")
+    lines.append(f"{'benchmark':<19}{r.mean_bench:>+8.2%}{'':>16}{r.bench_risk:>7.2%}{r.bench_ret_per_risk:>9.2f}{1:>6.2f}{1:>9.0%}")
     return "\n".join(lines)
 
 
@@ -508,6 +543,9 @@ def main(argv: list[str] | None = None) -> None:
     rule.to_csv(RESULTS / "system_backtest_fill_rule.csv", index=False)
     print(show(summary))
     print("\nWhat the technical sheet is worth (* = at least 2 standard errors from zero):\n" + show_study(study))
+    halves = study_by_half(market)
+    halves.to_csv(RESULTS / "system_backtest_signals_by_half.csv", index=False)
+    print(f"\nThe same at {settings.HORIZON_SESSIONS} sessions, in each half of the history (edge and t-value):\n" + show_by_half(halves))
     print("\nWhat the fill rule is worth (an order of day T filled at the close of T-1):\n" + show_fill_rule(rule))
     print(f"\nWritten in {RESULTS}: system_backtest.csv, system_backtest_summary.csv, system_backtest_signals.csv, "
           "system_backtest_fill_rule.csv")
