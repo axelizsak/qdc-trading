@@ -1,7 +1,5 @@
 # backtest
 
-Two kinds of backtest live here.
-
 ## The system backtest (`system_backtest.py`)
 
 It replays the whole code-only system on past prices with the competition's rules: the technical agent's
@@ -148,20 +146,15 @@ mean reversion, momentum ranking) weighted by what each earned since January 202
 The window results in sections 1 to 4 were computed on 16 November, before the learning rule. They have not been run
 again yet: about 40 minutes on two cores (`python -m backtest.system_backtest --workers 2`).
 
-## The studies behind the technical rules (Achille)
+## The studies behind the technical rules (Achille, removed on 16 November 2026)
 
-`momentum_signal_test.py`, `momentum_variants.py`, `mean_reversion_test.py`, `combo_backtest.py` (with the
-combinations in `combos.py`) and `momentum_models.py` (a shallow decision tree and a logistic regression), all on
-the dataset of `momentum_dataset.py`. Each one answers one question once: choose on 2021–2024, check on 2025–2026,
-day by day. They are not part of the daily pipeline: their answers are already in the rules of
-`agents/technical.py` (the momentum rule chosen among 40 variants, the mean-reversion thresholds).
+Before the system backtest, Achille tested the technical rules one by one: a signal test, 40 momentum variants,
+indicator combinations, the mean-reversion rules and two readable ML models (a decision tree, a logistic
+regression), choosing on 2021–2024 and checking on 2025–2026. Their answers are inside the rules of
+`agents/technical.py`: the momentum rule chosen among the 40 variants, the mean-reversion thresholds. The scripts are
+in the git history (commit `590a0aa`); they left the repo because nothing runs them any more.
 
-Their main finding: on 4 to 12 days, no technical rule predicts returns reliably out of sample. The technical
-agent is best used as a filter (avoid ETFs in a clear downtrend) and for timing (Connors RSI 2 rebounds were the
-most consistent signal). The two ML models did no better, so they were not adopted. Since 16 November 2026 the
-learning rule weighs the trend, mean-reversion and momentum answers by what each earned since 2022, so this
-finding is checked again every day.
-
-```bash
-python -m backtest.momentum_signal_test data/cache/prices_ohlc_YYYY-MM-DD.csv     # and the same for the others
-```
+Their main finding: on 4 to 12 days, no technical rule predicts returns reliably out of sample. The technical agent
+is best used as a filter (avoid ETFs in a clear downtrend) and for timing (Connors RSI 2 rebounds were the most
+consistent signal). The ML models did no better, so they were not adopted. The learning rule now weighs the trend,
+mean-reversion and momentum answers by what each earned since 2022, so this finding is checked again every day.

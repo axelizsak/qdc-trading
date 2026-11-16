@@ -12,7 +12,7 @@ from graph import pipeline
 
 APP = str(Path(__file__).resolve().parent.parent / "app" / "streamlit_app.py")
 DAY = date(2026, 12, 7)
-PAGES = ["home", "orders", "research", "logbook"]
+PAGES = ["dashboard", "today", "technical", "macro", "portfolio", "risk", "learning", "how_it_works", "logbook"]
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def open_page(name: str) -> AppTest:
     at = AppTest.from_file(APP, default_timeout=60)
     at.session_state["as_of"] = DAY
     at.run()
-    if name != "home":
+    if name != "dashboard":
         at.switch_page(f"views/{name}.py").run()
     assert not at.exception, at.exception
     return at
@@ -42,8 +42,8 @@ def test_page_runs_on_a_paused_day(logs, name):
     open_page(name)
 
 
-def test_home_runs_the_day_until_the_pause(logs):
-    at = open_page("home")
+def test_the_dashboard_runs_the_day_until_the_pause(logs):
+    at = open_page("dashboard")
     next(b for b in at.button if b.label == "Run the day").click().run()
     assert not at.exception
     assert pipeline.day_status(DAY, logs)[0] == "waiting for approval"
@@ -65,7 +65,7 @@ def test_page_runs_at_each_review(logs, name, gate):
 
 def test_three_approvals_write_the_order_log_and_offer_the_export(logs):
     pending = pipeline.run_day(DAY, logs)
-    at = open_page("orders")
+    at = open_page("today")
     for gate in ("orders", "risk", "summary"):
         assert pipeline.day_status(DAY, logs)[2]["gate"] == gate
         at.button(key="submit").click().run()
@@ -77,14 +77,13 @@ def test_three_approvals_write_the_order_log_and_offer_the_export(logs):
     assert pipeline.day_status(DAY, logs)[0] == "done"
     assert any(">Approved<" in m.value for m in at.markdown)  # the page now shows the log and the export
 
-    home = open_page("home")
-    assert not home.exception
-    assert any(">vs MSCI World<" in m.value for m in home.markdown)  # the Belfius benchmark
+    dashboard = open_page("dashboard")
+    assert any(">Against the MSCI World<" in m.value for m in dashboard.markdown)  # the Belfius benchmark
 
 
 def test_feedback_sends_the_day_back_from_the_page(logs):
     _to_gate(logs, "risk")
-    at = open_page("orders")
+    at = open_page("today")
     at.text_area(key="feedback_risk_1").input("cut the leveraged ETFs").run()
     at.button(key="revise").click().run()
     assert not at.exception, at.exception
@@ -94,7 +93,7 @@ def test_feedback_sends_the_day_back_from_the_page(logs):
 
 def test_no_trade_today_from_the_page(logs):
     pipeline.run_day(DAY, logs)
-    at = open_page("orders")
+    at = open_page("today")
     at.text_area(key="feedback_orders_1").input("Fed tonight").run()
     at.button(key="stop").click().run()
     assert not at.exception, at.exception
@@ -108,7 +107,7 @@ def test_pages_run_on_the_real_portfolio_and_risk_managers(logs, monkeypatch):
     monkeypatch.setitem(settings.USE_MOCK, "portfolio", False)
     monkeypatch.setitem(settings.USE_MOCK, "risk", False)
     pipeline.run_day(DAY, logs)
-    at = open_page("orders")
+    at = open_page("today")
     for gate in ("orders", "risk", "summary"):  # the memo, then the risk board and reading, then the summary
         assert pipeline.day_status(DAY, logs)[2]["gate"] == gate
         for name in PAGES:
@@ -121,14 +120,26 @@ def test_pages_run_on_the_real_portfolio_and_risk_managers(logs, monkeypatch):
     assert not (logs / "incidents.csv").exists()
 
 
-
-def test_the_research_page_shows_the_learned_weights_over_the_agents_that_scored(tmp_path):
+def test_the_learning_page_reads_the_weights_of_the_day(tmp_path):
     from app import data
-    tmp_path.mkdir(exist_ok=True)
-    pd.DataFrame({"date": "2026-12-04", "level": "agents", "name": settings.SIGNAL_AGENTS, "weight": [0.4, 0.2, 0.3, 0.1],
-                  "result": None}).to_csv(tmp_path / "weights.csv", index=False)
-    shown = data.agent_weights_on(date(2026, 12, 7), tmp_path, {}, ["technical_det", "macro_market", "macro_etf"])
-    assert shown == pytest.approx({"technical_det": 0.5, "macro_market": 0.375, "macro_etf": 0.125})
-    before = data.agent_weights_on(date(2026, 12, 1), tmp_path, {}, ["technical_det"])  # nothing learned yet
-    assert before == {"technical_det": 1.0}
-    assert data.agent_weights_on(date(2026, 12, 7), tmp_path, {"agent_weights": {"x": 1.0}}, []) == {"x": 1.0}
+    pd.DataFrame({"date": ["2026-12-04"] * 4 + ["2026-12-08"] * 4, "level": "agents", "name": settings.SIGNAL_AGENTS * 2,
+                  "weight": [0.4, 0.2, 0.3, 0.1] * 2, "result": None}).to_csv(tmp_path / "weights.csv", index=False)
+    assert data.weights_on(tmp_path, date(2026, 12, 7)) == {"agents": dict(zip(settings.SIGNAL_AGENTS, [0.4, 0.2, 0.3, 0.1]))}
+    assert data.weights_on(tmp_path, date(2026, 12, 1)) == {}  # nothing learned yet
+
+
+def test_every_box_of_the_diagram_has_its_files_and_its_code(logs):
+    from app import flow
+    root = Path(__file__).resolve().parent.parent
+    keys = set(flow.BY_KEY)
+    for step in flow.STEPS:
+        assert all((root / f).exists() for f in step.files), step.key
+        assert step.code and all(flow.code_of(fn)[1].startswith("def ") for fn in step.code), step.key
+    for edge in flow.edges():
+        assert {edge["from"], edge["to"]} <= keys and len(edge["points"]) >= 2
+    pipeline.run_day(DAY, logs)
+    status, state, pending = pipeline.day_status(DAY, logs)
+    for step in flow.STEPS:  # every card has a line for the day
+        assert flow.today(step.key, status, state, pending, logs, DAY)
+    at = open_page("how_it_works")
+    assert any(m.value == "Data" for m in at.subheader)  # the first box is shown before any click
