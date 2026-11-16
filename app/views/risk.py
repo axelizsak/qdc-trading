@@ -9,12 +9,16 @@ from graph import pipeline
 STATUS = {"ok": "✓ ok", "warning": "▲ warning", "breach": "✕ breach"}
 as_of, logs = ui.as_of(), ui.pipeline_logs()
 _, state, _ = pipeline.day_status(as_of, logs)
+record = data.day_record(as_of, logs)  # what the day wrote to the logs; the saved state while a mock is running
 ui.page("Risk Manager", "The portfolio once your orders are filled, on 22 metrics against reference levels. A warning "
                         "is information; only a breach breaks a rule.")
-report = pd.DataFrame(state.get("risk_report", []), columns=RISK_REPORT)
+report = record["risk_report"] if len(record["risk_report"]) else pd.DataFrame(state.get("risk_report", []),
+                                                                             columns=RISK_REPORT)
+page = record["risk_page"] or f"{state.get('risk_board', '')}\n{state.get('risk_reading', '')}"
 if report.empty:
-    st.info("The Risk Manager runs after your orders review.", icon=":material/info:")
-    st.page_link("views/today.py", label="Go to your review", icon=":material/arrow_forward:")
+    st.info("The Risk Manager runs after the orders review: nothing yet for this day.", icon=":material/info:")
+    if not ui.READ_ONLY:
+        st.page_link("views/today.py", label="Go to your review", icon=":material/arrow_forward:")
     st.stop()
 
 counts = report["status"].value_counts()
@@ -30,7 +34,7 @@ ui.kpis([("Breaches", int(counts.get("breach", 0)), None, "down" if counts.get("
          ("Volatility", figure("volatility", ".1%"), "a year, estimated"),
          ("Chance of ending below today", figure("prob_below_start", ".0%"), "at the end of the window")])
 
-areas = data.md_table(state.get("risk_board", ""), "| Area")
+areas = data.md_table(page, "| Area")
 if len(areas):
     ui.label("By area")
     ui.chips([(f"{a.Area}: {a.Status}", a.Status.lower()) for a in areas.itertuples()])
@@ -38,12 +42,11 @@ if len(areas):
     st.dataframe(areas.rename(columns={"In one line": "Why"}), hide_index=True, width="stretch",
                  column_config={"Why": st.column_config.TextColumn("Why", width="large")})
 
-reading = state.get("risk_reading", "")
-paragraphs = data.section(reading, "### Independent reading").split("\n\n")
+paragraphs = data.section(page, "### Independent reading").split("\n\n")
 if len(paragraphs) > 1:
     ui.label("Independent reading", "written by Claude from the numbers; it changes none of them")
     st.markdown(paragraphs[1])
-    scenarios = data.md_table(reading, "| Scenario")
+    scenarios = data.md_table(page, "| Scenario")
     if len(scenarios):
         st.dataframe(scenarios, hide_index=True, width="stretch")
 

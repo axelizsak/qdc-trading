@@ -1,0 +1,25 @@
+date,metric,value,limit,status,comment
+2026-11-16,orders,5.0,5.0,ok,5 orders for the day. Hard rule: at most 5.
+2026-11-16,cash_reserve,0.14890214269999993,0.01,ok,"Cash after the orders EUR 1,489 (14.9% of the portfolio). Reference level 1% (warn below)."
+2026-11-16,largest_position,0.2002997832,0.3,ok,STAPLES holds 20.0% of the portfolio. Reference level 30% (warn above).
+2026-11-16,largest_group,0.48469863150000003,0.5,ok,"Group 'europe' (BEL 20, IBEX 35, EUROPE 600) holds 48.5%. Reference level 50% (warn above)."
+2026-11-16,effective_positions,4.954441819624333,3.0,ok,"5 positions, worth 5.0 equal ones. Reference level 3 (warn below)."
+2026-11-16,largest_risk_share,0.2283628966904766,0.4,ok,"Share of the portfolio's variance: HEALTH CARE 22.8%, BEL 20 21.0%, STAPLES 20.7%. Reference level 40% (warn above)."
+2026-11-16,independent_bets,3.2563397853279015,2.0,ok,"The positions amount to 3.3 independent bets, given how they move together. Reference level 2 (warn below)."
+2026-11-16,volatility,0.08828143330309962,0.2,ok,"Estimated at 8.8% a year (last 60 days, today's weights held constant). Reference level 20% (warn above)."
+2026-11-16,drawdown,-0.032108264979856194,-0.1,ok,"Worst fall from a peak -3.2% (last 60 days, today's weights held constant). Reference level -10% (warn below)."
+2026-11-16,leveraged_share,0.0,0.15,ok,Leveraged or inverse: none. Reference level 15% (warn above).
+2026-11-16,gross_exposure,0.8510978573,1.0,ok,"Market exposure 0.85x the portfolio value, counting each ETF's leverage. Reference level 1 (warn above)."
+2026-11-16,liquidity,0.011207536213181922,0.1,ok,"Largest order against average daily volume: BEL 20 at 1.1% (on-exchange volume only, so the share of the whole market is smaller). Reference level 10% (warn above)."
+2026-11-16,dividend_payers,0.15969978,0.0,warning,"Distributing ETFs after the orders, dividends not credited: BEL 20 (bought today, 16.0%, ex-dividend 09 Dec, about 0.9% of its price). Reference level 0% (warn above)."
+2026-11-16,prob_below_start,0.4115,0.55,ok,"41.1% chance of ending below today's value; median outcome +0.7%. Over the 28 trading days to 23 Dec, keeping today's weights (2000 paths from the last 60 days resampled in blocks of 5, average return moved toward 5% a year). Reference level 55% (warn above)."
+2026-11-16,worst_case_5pct,-0.040508389736897174,-0.08,ok,"In the worst 5% of paths the portfolio returns -4.1% or less. Over the 28 trading days to 23 Dec, keeping today's weights (2000 paths from the last 60 days resampled in blocks of 5, average return moved toward 5% a year). Reference level -8% (warn below)."
+2026-11-16,factor_shock_loss,-0.012569959426,-0.05,ok,"growth_recession is the factor the portfolio leans on most (+0.25): a full-strength fall in it moves the portfolio by -1.3%. Next: risk_appetite +0.25, eurusd -0.15. Reference level -5% (warn below)."
+2026-11-16,volatility_vs_benchmark,0.8106964669094404,1.3,ok,Portfolio 8.8% against WORLD 10.9% a year. Reference level 1.3 (warn above).
+2026-11-16,drawdown_vs_benchmark,0.860449451587842,1.3,ok,Worst fall -3.2% against WORLD -3.7%. Reference level 1.3 (warn above).
+2026-11-16,beta,0.2679941079308025,1.3,ok,Moves 0.27 times WORLD's daily changes on average. Reference level 1.3 (warn above).
+2026-11-16,tracking_error,0.1153082795402473,0.1,warning,The return gap to WORLD varies by 11.5% a year. Reference level 10% (warn above).
+2026-11-16,up_capture,0.505995234387,0.7,warning,On WORLD's rising days the portfolio keeps 51% of the gain. Reference level 0.7 (warn below).
+2026-11-16,down_capture,0.1815096367741802,1.1,ok,On WORLD's falling days the portfolio takes 18% of the loss. Reference level 1.1 (warn above).
+2026-11-16,prob_below_benchmark,0.511,0.6,ok,"51.1% chance of ending behind WORLD; median +0.7% against +0.5%. Over the 28 trading days to 23 Dec, keeping today's weights (2000 paths from the last 60 days resampled in blocks of 5, average return moved toward 5% a year). Reference level 60% (warn above)."
+2026-11-16,macro_tilt,-0.00794646270585,,ok,"Today's Macro/News views, if each played out at full strength, would move the portfolio by -0.8% (positive: the views favour it). No reference level."

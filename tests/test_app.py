@@ -143,3 +143,19 @@ def test_every_box_of_the_diagram_has_its_files_and_its_code(logs):
         assert flow.today(step.key, status, state, pending, logs, DAY)
     at = open_page("how_it_works")
     assert any(m.value == "Data" for m in at.subheader)  # the first box is shown before any click
+
+
+def test_read_only_the_cockpit_runs_nothing_and_shows_the_logs(logs, monkeypatch):
+    monkeypatch.setitem(settings.USE_MOCK, "portfolio", False)
+    monkeypatch.setitem(settings.USE_MOCK, "risk", False)
+    pipeline.approve_day(DAY, logs)  # a real Portfolio Manager and Risk Manager write their files
+    assert (logs / "memo" / f"{DAY}.md").exists() and (logs / "risk" / f"{DAY}.md").exists()
+    from app import ui
+    monkeypatch.setattr(ui, "READ_ONLY", True)
+    (logs / "checkpoints.sqlite").unlink()  # the web cockpit has no saved graph state: only the committed logs
+    for name in PAGES:
+        at = open_page(name)
+        assert not [b for b in at.button if b.label in ("Run the day", "Run again")] and not at.text_area
+    assert any(">Approved<" in m.value for m in open_page("today").markdown)  # the day, read from orders.csv
+    assert any(">Breaches<" in m.value for m in open_page("risk").markdown)  # the risk report, from its files
+    assert any("Target portfolio" in m.value for m in open_page("portfolio").markdown)

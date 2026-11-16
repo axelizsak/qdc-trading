@@ -132,13 +132,17 @@ def code_of(fn: Callable) -> tuple[str, str]:
 
 
 def today(key: str, status: str, state: dict, pending: dict | None, logs: Path, day) -> str:
-    """One line on what the step gave for the day, from the day's saved state and the logs."""
-    if status == "not started" and key not in ("learning", "logbook"):
-        return "Not run yet for this day: run it from the dashboard."
-    signals = pd.DataFrame(state.get("signals", []))
+    """One line on what the step gave for the day, from the day's saved state, else from what it wrote to the logs."""
+    record = cockpit.day_record(day, logs)
+    signals, mock = cockpit.day_signals(day, logs, state)
+    if status == "not started" and mock and key not in ("learning", "logbook"):
+        return "Nothing for this day yet."
+    signals = pd.DataFrame() if mock else signals
     if key == "data":
         prices = pd.DataFrame(state.get("prices", []))
-        return f"{prices['ticker'].nunique()} ETFs priced, last close {prices['date'].max()}" if len(prices) else "No prices."
+        if len(prices):
+            return f"{prices['ticker'].nunique()} ETFs priced, last close {prices['date'].max()}"
+        return "The prices are downloaded each time the day runs."
     if key == "learning":
         found = cockpit.weights_on(logs, day)
         if not found:
@@ -155,22 +159,24 @@ def today(key: str, status: str, state: dict, pending: dict | None, logs: Path, 
                 f"{first['ticker'].iloc[-1]} {first['score'].iloc[-1]:+.2f}, weakest {first['ticker'].iloc[0]} "
                 f"{first['score'].iloc[0]:+.2f}")
     if key == "portfolio":
-        orders = state.get("proposed_orders", [])
-        return f"{len(orders)} order{'s' if len(orders) != 1 else ''} proposed, round {state.get('round', 1)}"
+        orders = state.get("proposed_orders") or record["proposed"].to_dict("records")
+        return f"{len(orders)} order{'s' if len(orders) != 1 else ''} proposed"
     if key.startswith("review_"):
         gate = key.removeprefix("review_")
-        answers = [r for r in state.get("reviews", []) if r["gate"] == gate]
+        answers = [r for r in state.get("reviews") or record["reviews"].to_dict("records") if r["gate"] == gate]
         if answers:
             return f"Your last answer: {answers[-1]['decision']} (round {answers[-1]['round']})"
         return "Waiting for you." if pending and pending["gate"] == gate else "Not reached yet."
     if key == "risk":
-        report = pd.DataFrame(state.get("risk_report", []))
+        report = pd.DataFrame(state.get("risk_report") or record["risk_report"].to_dict("records"))
         if report.empty:
             return "Not reached yet: it runs after your orders review."
         counts = report["status"].value_counts()
         return f"{len(report)} metrics: {counts.get('warning', 0)} warnings, {counts.get('breach', 0)} breaches"
     if key == "summary":
-        return "Written: waiting for your sign-off." if state.get("summary") else "Not reached yet."
+        if record["summary"]:
+            return "Written and signed."
+        return "Written: waiting for the sign-off." if state.get("summary") else "Not reached yet."
     if key == "logbook":
         ledger = logbook.load(logs)
         mine = ledger[ledger["date"].astype(str) == day.isoformat()] if len(ledger) else ledger

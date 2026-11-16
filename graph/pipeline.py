@@ -15,7 +15,8 @@
   Between reviews the state is saved in SQLite (<logs>/checkpoints.sqlite, one thread per date).
 - The trading rules (at most MAX_ORDERS_PER_DAY orders, enough cash, no selling more than held)
   are checked on the Portfolio Manager's orders, and again on the orders the human approves.
-- When the day ends: <logs>/orders.csv (AI suggestion next to the human decision),
+- Each round of the Portfolio Manager writes its memo to <logs>/memo/<date>.md, and the risk step its board and
+  reading to <logs>/risk/<date>.md. When the day ends: <logs>/orders.csv (AI suggestion next to the human decision),
   <logs>/reviews.csv (every review with its feedback) and <logs>/summary/<date>.md.
 - Signals and the macro summary are written to <logs>/ and read back when a date is run
   again, so a rerun never calls the agents (or the Claude API) twice. A real signal step always
@@ -595,6 +596,9 @@ def portfolio_step(state: DayState, config: RunnableConfig) -> dict:
         incident = _incident(logs, as_of, "portfolio", exc)
         return {**fresh, "target_weights": [], "proposed_orders": [],
                 "memo": f"Portfolio Manager failed: {incident['error']}", "incidents": [incident]}
+    page = logs / "memo" / f"{as_of.isoformat()}.md"  # the latest round's memo, for the cockpit
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(memo, encoding="utf-8", newline="\n")
     book = _book(logs, as_of, logbook.record_round, state.get("round", 1), target=target[PORTFOLIO], memo=memo,
                  proposed=orders[ORDERS])
     return {**fresh, "target_weights": _records(target[PORTFOLIO]), "proposed_orders": _records(orders[ORDERS]),
