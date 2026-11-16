@@ -43,7 +43,6 @@ def fills_from(days, order_day: str):
 # only: the Portfolio Manager then sizes in whole units.
 ORDER_UNIT_DECIMALS = 4
 MAX_REVISIONS = 2  # times a day can go back to the Portfolio Manager with human feedback
-TRANSACTION_COST = 0.0
 TRADING_DAYS = [
     date(2026, 12, 7),
     date(2026, 12, 10),
@@ -59,13 +58,24 @@ TRADING_DAYS = [
 # ETF analysts' own call). The Portfolio Manager weights each one and learns which predicts better.
 SIGNAL_AGENTS = ["technical_det", "technical_llm", "macro_market", "macro_etf"]
 # Starting weights, before any evidence: each family counts the same, split equally between its agents that
-# gave a score that day. An agent that gives no score takes no weight (graph/pipeline.py: load_agent_weights).
+# gave a score that day. An agent that gives no score takes no weight (agents/learning.py: starting_weights).
 AGENT_FAMILIES = {"technical": ["technical_det", "technical_llm"], "macro": ["macro_market", "macro_etf"]}
+# The technical agent's three answers, each a score per ETF; technical_det is their weighted sum (agents/technical.py).
+TECHNICAL_SIGNALS = ["trend", "mean_reversion", "momentum"]
 # Every LLM score (macro_etf, technical_llm) is a view on the next HORIZON_SESSIONS trading sessions, and the
-# review loop grades every score on them.
+# lessons journal grades every score on them.
 HORIZON_SESSIONS = 3
-# The review loop also judges the technical rule score on this many past quote days, recomputed from prices.
-REVIEW_BACKFILL_DAYS = 60
+
+# --- Learning: one rule for every weight (agents/learning.py) ------------------------------------------------------
+# After each session, every weight is multiplied by e^(LEARNING_SPEED x what following it earned in that session),
+# then the weights are scaled to sum to 1, each between WEIGHT_MIN and WEIGHT_MAX. Three sets of weights follow it:
+# the technical agent's three answers (replayed from LEARNING_START), the four agents (from their first score), and
+# Claude's portfolio against the code's (from the first one logged). Speed 2: a weight doubles against another once
+# its calls have beaten the other's by about 35% in total.
+LEARNING_SPEED = 2.0
+WEIGHT_MIN = 0.05
+WEIGHT_MAX = 0.80
+LEARNING_START = date(2022, 1, 3)
 
 # One switch per pipeline step (graph/pipeline.py). True = use the mock from data/mock.py.
 # Set your step to False once your real module works. While any step is on a mock,

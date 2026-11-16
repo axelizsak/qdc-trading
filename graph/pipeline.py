@@ -1,15 +1,15 @@
 """LangGraph orchestration of one trading day. Owner: Axel.
 
-    data -> review loop -> (technical | macro_news) -> portfolio -> orders review (human)
+    data -> learning -> (technical | macro_news) -> portfolio -> orders review (human)
          -> risk -> risk review (human) -> executive summary -> summary review (human) -> order log
 
 - Each step calls its real module, or its mock while `USE_MOCK[step]` is True in data/config.py.
 - Every output is checked against data/schemas.py. A step that fails is replaced by a safe
   fallback (neutral signals with confidence 0, no orders, no risk report), the failure goes to
   <logs>/incidents.csv, and the day carries on to the human.
-- The day starts with the review loop (graph/review_loop.py): it grades the past scores, re-weights the
-  agents and writes the lessons the agents then read. The Portfolio Manager is given the starting weights
-  and the same evidence, so it learns the same weights.
+- The day starts with the learning step (graph/review_loop.py): one rule re-weights the technical agent's three
+  answers, the four agents and Claude's portfolio against the code's from what each earned, and it writes the
+  lessons the agents then read. The technical agent and the Portfolio Manager use those weights as given.
 - The graph pauses at three human reviews. At each one the human approves, sends the day back to
   the Portfolio Manager with feedback (at most MAX_REVISIONS times a day), or stops it: no trade today.
   Between reviews the state is saved in SQLite (<logs>/checkpoints.sqlite, one thread per date).
@@ -58,17 +58,16 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
-from agents import logbook, macro_news, portfolio, risk, technical
+from agents import learning, logbook, macro_news, portfolio, risk, technical
 from data import config as settings
 from data import mock
 from data.schemas import (
     EX_DIVIDENDS, FEATURES, HOLDINGS, INCIDENTS, ORDER_LOG, ORDERS, PORTFOLIO, PRICES, REVIEW_DECISIONS, REVIEWS, RISK_REPORT,
-    SIGNALS, validate_agent_weights, validate_ex_dividends, validate_features, validate_holdings, validate_incidents, validate_order_log,
+    SIGNALS, validate_ex_dividends, validate_features, validate_holdings, validate_incidents, validate_order_log,
     validate_orders, validate_portfolio, validate_prices, validate_reviews, validate_risk_report, validate_signals,
 )
 from data.universe import tickers
 from graph import review_loop
-from graph.review_loop import starting_weights
 
 TECHNICAL_AGENTS = ["technical_det", "technical_llm"]
 MACRO_AGENTS = ["macro_market", "macro_etf"]  # the views through the exposure table, the ETF analysts
@@ -84,9 +83,12 @@ class DayState(TypedDict, total=False):
     cash_eur: float
     signals: Annotated[list[dict], operator.add]  # technical and macro_news both add rows
     macro_summary: str
-    agent_weights: dict[str, float]
     lessons: str
-    technical_history: list[dict]  # the technical rule score recomputed for past days: evidence for the learning
+    technical_weights: dict[str, float]  # today's weights of the technical agent's three answers (learning step)
+    agent_multipliers: dict[str, float]  # what each agent's record makes of its starting weight (learning step)
+    trust: float  # how much Claude's portfolio counts against the code's (learning step)
+    learning: list[dict]  # the learning scoreboard: level, name, start, weight, sessions, mean_result, right_share
+    agent_weights: dict[str, float]  # today's weights over the agents that scored (portfolio step)
     round: int  # 1, then +1 each time the human sends the day back to the Portfolio Manager
     target_weights: list[dict]
     memo: str
@@ -126,7 +128,7 @@ EX_DIVIDENDS_SOURCE = {True: lambda as_of: mock.mock_ex_dividends(as_of.isoforma
 
 MOCK = {
     "data": lambda as_of: (mock.mock_prices(end=as_of.isoformat()), mock.mock_features(as_of.isoformat())),
-    "technical": lambda prices, features, as_of, lessons: mock.mock_signals(as_of.isoformat(), agents=TECHNICAL_AGENTS),
+    "technical": lambda prices, features, as_of, lessons, **extra: mock.mock_signals(as_of.isoformat(), agents=TECHNICAL_AGENTS),
     "macro_news": lambda as_of, lessons, **extra: ("Mock macro summary.",
                                                    mock.mock_signals(as_of.isoformat(), agents=MACRO_AGENTS)),
     "portfolio": _mock_portfolio,
@@ -134,7 +136,7 @@ MOCK = {
 }
 REAL = {
     "data": lambda *args: _real_data(*args),
-    "technical": lambda *args: technical.run(*args),
+    "technical": lambda *args, **extra: technical.run(*args, **extra),
     "macro_news": lambda *args, **extra: macro_news.run(*args, **extra),
     "portfolio": lambda *args, **extra: portfolio.run(*args, **extra),
     "risk": lambda *args, **extra: risk.analyse(*args, **extra),  # (report, the details behind it)
@@ -144,7 +146,7 @@ REAL = {
 
 
 def _call(step: str, *args, **extra):
-    """`extra`: the optional keyword inputs of the Portfolio Manager and the Risk Manager (logs folder, macro views...)."""
+    """`extra`: the optional keyword inputs of a step (the technical weights, the logs folder, the macro views...)."""
     return (MOCK if settings.USE_MOCK[step] else REAL)[step](*args, **extra)
 
 
@@ -223,26 +225,6 @@ def scoring_agents(signals: pd.DataFrame) -> list[str]:
     """The known agents that gave a real score in `signals`: not the neutral rows of an agent that failed."""
     real = signals[~signals["rationale"].astype(str).str.startswith("agent failed")]
     return [a for a in settings.SIGNAL_AGENTS if a in set(real["agent"])]
-
-
-def load_agent_weights(logs: Path, as_of: date, agents: list[str] | None = None) -> dict[str, float]:
-    """What each agent weighs today, for the cockpit: the weights of `agents` (default: every agent), summing
-    to 1. An agent that gives no score takes no weight.
-
-    The latest weights on or before `as_of` in <logs>/agent_weights.csv (written by the review loop), rescaled
-    over `agents`; else the starting weights. The Portfolio Manager is given the starting weights and learns
-    the same weights from the same evidence: giving it learned weights would count the evidence twice."""
-    agents = list(settings.SIGNAL_AGENTS) if agents is None else agents
-    path = logs / "agent_weights.csv"
-    if path.exists():
-        df = validate_agent_weights(pd.read_csv(path))
-        df = df[df["date"].astype(str) <= as_of.isoformat()]
-        if len(df):
-            latest = df[df["date"].astype(str) == df["date"].astype(str).max()]
-            logged = {a: float(w) for a, w in zip(latest["agent"], latest["weight"]) if a in agents}
-            if set(logged) == set(agents) and sum(logged.values()) > 0:
-                return {a: w / sum(logged.values()) for a, w in logged.items()}
-    return starting_weights(agents)
 
 
 def same_book(log: pd.DataFrame, as_of: date) -> pd.DataFrame:
@@ -504,7 +486,6 @@ def data_step(state: DayState, config: RunnableConfig) -> dict:
         "holdings": _records(holdings),
         "ex_dividends": ex_dividends,
         "cash_eur": cash,
-        "agent_weights": load_agent_weights(logs, as_of),
         "lessons": lessons_path.read_text(encoding="utf-8") if lessons_path.exists() else "",
         "incidents": incidents,
     }
@@ -516,16 +497,20 @@ def _signals_home(step: str, logs: Path) -> Path:
     return logs if settings.USE_MOCK[step] else settings.LOGS_DIR
 
 
-def review_step(state: DayState, config: RunnableConfig) -> dict:
-    """The review loop (graph/review_loop.py): grade the past, re-weight the agents, write the lessons the
-    agents are about to read. A failure is an incident: the day goes on with the lessons already on file."""
+def learning_step(state: DayState, config: RunnableConfig) -> dict:
+    """Performance monitoring and learning (graph/review_loop.py): one rule re-weights the technical answers, the
+    agents and Claude's portfolio from what each earned, and the lessons are written. A failure is an incident: the
+    day goes on with the starting weights and the lessons already on file."""
     as_of, logs = _day(state, config)
     try:
         result = review_loop.review(as_of, _frame(state["prices"], PRICES), logs, _frame(state["indicators"], FEATURES),
-                                    backfill=not settings.USE_MOCK["technical"])  # a mock has no rule to replay
-        return {"lessons": result["journal"], "technical_history": _records(result["backfill"])}
+                                    replay_technical=not settings.USE_MOCK["technical"],  # a mock has no rules to replay
+                                    fetch=None if settings.USE_MOCK["data"] else review_loop.long_history)
+        return {"lessons": result["journal"], "technical_weights": result["technical_weights"],
+                "agent_multipliers": result["agent_multipliers"], "trust": result["trust"],
+                "learning": _records(result["board"])}
     except Exception as exc:
-        return {"technical_history": [], "incidents": [_incident(logs, as_of, "review", exc)]}
+        return {"incidents": [_incident(logs, as_of, "learning", exc)]}
 
 
 def technical_step(state: DayState, config: RunnableConfig) -> dict:
@@ -536,7 +521,8 @@ def technical_step(state: DayState, config: RunnableConfig) -> dict:
         return {"signals": _records(cached)}
     try:
         signals = _check_signals(_call("technical", _frame(state["prices"], PRICES),
-                                       _frame(state["indicators"], FEATURES), as_of, state["lessons"]),
+                                       _frame(state["indicators"], FEATURES), as_of, state["lessons"],
+                                       weights=state.get("technical_weights")),
                                  TECHNICAL_AGENTS)
         _write_signals(home, signals, as_of, TECHNICAL_AGENTS)
         return {"signals": _records(signals)}
@@ -590,16 +576,16 @@ def portfolio_step(state: DayState, config: RunnableConfig) -> dict:
              "summary": ""}  # a new round
     holdings, prices = _frame(state["holdings"], HOLDINGS), _frame(state["prices"], PRICES)
     signals = _frame(state["signals"], SIGNALS)
-    weights = starting_weights(scoring_agents(signals))  # the prior: only the agents that scored today
+    # today's weights: each agent that scored today, its starting weight times what its record made of it
+    weights = learning.weights_now(learning.starting_weights(scoring_agents(signals)), state.get("agent_multipliers") or {})
     fresh["agent_weights"] = weights
-    history = _frame(state.get("technical_history", []), SIGNALS)
     try:
-        # logs_dir: where it learns from (signals so far, its own past portfolios) and logs its proposals
+        # logs_dir: where it logs its portfolios and proposals (the learning step reads them)
         target, orders, memo = _call("portfolio", signals, weights,
                                      state["lessons"], holdings, state["cash_eur"], prices, as_of,
                                      feedback_for_portfolio(state.get("reviews", [])),
                                      macro_summary=state.get("macro_summary", ""), logs_dir=logs,
-                                     extra_history=history if len(history) else None)
+                                     trust=state.get("trust"), learning=pd.DataFrame(state.get("learning") or []))
         validate_portfolio(target)
         validate_orders(orders)
         problems = check_orders(orders, holdings, state["cash_eur"], prices, as_of)
@@ -727,7 +713,7 @@ def _after(next_step: str):
 def build_graph() -> StateGraph:
     g = StateGraph(DayState)
     g.add_node("data", data_step)
-    g.add_node("review", review_step)
+    g.add_node("learning", learning_step)
     g.add_node("technical", technical_step)
     g.add_node("macro_news", macro_news_step)
     g.add_node("portfolio", portfolio_step)
@@ -738,9 +724,9 @@ def build_graph() -> StateGraph:
     g.add_node("summary_review", summary_review_step)
     g.add_node("order_log", order_log_step)
     g.add_edge(START, "data")
-    g.add_edge("data", "review")
-    g.add_edge("review", "technical")
-    g.add_edge("review", "macro_news")
+    g.add_edge("data", "learning")
+    g.add_edge("learning", "technical")
+    g.add_edge("learning", "macro_news")
     g.add_edge(["technical", "macro_news"], "portfolio")
     g.add_edge("portfolio", "orders_review")
     g.add_conditional_edges("orders_review", _after("risk"), ["risk", "portfolio", "order_log"])

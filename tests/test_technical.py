@@ -203,11 +203,23 @@ def test_mean_reversion_only_on_equities(sheet_and_signals):
 
 
 def test_run_returns_valid_signals(sheet_and_signals):
-    _, signals = sheet_and_signals
+    sheet, signals = sheet_and_signals
     assert set(signals["agent"]) == {technical.AGENT_DET}
-    for score in signals["score"]:
-        assert score in cfg.SIGNAL_SCORES.values()
-    assert signals["confidence"].between(0, 1).all()
+    assert signals["score"].between(-1, 1).all() and signals["confidence"].between(0, 1).all()
+    scores = technical.signal_scores(sheet)
+    assert scores["trend"].tolist() == sheet["suggested_signal"].map(cfg.SIGNAL_SCORES).tolist()
+    assert scores["mean_reversion"].isin([-1.0, 0.0, 1.0]).all() and scores["momentum"].between(-1, 1).all()
+    start = technical.starting_weights()
+    assert signals["score"].tolist() == pytest.approx(
+        (start["trend"] * scores["trend"] + start["mean_reversion"] * scores["mean_reversion"]
+         + start["momentum"] * scores["momentum"]).round(4).tolist())
+    assert signals["rationale"].str.startswith("trend ").all()
+
+
+def test_the_learned_weights_decide_the_score(sheet_and_signals):
+    sheet, _ = sheet_and_signals
+    trend_only = technical.signals_from_sheet(sheet, {"trend": 1.0, "mean_reversion": 0.0, "momentum": 0.0})
+    assert trend_only["score"].tolist() == sheet["suggested_signal"].map(cfg.SIGNAL_SCORES).tolist()  # the old rule
 
 
 def test_a_falling_market_is_in_favour_of_an_inverse_etf():

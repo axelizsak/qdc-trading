@@ -1,25 +1,26 @@
-"""Review loop: what the system learns from its own past, before each day's decisions. Owner: Axel.
-(It calls each agent's own grading code: Person 3 owns the grading of the Portfolio and Risk Managers.)
+"""Performance monitoring and learning: what the system learns from its own past, every morning. Owner: Axel.
+(It calls each agent's own grading code: Person 3 owns the grading of the Risk Manager.)
 
 It runs first thing in a day, right after the data step, and on its own:
     python -m graph.review_loop                    # today, on logs/
     python -m graph.review_loop --date 2026-12-10
+    python -m graph.review_loop --rebuild          # replay the technical answers since 2022 again (after a rule change)
 
-Stateless: every number is recomputed from the logs and the prices. Running it twice changes nothing, and
-a change to an agent's settings shows in the next review. No LLM: it reports facts with their numbers.
+No LLM: it reports facts with their numbers.
 
-1. Grade   every agent's past scores against what the ETFs did over the next HORIZON_SESSIONS sessions.
-           The technical rule score is also recomputed for the last REVIEW_BACKFILL_DAYS days from prices
-           (what the rule would have said each morning), so it is judged on months, not on a few days.
-2. Weigh   the agent weights that evidence supports -> logs/agent_weights.csv, the evidence of model
-           re-assessment. The Portfolio Manager learns its weights from the same evidence, the same way.
+1. Record  the technical agent's answers of every session not recorded yet, with what each ETF then did
+           (logs/technical_answers.csv, from LEARNING_START). Computed once, then one session a day.
+2. Learn   every weight of the system with one rule (agents/learning.py): after each session, a weight is
+           multiplied by e^(LEARNING_SPEED x what following it earned). Three sets: the technical agent's three
+           answers (since 2022), the four agents (since their first score), Claude's portfolio against the code's.
+           -> logs/weights.csv, the evidence of model re-assessment. Every number is recomputed from the logs.
 3. Check   the macro sources: one on trial that is wrong too often is dropped -> logs/source_registry.csv.
-4. Write   logs/lessons.md, newest review first. Macro/News, technical_llm and the Portfolio Manager read it
-           before they decide.
+4. Write   logs/lessons.md, newest review first. Macro/News, technical_llm and the Portfolio Manager read it.
 5. Record  the re-assessment and the lessons in the logbook (the audit trail).
 
-To change how the system learns: REVIEW_BACKFILL_DAYS and HORIZON_SESSIONS in data/config.py, the learning
-speed and the weight bounds in agents/portfolio_config.py (LEARN_*, AGENT_WEIGHT_*).
+To change how the system learns: LEARNING_SPEED, WEIGHT_MIN, WEIGHT_MAX and LEARNING_START in data/config.py; the
+starting weights in AGENT_FAMILIES (data/config.py), SIGNAL_START (agents/strategy_config.py) and TRUST_START
+(agents/portfolio_config.py).
 """
 import argparse
 from datetime import date, timedelta
@@ -27,50 +28,101 @@ from pathlib import Path
 
 import pandas as pd
 
-from agents import logbook, macro_news, macro_tape, portfolio_backfill, portfolio_learning, risk_review
+from agents import learning, logbook, macro_news, macro_tape, portfolio_learning, risk_review, technical
+from agents import portfolio_config as pm_cfg
 from data import config as settings
-from data.schemas import AGENT_WEIGHTS, SIGNALS, validate_agent_weights
+from data.schemas import SIGNALS, TECHNICAL_ANSWERS, WEIGHTS, validate_technical_answers, validate_weights
 from data.universe import load_universe
 
 JOURNAL = "lessons.md"
+ANSWERS = "technical_answers.csv"
+WEIGHTS_FILE = "weights.csv"
 HEADER = ("# Lessons journal\n\nWritten by the review loop (graph/review_loop.py) from the logs and the prices: "
           "facts with their numbers, no opinion. Newest review first. The agents read it before they decide.\n")
 REVIEWS_KEPT = 5  # older reviews stay in git and in the logbook
 MIN_CALLS = 5  # calls needed before a hit rate is quoted
 MISSES = 3
+PORTFOLIOS = {"llm": "llm", pm_cfg.ANCHOR: "code"}  # pm_portfolios.csv source -> expert
 
 
-def starting_weights(agents: list[str]) -> dict[str, float]:
-    """Weights before any evidence: each family (technical, macro) counts the same, split equally between
-    its agents in `agents`. A family without an agent gives its share to the other."""
-    families = {name: [a for a in members if a in agents] for name, members in settings.AGENT_FAMILIES.items()}
-    families = {name: members for name, members in families.items() if members}
-    return {a: 1 / len(families) / len(members) for members in families.values() for a in members}
+# --- 1. The technical answers since LEARNING_START ---------------------------------------------------------------
+
+def load_answers(path: Path) -> pd.DataFrame:
+    """The recorded answers ('n/a' is an answer, not a missing value: only empty cells are)."""
+    if not path.exists():
+        return pd.DataFrame(columns=TECHNICAL_ANSWERS)
+    return validate_technical_answers(pd.read_csv(path, keep_default_na=False, na_values=[""]))
 
 
-def technical_history(prices: pd.DataFrame, features: pd.DataFrame | None, as_of: date,
-                      days: int | None = None) -> pd.DataFrame:
-    """The technical rule score recomputed for the last `days` quote days before `as_of`, each from the prices
-    known that morning (agents/portfolio_backfill.py). Signals format. It is evidence for the learning only:
-    logs/signals.csv stays the record of what the agents really said."""
-    days = settings.REVIEW_BACKFILL_DAYS if days is None else days
-    return portfolio_backfill.backfill_technical(prices, portfolio_backfill.quote_days(prices, days, as_of), features)
+def update_answers(logs: Path, prices: pd.DataFrame, features: pd.DataFrame, as_of: date, fetch=None) -> pd.DataFrame:
+    """<logs>/technical_answers.csv brought up to the session before `as_of`. Only sessions after the last one
+    recorded are computed. When nothing is recorded yet, `fetch(start, end) -> (prices, features)` brings the prices
+    since LEARNING_START (the day's prices cover about a year); without it, the sessions the prices allow."""
+    path = logs / ANSWERS
+    stored = load_answers(path)
+    last = str(stored["date"].max()) if len(stored) else None
+    if last is None and fetch is not None:
+        prices, features = fetch(settings.LEARNING_START - timedelta(days=technical.PRICE_DAYS + 30), as_of)
+    quote_days = sorted(set(pd.to_datetime(prices["date"]).dt.date))
+    days = [d for d in quote_days if settings.LEARNING_START <= d < as_of and (last is None or d.isoformat() > last)]
+    if not days:
+        return stored
+    new = learning.technical_answers(prices, features, days, as_of)
+    out = validate_technical_answers(pd.concat([stored, new], ignore_index=True) if len(stored) else new)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    out.to_csv(path, index=False)
+    return out
 
 
-def evidence(logs: Path, as_of: date, backfill: pd.DataFrame | None = None) -> pd.DataFrame:
-    """Every score that can be judged on `as_of`: the logged ones (without the neutral rows of a failed agent)
-    and the recomputed technical ones, dated before `as_of`. A logged score wins over a recomputed one."""
-    frames = [f for f in (backfill, portfolio_learning.load_history(logs)) if f is not None and len(f)]
-    if not frames:
+# --- 2. The three sets of weights -----------------------------------------------------------------------------------
+
+def technical_weights(answers: pd.DataFrame, as_of: date) -> tuple[pd.DataFrame, dict[str, float]]:
+    """The technical agent's three answers, learned session by session since LEARNING_START."""
+    results = learning.answer_results(answers) if len(answers) else pd.DataFrame(columns=learning.RESULTS)
+    return learning.daily_weights(results, learning.shares(technical.starting_weights()), as_of,
+                                  known=settings.TECHNICAL_SIGNALS)
+
+
+def agent_calls(logs: Path, answers: pd.DataFrame, technical_frame: pd.DataFrame) -> pd.DataFrame:
+    """Every score the four agents gave (Signals format), from their first logged score. A technical_det score
+    missing from the logs (a day the pipeline did not run) is replayed from the recorded answers with that day's
+    technical weights: what the agent would have said that morning."""
+    logged = portfolio_learning.load_history(logs)
+    logged = logged[logged["agent"].isin(settings.SIGNAL_AGENTS)].assign(date=lambda s: s["date"].astype(str).str[:10])
+    if logged.empty:
         return pd.DataFrame(columns=SIGNALS)
-    history = pd.concat(frames, ignore_index=True)
-    history["date"] = history["date"].astype(str).str[:10]
-    history = history[history["date"] < as_of.isoformat()]
-    return history.drop_duplicates(["ticker", "date", "agent"], keep="last").reset_index(drop=True)
+    days = answers[answers["date"].astype(str) >= logged["date"].min()]
+    days = days[~days["date"].astype(str).isin(set(logged.loc[logged["agent"] == technical.AGENT_DET, "date"]))]
+    replayed = []
+    for day, rows in days.groupby(days["date"].astype(str)):
+        weights = learning.weights_before(technical_frame, date.fromisoformat(day))
+        replayed.append(pd.DataFrame({"ticker": rows["ticker"], "date": day, "agent": technical.AGENT_DET,
+                                      "score": technical.blend(technical.signal_scores(rows), weights).values,
+                                      "confidence": (rows["confirmations"] / 2).values, "rationale": "replayed"}))
+    return pd.concat([logged[SIGNALS], *replayed], ignore_index=True)
 
+
+def agent_weights(calls: pd.DataFrame, prices: pd.DataFrame, as_of: date) -> tuple[pd.DataFrame, dict[str, float]]:
+    """The four agents, learned session by session from their first score."""
+    results = (learning.call_results(calls.rename(columns={"agent": "name"}), prices, as_of) if len(calls)
+               else pd.DataFrame(columns=learning.RESULTS))
+    return learning.daily_weights(results, learning.starting_weights, as_of, known=sorted(set(calls["agent"])))
+
+
+def portfolio_weights(logs: Path, prices: pd.DataFrame, as_of: date) -> tuple[pd.DataFrame, dict[str, float]]:
+    """Claude's portfolio against the code's (ANCHOR), learned session by session from the first one logged."""
+    records = portfolio_learning.load_records(logs)
+    records = records[records["source"].isin(PORTFOLIOS)].assign(name=lambda r: r["source"].map(PORTFOLIOS))
+    results = (learning.portfolio_results(records, prices, as_of) if len(records)
+               else pd.DataFrame(columns=learning.RESULTS))
+    start = {"llm": pm_cfg.TRUST_START, "code": 1 - pm_cfg.TRUST_START}
+    return learning.daily_weights(results, learning.shares(start), as_of, known=list(start))
+
+
+# --- 3 and 4. The lessons -----------------------------------------------------------------------------------------
 
 def grade_agents(history: pd.DataFrame, table: pd.DataFrame) -> pd.DataFrame:
-    """Every past score with what its ETF did next: agent + the columns of macro_tape.GRADES."""
+    """Every past score with what its ETF did over the next HORIZON_SESSIONS: agent + the columns of macro_tape.GRADES."""
     frames = []
     for agent, rows in history.groupby("agent"):
         calls = rows.rename(columns={"score": "direction"})[["date", "ticker", "direction"]]
@@ -99,24 +151,32 @@ def _day(iso: str) -> str:
     return f"{date.fromisoformat(str(iso)[:10]):%d %b}"
 
 
-def write_review(as_of: date, stats: pd.DataFrame, grades: pd.DataFrame, analysts: pd.DataFrame,
-                 sources: dict, trust: float, track: dict, risk_text: str, backfill_days: int) -> list[str]:
+WEIGHT_TITLES = {"technical": "The technical agent's three answers", "agents": "The four agents",
+                 "portfolio": "Claude's portfolio (llm) against the code's (code)"}
+
+
+def weight_lines(board: pd.DataFrame) -> list[str]:
+    """The weights, level by level: start -> today, with the record behind each one."""
+    lines = ["**Weights** (each session, a weight is multiplied by e^(" f"{settings.LEARNING_SPEED:g}"
+             " x what following it earned in that session); start -> today", ""]
+    for level, rows in board.groupby("level", sort=False):
+        parts = []
+        for r in rows.itertuples():
+            record = ("no session judged yet" if not r.sessions else
+                      f"{r.mean_result:+.3%} a session over {int(r.sessions)}, right {r.right_share:.0%}")
+            parts.append(f"{r.name} {r.start:.0%} -> {r.weight:.0%} ({record})")
+        lines.append(f"- {WEIGHT_TITLES[level]}: " + "; ".join(parts))
+    return lines
+
+
+def write_review(as_of: date, board: pd.DataFrame, grades: pd.DataFrame, analysts: pd.DataFrame,
+                 sources: dict, risk_text: str) -> list[str]:
     """The review of the day as Markdown lines: facts with their numbers, the most useful first."""
-    lines = [f"## Review of {as_of.isoformat()}", "",
-             f"Every score is judged on the {settings.HORIZON_SESSIONS} sessions that followed it."
-             + (f" The technical rule score is also recomputed for the last {backfill_days} quote days." if backfill_days else "")]
-
-    lines += ["", "**Agent weights** (starting weight -> weight the evidence supports)", ""]
-    for r in stats.itertuples():
-        proof = ("no evidence yet" if not r.days else f"{r.days} days judged, rank correlation {r.ic:+.2f}"
-                 + ("" if pd.isna(r.hit_rate) else f", hit rate {r.hit_rate:.0%}"))
-        lines.append(f"- {r.agent}: {r.prior:.0%} -> {r.weight:.0%} ({proof})")
-    if stats.empty:
-        lines.append("- No score can be judged yet: every agent keeps its starting weight.")
-
+    lines = [f"## Review of {as_of.isoformat()}", ""] + weight_lines(board)
     calls = grades[grades["hit"].notna()]
     if len(calls):
-        lines += ["", f"**Where each agent is right** (calls with a score of at least {macro_tape.MIN_CALL})", ""]
+        lines += ["", f"**Where each agent is right** (each score judged on the {settings.HORIZON_SESSIONS} sessions "
+                      f"that followed it; calls with a score of at least {macro_tape.MIN_CALL})", ""]
         for agent, mine in calls.groupby("agent"):
             lines.append(f"- {agent}: calls up right {_share(mine[mine['direction'] > 0])}, "
                          f"calls down right {_share(mine[mine['direction'] < 0])}")
@@ -151,11 +211,6 @@ def write_review(as_of: date, stats: pd.DataFrame, grades: pd.DataFrame, analyst
              if sources.get("propose_active") else ""]
     if any(notes):
         lines += ["", "**Macro sources**", ""] + [f"- {n[0].upper()}{n[1:]}" for n in notes if n]
-
-    if track.get("days"):
-        lines += ["", f"**Portfolio Manager**: over {track['days']} day(s) its LLM portfolio returned {track['llm']:+.2%} "
-                      f"on average against {track[track['anchor']]:+.2%} for the code's {track['anchor']} portfolio, "
-                      f"so the LLM counts for {trust:.0%} of the final blend."]
     if risk_text:
         lines += ["", f"**Risk Manager**: {risk_text}"]
     return lines
@@ -175,69 +230,76 @@ def save_journal(logs: Path, as_of: date, review_lines: list[str]) -> str:
     return journal
 
 
-def save_weights(logs: Path, as_of: date, stats: pd.DataFrame) -> None:
-    """One set of weights per review date in <logs>/agent_weights.csv (a review run again replaces its set)."""
-    if stats.empty:
-        return
-    new = validate_agent_weights(pd.DataFrame({"date": as_of.isoformat(), "agent": stats["agent"],
-                                               "weight": stats["weight"], "hit_rate": stats["hit_rate"]},
-                                              columns=AGENT_WEIGHTS))
-    path = logs / "agent_weights.csv"
-    if path.exists():
-        old = pd.read_csv(path)
-        new = pd.concat([old[old["date"].astype(str) != as_of.isoformat()], new], ignore_index=True)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    new.to_csv(path, index=False)
-
+# --- The review ---------------------------------------------------------------------------------------------------
 
 def review(as_of: date, prices: pd.DataFrame, logs: Path | str | None = None, features: pd.DataFrame | None = None,
-           backfill: bool = True) -> dict:
-    """Run the review of `as_of` on <logs> and return what it found:
-    weights, stats (one row per agent), lessons (the review as text), journal (the whole lessons.md),
-    backfill (the recomputed technical scores, for the Portfolio Manager's own learning), sources.
-    `backfill=False` skips the recomputed technical scores (a mock technical agent has no rule to replay)."""
+           replay_technical: bool = True, fetch=None) -> dict:
+    """Run the review of `as_of` on <logs> and return what the day needs:
+    technical_weights (today's weights of the three answers), agent_multipliers (learning.weights_now turns them into
+    today's weights over the agents that score), trust (how much Claude's portfolio counts), board (the scoreboard:
+    level, name, start, weight, sessions, mean_result, right_share), weights (logs/weights.csv), lessons (the review
+    as text), journal (the whole lessons.md), sources, grades.
+    `replay_technical=False` skips the technical answers (a mock technical agent has no rules to replay)."""
     logs = Path(logs) if logs else settings.LOGS_DIR
     table = macro_tape.closes(prices, as_of)
-    past = technical_history(prices, features, as_of) if backfill and len(prices) else pd.DataFrame(columns=SIGNALS)
-    history = evidence(logs, as_of, past)
-    agents = [a for a in settings.SIGNAL_AGENTS if a in set(history["agent"])]
-    history = history[history["agent"].isin(agents)]
-    if agents:
-        weights, stats = portfolio_learning.learn_weights(history, prices, starting_weights(agents), as_of)
-    else:
-        weights, stats = {}, pd.DataFrame(columns=["agent", "days", "ic", "hit_rate", "prior", "weight"])
-    grades = grade_agents(history, table)
+    answers = (update_answers(logs, prices, features, as_of, fetch) if replay_technical and len(prices)
+               else pd.DataFrame(columns=TECHNICAL_ANSWERS))
+    tech_frame, _ = technical_weights(answers, as_of)
+    calls = agent_calls(logs, answers, tech_frame)
+    agent_frame, multipliers = agent_weights(calls, prices, as_of)
+    trust_frame, _ = portfolio_weights(logs, prices, as_of)
+
+    starts = {"technical": technical.starting_weights(), "agents": learning.starting_weights(sorted(set(calls["agent"]))),
+              "portfolio": {"llm": pm_cfg.TRUST_START, "code": 1 - pm_cfg.TRUST_START}}
+    frames = {"technical": tech_frame, "agents": agent_frame, "portfolio": trust_frame}
+    weights = validate_weights(pd.concat([f.assign(level=level) for level, f in frames.items() if len(f)],
+                                         ignore_index=True).reindex(columns=WEIGHTS))
+    board = pd.concat([learning.scoreboard(f, starts[level]).assign(level=level) for level, f in frames.items() if len(f)],
+                      ignore_index=True)
+    logs.mkdir(parents=True, exist_ok=True)
+    weights.to_csv(logs / WEIGHTS_FILE, index=False)
+
+    grades = grade_agents(calls, table)
     exposure = macro_news.load_exposure()
     analysts = macro_tape.grade_calls(macro_news.past_etf_views(logs, as_of), table, exposure.set_index("ticker")["multiplier"])
     sources = macro_news.review_sources(logs, table, exposure)
-    trust, track = portfolio_learning.learn_trust(portfolio_learning.load_records(logs), prices, as_of)
     risk_text = risk_review.grading_summary(logs, prices, as_of)
-
-    lines = write_review(as_of, stats, grades, analysts, sources, trust, track, risk_text,
-                         past["date"].nunique() if len(past) else 0)
-    save_weights(logs, as_of, stats)
+    lines = write_review(as_of, board, grades, analysts, sources, risk_text)
     journal = save_journal(logs, as_of, lines)
-    if len(stats):
-        moved = "; ".join(f"{r.agent} {r.prior:.0%} -> {r.weight:.0%}" for r in stats.itertuples())
-        logbook.record_learning(logs, as_of, "reassessment", "Agent weights re-assessed", moved, source="review loop",
-                                data={r.agent: {"prior": float(r.prior), "weight": float(r.weight), "days": int(r.days)}
-                                      for r in stats.itertuples()})
-        logbook.record_learning(logs, as_of, "lesson", "Review of the day written to lessons.md",
-                                f"{len(lines)} lines; " + moved, source="review loop")
-    return {"weights": weights, "stats": stats, "lessons": "\n".join(lines) + "\n", "journal": journal,
-            "backfill": past, "sources": sources, "grades": grades}
+
+    today = weights[weights["date"] == as_of.isoformat()]
+    now = {level: dict(zip(rows["name"], rows["weight"].astype(float))) for level, rows in today.groupby("level")}
+    moved = "; ".join(f"{r.level} {r.name} {r.start:.0%} -> {r.weight:.0%}" for r in board.itertuples())
+    logbook.record_learning(logs, as_of, "reassessment", "Weights re-assessed", moved, source="review loop",
+                            data={f"{r.level}/{r.name}": {"start": float(r.start), "weight": float(r.weight),
+                                                          "sessions": int(r.sessions)} for r in board.itertuples()})
+    logbook.record_learning(logs, as_of, "lesson", "Review of the day written to lessons.md",
+                            f"{len(lines)} lines; " + moved, source="review loop")
+    return {"technical_weights": now.get("technical") or technical.starting_weights(),
+            "agent_multipliers": multipliers, "trust": now.get("portfolio", {}).get("llm", pm_cfg.TRUST_START),
+            "board": board, "weights": weights, "lessons": "\n".join(lines) + "\n", "journal": journal,
+            "sources": sources, "grades": grades}
+
+
+def long_history(start: date, end: date) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Real prices and indicators from `start` to `end` (data agent): for the first replay of the technical answers."""
+    from data import data_agent
+    prices = data_agent.fetch_prices(start, end)
+    return prices, data_agent.compute_features(prices)
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Review what the agents got right and wrong, and re-weight them.")
     parser.add_argument("--date", type=date.fromisoformat, default=date.today(), help="YYYY-MM-DD, default today")
     parser.add_argument("--logs-dir", type=Path, default=settings.LOGS_DIR)
+    parser.add_argument("--rebuild", action="store_true", help="replay the technical answers since LEARNING_START again")
     args = parser.parse_args(argv)
-    from data import data_agent
-    prices = data_agent.fetch_prices(args.date - timedelta(days=400), args.date)
-    result = review(args.date, prices, args.logs_dir, data_agent.compute_features(prices))
+    if args.rebuild:
+        (args.logs_dir / ANSWERS).unlink(missing_ok=True)
+    prices, features = long_history(args.date - timedelta(days=400), args.date)
+    result = review(args.date, prices, args.logs_dir, features, fetch=long_history)
     print(result["lessons"])
-    print(f"Written: {args.logs_dir / JOURNAL}, {args.logs_dir / 'agent_weights.csv'}")
+    print(f"Written: {args.logs_dir / JOURNAL}, {args.logs_dir / WEIGHTS_FILE}, {args.logs_dir / ANSWERS}")
 
 
 if __name__ == "__main__":

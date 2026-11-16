@@ -7,6 +7,7 @@ import streamlit as st
 from agents import macro_news
 from agents.portfolio import combine_scores
 from app import charts, data, ui
+from data import config as settings
 from data.config import MACRO_FACTOR_MEANING, SIGNAL_AGENTS
 from data.schemas import split_list
 from data.universe import load_universe
@@ -20,13 +21,13 @@ ui.page("Research", "What the agents want to trade, why, and how far to trust th
 _, state, _ = pipeline.day_status(as_of, logs)
 signals, signals_mock = data.day_signals(as_of, logs, state)
 universe = load_universe()
-# what the review loop learned so far, over the agents that gave a score today (else the starting weights)
-weights = pipeline.load_agent_weights(logs, as_of, pipeline.scoring_agents(signals))
+# what the learning step learned so far, over the agents that gave a score today (else the starting weights)
+weights = data.agent_weights_on(as_of, logs, state, pipeline.scoring_agents(signals))
 if not weights:  # a day logged before the agents had their current names
     weights = {agent: 1 / signals["agent"].nunique() for agent in sorted(signals["agent"].unique())}
 combined = combine_scores(signals, weights).rename("score").reset_index().merge(universe[["ticker", "theme"]])
 
-ui.label("Signals", "agents' votes, weighted by the review loop: "
+ui.label("Signals", "agents' votes, weighted by what each has earned so far: "
                     + " · ".join(f"{a} {w:.0%}" for a, w in weights.items()))
 ui.mock_note(signals_mock, "this day has not run yet")
 themes = st.multiselect("Themes", universe["theme"].unique().tolist(), placeholder="All themes",
@@ -151,30 +152,37 @@ if report:
         st.markdown(report)
 
 # --- Track record ----------------------------------------------------------------------------
-agent_weights, weights_mock = data.agent_weights(macro_logs)
-agent_weights = agent_weights.assign(date=pd.to_datetime(agent_weights["date"].astype(str)))
+learned, learned_mock = data.weights(macro_logs)
+learned = learned.assign(date=pd.to_datetime(learned["date"].astype(str)))
 registry, registry_mock = data.source_registry(macro_logs)
-graded_agents = agent_weights.dropna(subset=["hit_rate"])
-latest = graded_agents[graded_agents["date"] == graded_agents["date"].max()] if len(graded_agents) else graded_agents
+judged = learned[(learned["level"] == "agents") & learned["result"].notna()]
+latest = (judged.groupby("name")["result"].agg(right_share=lambda r: (r > 0).mean(), sessions="size").reset_index()
+          if len(judged) else judged)
 graded_sources = registry[registry["n_uses"] > 0]
 
-ui.label("Track record", "the review loop grades every score and re-weights the agents before each day")
-ui.mock_note(weights_mock, "the review loop has not written logs/agent_weights.csv yet")
-if agent_weights["date"].nunique() < 2:  # one review so far: the weights as numbers, the curve needs two
-    now = agent_weights.sort_values("weight", ascending=False)
-    st.caption("Agent weights · " + " · ".join(f"{r.agent} {r.weight:.0%}" for r in now.itertuples())
-               + " · the curve starts with the second review")
-else:
-    st.caption("Agent weights")
-    st.altair_chart(charts.lines(agent_weights, "date", "weight", "agent", "weight", ".0%", zero_based=True),
-                    width="stretch")
+ui.label("Track record", f"every morning one rule re-weights everything: a weight x e^({settings.LEARNING_SPEED:g} x what "
+                         "following it earned in a session)")
+ui.mock_note(learned_mock, "the learning step has not written logs/weights.csv yet")
+LEVELS = [("agents", "Agent weights"), ("technical", "The technical agent's three answers, learned since "
+                                                    f"{settings.LEARNING_START:%b %Y} (weekly)"),
+          ("portfolio", "Claude's portfolio (llm) against the code's (code)")]
+for level, title in LEVELS:
+    rows = learned[learned["level"] == level]
+    if level == "technical":  # five years of sessions: one point a week
+        rows = rows.groupby([pd.Grouper(key="date", freq="W"), "name"])["weight"].last().reset_index()
+    if rows["date"].nunique() < 2:  # one set so far: the weights as numbers, the curve needs two
+        now = rows[rows["date"] == rows["date"].max()].sort_values("weight", ascending=False)
+        st.caption(f"{title} · " + (" · ".join(f"{r.name} {r.weight:.0%}" for r in now.itertuples()) or "none yet"))
+    else:
+        st.caption(title)
+        st.altair_chart(charts.lines(rows, "date", "weight", "name", "weight", ".0%", zero_based=True), width="stretch")
 agents_col, sources_col = st.columns(2, gap="large")
 with agents_col:
-    st.caption("Agent hit rates · line = 50%")
+    st.caption("Agents: share of sessions where following them earned something · line = 50%")
     if latest.empty:
-        st.caption("Appears after the first review.")
+        st.caption("Appears once a session after an agent's score has closed.")
     else:
-        st.altair_chart(charts.hbars(latest, "hit_rate", "agent", ".0%", tooltip=["agent", "weight", "hit_rate"],
+        st.altair_chart(charts.hbars(latest, "right_share", "name", ".0%", tooltip=["name", "sessions", "right_share"],
                                      rule_at=0.5), width="stretch")
 with sources_col:
     counts = registry["status"].value_counts()
@@ -195,4 +203,4 @@ with st.expander("Lessons journal · what the agents read before they decide"):
     if journal:
         st.markdown(ui.demote("\n".join(journal.splitlines()[1:])))
     else:
-        st.caption("Empty: the review loop writes it when a day runs (or: python -m graph.review_loop).")
+        st.caption("Empty: the learning step writes it when a day runs (or: python -m graph.review_loop).")

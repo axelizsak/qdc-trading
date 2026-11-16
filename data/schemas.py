@@ -10,7 +10,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from data.config import MACRO_FACTORS, MAX_ORDERS_PER_DAY, SIGNAL_AGENTS
+from data.config import MACRO_FACTORS, MAX_ORDERS_PER_DAY, SIGNAL_AGENTS, TECHNICAL_SIGNALS
 
 # Real daily prices (not adjusted for dividends), in EUR, on the Belfius exchange.
 # One row per day the ETF was quoted: a day without a quote is absent, never filled.
@@ -26,7 +26,16 @@ PORTFOLIO = ["ticker", "target_weight"]
 ORDERS = ["date", "side", "ticker", "units"]  # matches the Belfius form
 HOLDINGS = ["ticker", "units"]
 FEATURES = ["date", "ticker", "feature", "value"]  # long format: one row per (date, ticker, feature)
-AGENT_WEIGHTS = ["date", "agent", "weight", "hit_rate"]
+# logs/weights.csv: every weight of the system (agents/learning.py), one row per session and expert: the weight it had
+# for that session's decisions and what following it earned in the session (empty until the session's close is known).
+# level: technical (the technical agent's three answers), agents (the four scores), portfolio (Claude's portfolio and
+# the code's).
+WEIGHTS = ["date", "level", "name", "weight", "result"]
+# logs/technical_answers.csv: what the technical agent's rules answered for each ETF on the morning of every session
+# since LEARNING_START, from the prices known that morning, and the ETF's return over that session (from the fill
+# price, data/config.py fills_from, to the next close). The technical weights are learned from them.
+TECHNICAL_ANSWERS = ["date", "ticker", "suggested_signal", "mr_setup", "momentum_13612", "confirmations", "trend_strength",
+                     "session_return"]
 EVIDENCE = ["date", "factor", "source", "kind", "value", "summary", "url"]
 MACRO_VIEWS = ["date", "factor", "direction", "confidence", "rationale", "counter_argument", "sources"]
 SOURCE_REGISTRY = ["source", "kind", "factors", "status", "first_seen", "n_uses", "hit_rate"]
@@ -185,16 +194,33 @@ def validate_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def validate_agent_weights(df: pd.DataFrame) -> pd.DataFrame:
-    """Portfolio Manager weights per agent, one set per review date. hit_rate is empty before the first review."""
-    _require_columns(df, AGENT_WEIGHTS, "agent_weights")
-    _require_in(df, "agent", SIGNAL_AGENTS, "agent_weights")
-    _require_between(df, "weight", 0, 1, "agent_weights")
-    _require_between(df, "hit_rate", 0, 1, "agent_weights", allow_missing=True)
-    _require_unique(df, ["date", "agent"], "agent_weights")
-    sums = df.groupby("date")["weight"].sum()
-    if not np.allclose(sums, 1):
-        raise ValueError("agent_weights: weights must sum to 1 on each date")
+WEIGHT_NAMES = {"technical": set(TECHNICAL_SIGNALS), "agents": set(SIGNAL_AGENTS), "portfolio": {"llm", "code"}}
+SUGGESTED_SIGNALS = {"buy", "watch", "neutral", "avoid"}
+MR_SETUPS = {"buy", "avoid", "none", "n/a"}
+
+
+def validate_weights(df: pd.DataFrame) -> pd.DataFrame:
+    """Every weight of the system, one set per date and level, summing to 1. result is empty until it is known."""
+    _require_columns(df, WEIGHTS, "weights")
+    _require_in(df, "level", WEIGHT_NAMES, "weights")
+    for level, names in WEIGHT_NAMES.items():
+        _require_in(df[df["level"] == level], "name", names, f"weights ({level})")
+    _require_between(df, "weight", 0, 1, "weights")
+    _require_unique(df, ["date", "level", "name"], "weights")
+    if len(df) and not np.allclose(df.groupby(["date", "level"])["weight"].sum(), 1):
+        raise ValueError("weights: weights must sum to 1 on each date and level")
+    if not np.isfinite(pd.to_numeric(df["result"], errors="coerce").dropna()).all():
+        raise ValueError("weights: result must be a number or empty")
+    return df
+
+
+def validate_technical_answers(df: pd.DataFrame) -> pd.DataFrame:
+    """The technical rules' answers per session and ETF. momentum_13612 is empty without a year of prices."""
+    _require_columns(df, TECHNICAL_ANSWERS, "technical_answers")
+    _require_in(df, "suggested_signal", SUGGESTED_SIGNALS, "technical_answers")
+    _require_in(df[df["mr_setup"].notna()], "mr_setup", MR_SETUPS, "technical_answers")  # a plain CSV read turns 'n/a' empty
+    _require_between(df, "confirmations", 0, 2, "technical_answers")
+    _require_unique(df, ["date", "ticker"], "technical_answers")
     return df
 
 

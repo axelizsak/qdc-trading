@@ -4,19 +4,21 @@ Two kinds of backtest live here.
 
 ## The system backtest (`system_backtest.py`)
 
-It replays the whole code-only system on past prices with the competition's rules: the technical agent's rule
-score, then the Portfolio Manager's code portfolio, then orders and a book. Every past 3-week window is traded
-like the competition: decisions on a Monday, Thursday, Monday, Thursday, Monday, each from the prices known
-that morning, orders filled at the last close before the day, at most 5 orders a day, €10,000 to start,
-valued against the same money in the benchmark (WORLD).
+It replays the whole code-only system on past prices with the competition's rules: the technical agent's
+answers on the morning of every session since 2022, the learning rule that re-weights them after each session
+(`agents/learning.py`, exactly as live), then the Portfolio Manager's code portfolio, orders and a book. A
+decision only uses the weights learned from the sessions before it, so the backtest is walk-forward by
+construction. Every past 3-week window is traded like the competition: decisions on a Monday, Thursday, Monday,
+Thursday, Monday, each from the prices known that morning, orders filled at the last close before the day, at
+most 5 orders a day, €10,000 to start, valued against the same money in the benchmark (WORLD).
 
 Nothing that asks Claude is replayed (Macro/News, `technical_llm`, the Portfolio Manager's own portfolio). An
 LLM already knows what happened in the past and a web search returns later articles, so their backtest would
-look into the future. They are judged forward only, by the review loop.
+look into the future. They are judged forward only, by the learning step every morning.
 
 ```bash
 python -m backtest.system_backtest                                   # every variant, every window since 2022 (about 10 minutes)
-python -m backtest.system_backtest --variants current watch_zero     # only these
+python -m backtest.system_backtest --variants current trend_only     # only these
 python -m backtest.system_backtest --since 2024-01-01
 python -m backtest.system_backtest --daily                           # one book over the whole history, valued every day
 ```
@@ -28,14 +30,14 @@ overnight rate (the `OVERNIGHT CASH` ETF), and two variants are compared on the 
 the gap between their Sharpe ratios. Results: `system_backtest_daily.csv` (one row per variant and close) and
 `system_backtest_daily_summary.csv`.
 
-**To test an idea:** add one line to `VARIANTS` (a setting to change), and a function to `SCORES` if the idea
-is a new way to turn the technical sheet into a score. Every variant runs on the same windows.
+**To test an idea:** add one line to `VARIANTS` (a setting to change). Every variant runs on the same windows
+and the same days, and learns its own technical weights from 2022 under its settings.
 
 **Results** (`results/`, committed):
 
 | File | Content |
 |---|---|
-| `system_backtest_summary.csv` | One row per variant: mean return of a window, the benchmark's, the excess and its t-value, share of windows that beat the benchmark, worst window, and the quality of the score on its own |
+| `system_backtest_summary.csv` | One row per variant: mean return of a window, the benchmark's, the excess and its t-value, share of windows that beat the benchmark, worst window |
 | `system_backtest.csv` | One row per variant and window |
 | `system_backtest_signals.csv` | What each answer of the technical sheet was worth over the next 1 to 15 sessions: the return of the ETFs with that answer minus the average ETF. `technical_llm` reads this file before it scores |
 | `system_backtest_fill_rule.csv` | One row per past Monday and Thursday: what an order filled at the previous close was worth by the close of the day, for the average ETF and for the ETFs that opened highest |
@@ -119,8 +121,47 @@ year) or 1.36 (every quarter), against 1.35 for the settings before 16 November 
 past is rarely the best of the next year. (The system now scores 1.70 over the same years, but its settings were
 chosen after seeing this history, so that number flatters it.)
 
-## The strategy backtests (Achille)
+**6. One learning rule since 2022 (16 November 2026, daily book).** The technical score is now three answers (trend,
+mean reversion, momentum ranking) weighted by what each earned since January 2022, starting at 1/3 each. 4.9 years,
+508 decision days, 20 variants, no rule broken.
 
-`momentum_signal_test.py`, `momentum_variants.py`, `mean_reversion_test.py`, `combo_backtest.py`: tests of the
-technical strategies on their own, on a train period and a later test period. `walk_forward.py` is the common
-walk-forward frame for the models of `ml_library/`.
+| | Sharpe | First half | Second half | Return a year | Volatility | Worst fall |
+|---|---:|---:|---:|---:|---:|---:|
+| The system now: the three answers, learned (`current`) | 1.15 | 0.46 | 1.81 | +12.6% | 10.1% | -15.7% |
+| The trend rule alone, the system before this change (`trend_only`) | 1.18 | 0.63 | 1.72 | +13.3% | 10.3% | -10.1% |
+| The three answers at 1/3 each, never re-weighted (`equal_fixed`) | 0.96 | 0.21 | 1.67 | +10.6% | 10.2% | -17.5% |
+| Learning speed 1 / 5 instead of 2 (`learn_slower` / `learn_faster`) | 0.94 / 1.01 | | | | | |
+| The benchmark (WORLD) | 0.73 | 0.53 | 0.93 | +10.6% | 14.0% | -21.7% |
+
+- **The rule learns what it should:** the weights moved slowly toward the answer that earned, trend from 33% to 38%
+  by the end of 2022 and 60% today; mean reversion fell to 16%, momentum to 24%. It beats the same three answers
+  left at 1/3 (+0.19 Sharpe, t +1.4).
+- **It does not beat the trend rule alone:** 1.15 against 1.18, a gap that is noise (t +0.1). It pays in 2022, when
+  it still gave a third to mean reversion, and its worst fall is deeper (-15.7% against -10.1%).
+- **Speed 2 is not a tuned value:** 1 and 5 do worse, and nothing says 2 is best beyond this history.
+- **Other variants:** none beats the system now with a t-value of 2. `no_leverage` (1.27, t +1.0) is ahead in both
+  halves.
+- **The four agents and Claude's portfolio cannot be backtested:** an LLM already knows the past. They learn live,
+  from 8 November 2026; by 7 December they will have about 20 sessions of evidence, so their weights will have moved
+  little.
+
+The window results in sections 1 to 4 were computed on 16 November, before the learning rule. They have not been run
+again yet: about 40 minutes on two cores (`python -m backtest.system_backtest --workers 2`).
+
+## The studies behind the technical rules (Achille)
+
+`momentum_signal_test.py`, `momentum_variants.py`, `mean_reversion_test.py`, `combo_backtest.py` (with the
+combinations in `combos.py`) and `momentum_models.py` (a shallow decision tree and a logistic regression), all on
+the dataset of `momentum_dataset.py`. Each one answers one question once: choose on 2021–2024, check on 2025–2026,
+day by day. They are not part of the daily pipeline: their answers are already in the rules of
+`agents/technical.py` (the momentum rule chosen among 40 variants, the mean-reversion thresholds).
+
+Their main finding: on 4 to 12 days, no technical rule predicts returns reliably out of sample. The technical
+agent is best used as a filter (avoid ETFs in a clear downtrend) and for timing (Connors RSI 2 rebounds were the
+most consistent signal). The two ML models did no better, so they were not adopted. Since 16 November 2026 the
+learning rule weighs the trend, mean-reversion and momentum answers by what each earned since 2022, so this
+finding is checked again every day.
+
+```bash
+python -m backtest.momentum_signal_test data/cache/prices_ohlc_YYYY-MM-DD.csv     # and the same for the others
+```

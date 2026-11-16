@@ -4,7 +4,9 @@ from datetime import date
 import pandas as pd
 import pytest
 
+from agents import learning, technical
 from agents import portfolio_config as pm_cfg
+from agents import strategy_config as tech_cfg
 from backtest import system_backtest as sb
 from data import config as settings
 from data.features import compute_features
@@ -24,7 +26,8 @@ def test_windows_follow_the_competition_calendar(market):
     assert starts == [date(2026, 11, 2), date(2026, 11, 9), date(2026, 11, 16)] and all(d.weekday() == 0 for d in starts)
     first = [starts[0] + pd.Timedelta(days=offset) for offset in sb.DECISION_OFFSETS]
     assert [d.strftime("%a") for d in first] == ["Mon", "Thu", "Mon", "Thu", "Mon"]
-    assert set(first) <= set(data.sheets)  # every decision day has its technical sheet
+    assert set(first) <= set(data.answers)  # every decision day has its technical answers
+    assert set(data.sessions) <= set(data.answers) and min(data.sessions) >= SINCE  # and every session, for the learning
     # a decision only sees the days before it, and fills at the last close before it
     assert data.before(starts[0])["date"].max() < pd.Timestamp(starts[0])
     last_before = data.closes[data.closes.index < pd.Timestamp(starts[0])].iloc[-1]
@@ -53,28 +56,32 @@ def test_a_variant_changes_its_setting_only_for_its_own_run(market):
     assert (pm_cfg.MAX_POSITION, pm_cfg.VALUATION_END, list(settings.TRADING_DAYS)) == before  # all put back
 
 
-def test_score_ideas_only_reread_the_sheet(market):
+def test_the_technical_weights_are_learned_from_the_sessions_before_each_decision(market):
     data, starts = market
-    sheet = data.sheets[starts[0]]
-    rule = sb.rule_score(sheet)
-    assert set(rule.unique()) <= {1.0, 0.5, 0.0, -1.0}
-    skipped = sb.skip_overbought(sheet)
-    overbought = (sheet["mr_setup"] == "avoid") & (rule > 0)
-    assert (skipped[overbought] == 0).all() and (skipped[~overbought] == rule[~overbought]).all()
-    dipped = sb.buy_the_dip(sheet)
-    assert (dipped >= rule).all() and (dipped[sheet["mr_setup"] == "buy"] >= 0.5).all()
-    ranked = sb.momentum_rank(sheet)
-    assert (ranked[rule <= 0] == rule[rule <= 0]).all() and (ranked[rule > 0] <= rule[rule > 0]).all()
-    assert set(v.score for v in sb.VARIANTS) <= set(sb.SCORES)
+    current = next(v for v in sb.VARIANTS if v.name == "current")
+    with sb.overrides(current.settings):
+        frame = sb.technical_weights(data, current)
+    day = starts[1]
+    used = learning.weights_before(frame, day)
+    first = frame["date"].min()
+    assert first == min(data.sessions).isoformat() and sum(used.values()) == pytest.approx(1)
+    assert set(frame[frame["date"] == first]["weight"].round(6)) == {round(1 / 3, 6)}  # 1/3 each on the first session
+    signals = sb.technical_signals(data, current, day)
+    answers = data.answers[day]
+    assert signals["score"].tolist() == pytest.approx(technical.blend(technical.signal_scores(answers), used).tolist())
+    trend_only = next(v for v in sb.VARIANTS if v.name == "trend_only")
+    with sb.overrides(trend_only.settings):
+        only = sb.technical_signals(data, trend_only, day)
+    assert only["score"].tolist() == answers["suggested_signal"].map(tech_cfg.SIGNAL_SCORES).tolist()  # the old rule
 
 
 def test_the_summary_has_one_row_per_variant(market):
     data, starts = market
-    variants = [v for v in sb.VARIANTS if v.name in ("current", "skip_overbought")]
+    variants = [v for v in sb.VARIANTS if v.name in ("current", "trend_only")]
     results = sb.run(data, starts[:2], variants, workers=1)
     assert len(results) == 4 and results["broken_rules"].sum() == 0
-    summary = sb.summarise(results, data, variants)
-    assert summary["variant"].tolist() == ["current", "skip_overbought"] and (summary["windows"] == 2).all()
+    summary = sb.summarise(results, variants)
+    assert summary["variant"].tolist() == ["current", "trend_only"] and (summary["windows"] == 2).all()
     assert summary["mean_excess"].tolist() == pytest.approx((summary["mean_ret"] - summary["mean_bench"]).tolist())
     assert "current" in sb.show(summary)
 
@@ -91,8 +98,8 @@ def test_the_fill_rule_study_measures_what_ordering_after_the_open_is_worth(mark
 
 def test_the_daily_book_carries_over_and_is_valued_at_every_close(market):
     data, _ = market
-    days = sorted(data.sheets)
-    assert days == sb.decision_days(data.closes, SINCE) and {d.weekday() for d in days} == {0, 3}
+    days = sb.decision_days(data.closes, SINCE)
+    assert set(days) <= set(data.answers) and {d.weekday() for d in days} == {0, 3}
     book = sb.run_continuous(data, sb.VARIANTS[0])
     closes = data.closes[data.closes.index >= data.fill_day(days[0])]
     assert book["date"].tolist() == [d.date().isoformat() for d in closes.index]  # every close, from the first fill

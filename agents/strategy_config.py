@@ -50,16 +50,22 @@ REBOUND_DONE_SMA = "sma_5"  # Connors exit: the rebound is done when the price i
 RANGE_ADX_MAX = 20
 RANGE_EFFICIENCY_MAX = 0.2
 
-# Suggested signal, and the number sent in the Signals table (technical_det)
+# Suggested signal of the momentum rule (the "trend" answer)
 #   buy     : buy setup, market above its SMA 200 and a trend that is not absent (ADX >= 20)
-#   watch   : buy setup, but the market is below its SMA 200 or the trend is absent (shown, not scored)
+#   watch   : buy setup, but the market is below its SMA 200 or the trend is absent
 #   For an inverse ETF the market filter is reversed: it is in its favour when the market is below its SMA 200.
 #   neutral : no setup
 #   avoid   : avoid setup (long and medium term both down)
 # "watch" scores 0 since 16 November 2026: in the system backtest the ETFs called "watch" lagged the average ETF
-# in both halves of the history. It goes with IDLE_TO_BENCHMARK in agents/portfolio_config.py: the money they
-# no longer take follows the benchmark instead of sitting in cash (variant buys_plus_benchmark, backtest/README.md).
+# in both halves of the history (backtest/README.md).
 SIGNAL_SCORES = {"buy": 1.0, "watch": 0.0, "neutral": 0.0, "avoid": -1.0}
+# The mean reversion setup as a score (the "mean_reversion" answer): oversold +1, overbought -1.
+MEAN_REVERSION_SCORES = {"buy": 1.0, "avoid": -1.0, "none": 0.0, "n/a": 0.0}
+# The "momentum" answer: the ETF's rank by momentum 13612 among the ETFs of the day, from -1 (weakest) to +1.
+
+# technical_det = the three answers' scores, weighted. The weights start here on LEARNING_START and then follow the
+# system's learning rule (agents/learning.py) session by session: an answer whose calls beat the average ETF gains.
+SIGNAL_START = {"trend": 1 / 3, "mean_reversion": 1 / 3, "momentum": 1 / 3}
 
 # ETFs the agent does not score
 SKIP_FAMILIES = ["cash"]   # OVERNIGHT CASH is the parking, not an investment

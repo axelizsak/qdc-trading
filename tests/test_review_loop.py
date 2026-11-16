@@ -1,14 +1,16 @@
-"""The review loop on made-up logs: one agent that is always right, one that is always wrong."""
+"""The learning step on made-up logs: one agent that is always right, one that is always wrong."""
 from datetime import date
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from agents import logbook, macro_tape
+from agents import learning, logbook, macro_tape
+from agents import portfolio_config as pm_cfg
 from data import config as settings
+from data.features import compute_features
 from data.mock import mock_prices
-from data.schemas import validate_agent_weights
+from data.schemas import validate_weights
 from graph import pipeline, review_loop
 
 DAY = date(2026, 12, 7)
@@ -20,14 +22,15 @@ def prices():
 
 
 def _log_scores(logs, prices, days: int = 8) -> list[str]:
-    """Log `days` past days of scores: technical_det knows the next 3 sessions, macro_market says the opposite."""
+    """Log `days` past days of scores: technical_det knows each day's session, macro_market says the opposite."""
     table = macro_tape.closes(prices, DAY)
-    dates = list(table.index[-days - 4:-4])  # early enough for 3 sessions to be known before DAY
+    dates = list(table.index[-days - 1:-1])  # each one's session is closed before DAY
     rows = []
     for day in dates:
         at = table.index.get_loc(day)
-        future = table.iloc[at + 2] / table.iloc[at - 1] - 1  # from the close before `day`, 3 sessions on
-        for ticker, ret in future.items():
+        session = table.iloc[at] / table.iloc[at - 1] - 1  # from the close before `day` to the close of `day`
+        session = session - session.mean()
+        for ticker, ret in session.items():
             for agent, sign in (("technical_det", 1), ("macro_market", -1)):
                 rows.append({"ticker": ticker, "date": day, "agent": agent, "score": float(sign * np.sign(ret)) * 0.8,
                              "confidence": 0.5, "rationale": "made up"})
@@ -38,41 +41,39 @@ def _log_scores(logs, prices, days: int = 8) -> list[str]:
     return dates
 
 
-def test_starting_weights_split_each_family_between_its_agents():
-    assert review_loop.starting_weights(["technical_det", "macro_market", "macro_etf"]) == {
-        "technical_det": 0.5, "macro_market": 0.25, "macro_etf": 0.25}
-    assert review_loop.starting_weights(["macro_etf"]) == {"macro_etf": 1.0}
-    assert review_loop.starting_weights([]) == {}
+def _agents_today(logs) -> dict[str, float]:
+    weights = validate_weights(pd.read_csv(logs / review_loop.WEIGHTS_FILE))
+    rows = weights[(weights["level"] == "agents") & (weights["date"] == DAY.isoformat())]
+    return dict(zip(rows["name"], rows["weight"]))
 
 
 def test_the_agent_that_was_right_gains_weight_and_it_is_logged(tmp_path, prices):
     _log_scores(tmp_path, prices)
-    result = review_loop.review(DAY, prices, tmp_path, backfill=False)
+    result = review_loop.review(DAY, prices, tmp_path, replay_technical=False)
 
-    weights = result["weights"]
-    assert set(weights) == {"technical_det", "macro_market"}  # the failed macro_etf row is no evidence
-    assert weights["technical_det"] > 0.59 > 0.41 > weights["macro_market"]  # from 50/50, inside the 60% bound
-    logged = validate_agent_weights(pd.read_csv(tmp_path / "agent_weights.csv")).set_index("agent")
-    assert logged["weight"].to_dict() == pytest.approx(weights) and set(logged["date"]) == {DAY.isoformat()}
-    # the logged hit rate is the Portfolio Manager's: the mean over 1 and 3 sessions (perfect on 3, not on 1)
-    assert logged.loc["technical_det", "hit_rate"] > 0.8 and logged.loc["macro_market", "hit_rate"] < 0.2
+    now = _agents_today(tmp_path)
+    assert set(now) == {"technical_det", "macro_market"}  # the failed macro_etf row is no evidence
+    assert now["technical_det"] > 0.55 > 0.45 > now["macro_market"]  # from 50/50
+    assert learning.weights_now({"technical_det": 0.5, "macro_market": 0.5}, result["agent_multipliers"]) == pytest.approx(now)
+    board = result["board"].set_index(["level", "name"])
+    assert board.loc[("agents", "technical_det"), "sessions"] == 8 and board.loc[("agents", "technical_det"), "right_share"] == 1
+    assert board.loc[("agents", "macro_market"), "right_share"] == 0
 
     lessons = result["lessons"]
     assert lessons.startswith(f"## Review of {DAY}")
-    assert "- technical_det: 50% -> 60% (8 days judged, rank correlation +" in lessons
-    assert "- macro_market: calls up right 0% (n=" in lessons and "- technical_det: calls up right 100% (n=" in lessons
-    assert "**Largest misses of the last judged day**" in lessons and "- macro_market " in lessons.split("Largest misses")[1]
+    assert "- The four agents: " in lessons and "technical_det 50% -> " in lessons and "a session over 8, right 100%" in lessons
+    assert "**Where each agent is right**" in lessons and "**Largest misses of the last judged day**" in lessons
 
 
 def test_the_journal_keeps_the_newest_review_first_and_a_rerun_changes_nothing(tmp_path, prices):
     _log_scores(tmp_path, prices)
-    first = review_loop.review(DAY, prices, tmp_path, backfill=False)
+    first = review_loop.review(DAY, prices, tmp_path, replay_technical=False)
     ledger = len(logbook.load(tmp_path))
-    again = review_loop.review(DAY, prices, tmp_path, backfill=False)
+    again = review_loop.review(DAY, prices, tmp_path, replay_technical=False)
     assert again["journal"] == first["journal"] and again["journal"].count("## Review of") == 1
+    pd.testing.assert_frame_equal(again["weights"], first["weights"])
     assert len(logbook.load(tmp_path)) == ledger and logbook.verify(tmp_path) == []
-    kinds = logbook.load(tmp_path)["kind"].tolist()
-    assert kinds == ["reassessment", "lesson"]
+    assert logbook.load(tmp_path)["kind"].tolist() == ["reassessment", "lesson"]
 
     for offset in range(1, review_loop.REVIEWS_KEPT + 2):  # later days: the journal keeps the newest ones
         review_loop.save_journal(tmp_path, date(2026, 12, 7 + offset), [f"## Review of 2026-12-{7 + offset:02d}", "", "x"])
@@ -82,43 +83,96 @@ def test_the_journal_keeps_the_newest_review_first_and_a_rerun_changes_nothing(t
     assert f"## Review of {DAY}" not in journal  # the oldest ones leave the file (they stay in git and the logbook)
 
 
-def test_todays_scores_are_not_judged_and_empty_logs_give_an_empty_review(tmp_path, prices):
-    result = review_loop.review(DAY, prices, tmp_path / "empty", backfill=False)
-    assert result["weights"] == {} and "No score can be judged yet" in result["lessons"]
-    assert not (tmp_path / "empty" / "agent_weights.csv").exists()
+def test_todays_scores_are_not_judged_and_empty_logs_keep_the_starting_weights(tmp_path, prices):
+    result = review_loop.review(DAY, prices, tmp_path / "empty", replay_technical=False)
+    assert result["agent_multipliers"] == {} and result["trust"] == pm_cfg.TRUST_START
+    assert "no session judged yet" in result["lessons"]
 
     today = pd.DataFrame([{"ticker": "WORLD", "date": DAY.isoformat(), "agent": "technical_det", "score": 1.0,
                            "confidence": 1.0, "rationale": "today"}])
     (tmp_path / "today").mkdir()
     today.to_csv(tmp_path / "today" / "signals.csv", index=False)
-    assert review_loop.evidence(tmp_path / "today", DAY).empty
+    board = review_loop.review(DAY, prices, tmp_path / "today", replay_technical=False)["board"]
+    assert board[board["level"] == "agents"]["sessions"].tolist() == [0]
 
 
-def test_the_day_starts_with_the_review_and_the_agents_get_its_lessons(tmp_path, prices, monkeypatch):
+def test_the_technical_answers_are_recorded_once_and_learned_session_by_session(tmp_path, monkeypatch):
+    prices = mock_prices(end=DAY.isoformat(), days=300, seed=4)
+    features = compute_features(prices)
+    monkeypatch.setattr(settings, "LEARNING_START", date(2026, 11, 23))
+    result = review_loop.review(date(2026, 12, 3), prices, tmp_path, features)
+    answers = review_loop.load_answers(tmp_path / review_loop.ANSWERS)
+    assert sorted(answers["date"].unique()) == ["2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27",
+                                                "2026-11-30", "2026-12-01", "2026-12-02"]
+    technical = result["weights"][result["weights"]["level"] == "technical"]
+    assert technical["date"].nunique() == 9 and set(technical["name"]) == set(settings.TECHNICAL_SIGNALS)
+    assert sum(result["technical_weights"].values()) == pytest.approx(1)
+    assert result["technical_weights"] != pytest.approx({s: 1 / 3 for s in settings.TECHNICAL_SIGNALS})  # it learned
+
+    def no_more_sheets(*args, **kwargs):  # the next morning only computes the sessions not recorded yet
+        raise AssertionError("an old session was computed again")
+
+    seen = []
+    original = review_loop.learning.technical_answers
+    monkeypatch.setattr(review_loop.learning, "technical_answers",
+                        lambda p, f, days, as_of: seen.append(days) or original(p, f, days, as_of))
+    review_loop.review(date(2026, 12, 4), prices, tmp_path, features)
+    assert seen == [[date(2026, 12, 3)]]
+
+
+def test_a_technical_score_missing_from_the_logs_is_replayed_from_the_answers(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "LEARNING_START", date(2026, 11, 30))
+    prices = mock_prices(end=DAY.isoformat(), days=300, seed=4)
+    pd.DataFrame([{"ticker": "WORLD", "date": "2026-12-02", "agent": "macro_etf", "score": 0.5, "confidence": 0.5,
+                   "rationale": "r"}]).to_csv(tmp_path / "signals.csv", index=False)
+    answers = review_loop.update_answers(tmp_path, prices, compute_features(prices), DAY)
+    frame, _ = review_loop.technical_weights(answers, DAY)
+    calls = review_loop.agent_calls(tmp_path, answers, frame)
+    replayed = calls[calls["agent"] == "technical_det"]
+    assert sorted(replayed["date"].unique()) == ["2026-12-02", "2026-12-03", "2026-12-04"]  # from the first logged score
+    assert set(replayed["rationale"]) == {"replayed"}
+
+
+def test_claudes_portfolio_gains_trust_when_it_earns_more_than_the_codes(tmp_path, prices):
+    table = macro_tape.closes(prices, DAY)
+    rows = []
+    for day in table.index[-9:-1]:
+        at = table.index.get_loc(day)
+        session = (table.iloc[at] / table.iloc[at - 1] - 1).dropna().sort_values()
+        for source, names in (("llm", session.index[-5:]), (pm_cfg.ANCHOR, session.index[:5]), ("baseline", session.index[-5:])):
+            rows += [{"date": day, "source": source, "ticker": t, "weight": 0.2} for t in names]
+    pd.DataFrame(rows).to_csv(tmp_path / "pm_portfolios.csv", index=False)
+    result = review_loop.review(DAY, prices, tmp_path, replay_technical=False)
+    assert result["trust"] > pm_cfg.TRUST_START  # judged against the anchor portfolio, not the other code one
+    assert "- Claude's portfolio (llm) against the code's (code): code 40% -> " in result["lessons"]
+    assert "llm 60% -> " in result["lessons"]
+
+
+def test_the_day_starts_with_the_learning_and_the_agents_get_its_weights(tmp_path, prices, monkeypatch):
     logs = tmp_path / "logs"
     monkeypatch.setitem(pipeline.MOCK, "data", lambda as_of: (prices, pipeline.mock.mock_features(as_of.isoformat())))
     _log_scores(logs, prices)
     seen = {}
 
-    def technical(prices, features, as_of, lessons):
-        seen["lessons"] = lessons
+    def technical(prices, features, as_of, lessons, weights=None):
+        seen.update(lessons=lessons, weights=weights)
         return pipeline.mock.mock_signals(as_of.isoformat(), agents=pipeline.TECHNICAL_AGENTS)
 
     monkeypatch.setitem(pipeline.MOCK, "technical", technical)
     pending = pipeline.run_day(DAY, logs)
     assert pending["incidents"] == []
-    assert f"## Review of {DAY}" in seen["lessons"] and "- technical_det: 50% -> 60%" in seen["lessons"]
-    assert (logs / "lessons.md").exists() and (logs / "agent_weights.csv").exists()
-    # the cockpit shows what the review learned, over the agents that scored today
-    shown = pipeline.load_agent_weights(logs, DAY, ["technical_det", "macro_market"])
-    assert shown["technical_det"] == pytest.approx(0.6, abs=0.01)
+    assert f"## Review of {DAY}" in seen["lessons"] and seen["weights"] == pytest.approx({s: 1 / 3 for s in settings.TECHNICAL_SIGNALS})
+    assert (logs / "lessons.md").exists() and (logs / review_loop.WEIGHTS_FILE).exists()
+    used = pipeline.day_status(DAY, logs)[1]["agent_weights"]  # the four agents scored: 25% each to start
+    assert used["technical_det"] > 0.25 > used["macro_market"] and sum(used.values()) == pytest.approx(1)
 
 
-def test_a_failing_review_is_an_incident_and_the_day_goes_on(tmp_path, monkeypatch):
+def test_a_failing_learning_step_is_an_incident_and_the_day_goes_on(tmp_path, monkeypatch):
     def broken(*args, **kwargs):
         raise RuntimeError("review broke")
 
     monkeypatch.setattr(pipeline.review_loop, "review", broken)
     pending = pipeline.run_day(DAY, tmp_path)
-    assert [i["step"] for i in pending["incidents"]] == ["review"]
+    assert [i["step"] for i in pending["incidents"]] == ["learning"]
     assert len(pending["proposed_orders"]) > 0
+    assert pipeline.day_status(DAY, tmp_path)[1]["agent_weights"] == dict.fromkeys(settings.SIGNAL_AGENTS, 0.25)

@@ -6,11 +6,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from agents import learning
 from data import config as settings
 from data import mock
 from data.schemas import (
-    PRICES, SIGNALS, validate_agent_weights, validate_etf_views, validate_evidence, validate_macro_views, validate_order_log,
-    validate_prices, validate_signals, validate_source_registry,
+    PRICES, SIGNALS, validate_etf_views, validate_evidence, validate_macro_views, validate_order_log, validate_prices,
+    validate_signals, validate_source_registry, validate_weights,
 )
 from graph import pipeline
 
@@ -62,9 +63,24 @@ def source_registry(logs: Path) -> tuple[pd.DataFrame, bool]:
     return (reg, False) if reg is not None and len(reg) else (mock.mock_source_registry(), True)
 
 
-def agent_weights(logs: Path) -> tuple[pd.DataFrame, bool]:
-    weights = _csv(logs / "agent_weights.csv", validate_agent_weights)
-    return (weights, False) if weights is not None and len(weights) else (mock.mock_agent_weights(), True)
+def weights(logs: Path) -> tuple[pd.DataFrame, bool]:
+    table = _csv(logs / "weights.csv", validate_weights)
+    return (table, False) if table is not None and len(table) else (mock.mock_weights(), True)
+
+
+def agent_weights_on(as_of: date, logs: Path, state: dict, agents: list[str]) -> dict[str, float]:
+    """The agent weights of the day: those the Portfolio Manager used once the day ran, else the latest learned
+    ones over `agents` (logs/weights.csv), else the starting weights."""
+    if state.get("agent_weights"):
+        return state["agent_weights"]
+    table = _csv(logs / "weights.csv", validate_weights)
+    if table is not None:
+        rows = table[(table["level"] == "agents") & (table["date"].astype(str) <= as_of.isoformat())]
+        last = rows[rows["date"].astype(str) == rows["date"].astype(str).max()]
+        mine = {n: float(w) for n, w in zip(last["name"], last["weight"]) if n in agents}
+        if sum(mine.values()) > 0:
+            return {n: w / sum(mine.values()) for n, w in mine.items()}
+    return learning.starting_weights(agents)
 
 
 def lessons(logs: Path) -> str | None:

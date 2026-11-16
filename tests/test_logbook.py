@@ -35,7 +35,7 @@ def write(logs, name, frame):
 def logs(tmp_path):
     folder = tmp_path / "logs"
     write(folder, "signals.csv", mock.mock_signals(DAY))
-    write(folder, "agent_weights.csv", mock.mock_agent_weights())
+    write(folder, "weights.csv", mock.mock_weights((DAY, "2026-12-10")))
     write(folder, "reviews.csv", mock.mock_reviews(DAY))
     risk = mock.mock_risk_report(DAY)
     write(folder, "risk_reports.csv", risk[RISK_REPORT])

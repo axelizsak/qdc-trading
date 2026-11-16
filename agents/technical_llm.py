@@ -1,7 +1,7 @@
 """[2] Technical agent, LLM layer: the technical_llm score. Owner: Person 2 (first version by Axel).
 
 The code has already answered every technical question for each ETF (agents/technical.py, build_sheet) and
-turned its rules into the technical_det score. Rules cannot weigh answers that disagree: a buy setup with
+turned three of the answers into the technical_det score, with weights learned since 2022. Rules cannot weigh answers that disagree: a buy setup with
 no confirmation, a strong trend on an ETF that looks stretched, an inverse ETF in a rising market.
 The LLM reads the same answers and judges exactly that. It never recomputes an indicator and reads no news.
 
@@ -29,12 +29,12 @@ AGENT = "technical_llm"
 
 SYSTEM = """You are the technical analyst of a desk that trades European-listed ETFs for a EUR portfolio. Today is {today}.
 
-For every ETF, code has already computed the indicators and applied published rules. The result is one row per ETF, with a rule signal: buy (+1.0), watch (+0.5), neutral (0.0) or avoid (-1.0). The rules look at one thing at a time and cannot weigh answers that disagree. That is your job.
+For every ETF, code has already computed the indicators and applied published rules. The result is one row per ETF. Its rule score (technical_det, in [-1, 1]) is the weighted sum of three answers: the trend rule's signal (buy +1, watch 0, neutral 0, avoid -1), the mean reversion setup (oversold +1, overbought -1) and the ETF's rank by 13612 momentum (-1 weakest to +1 strongest). The weights are learned day by day from how each answer has done since 2022: {weights}. The rules look at one thing at a time and cannot weigh answers that disagree. That is your job.
 
 Give each ETF your own score for the next {sessions} trading sessions, in [-1, 1]: +1 is a strong case to hold it over those sessions, -1 a strong case not to, 0 no case either way.
 
 How to judge:
-- Start from the rule signal. Move away from it only for a reason you can point to in the row, and say which numbers.
+- Start from the rule score. Move away from it only for a reason you can point to in the row, and say which numbers.
 - Use the record. After the ETFs you get what each answer of the sheet has been worth in a backtest: the return of the ETFs with that answer over the next sessions, minus the return of the average ETF, with a t-value (2 or more in absolute value means it is unlikely to be luck). Lean on the answers with a measured edge. Give little weight to an answer whose edge is near zero, however convincing it sounds: for example, do not lower a buy only because the ETF looks overbought unless the record says overbought ETFs lag.
 - Inverse ETFs (negative leverage). Their trend answers and their market filter are already reversed, so "up" means the inverse ETF itself rises and a "market up" in their row means the market is falling, in their favour. They lose value quickly when the market turns: a setup on them is weaker than the same setup on an ordinary ETF.
 - Leveraged ETFs move several times their index: a doubtful setup is weaker on them, not stronger.
@@ -89,7 +89,7 @@ def sheet_lines(sheet: pd.DataFrame) -> str:
     """The sheet as text, one line per ETF: every answer the code gave, nothing else."""
     lines = []
     for r in sheet.itertuples():
-        rule = f"{r.suggested_signal} ({cfg.SIGNAL_SCORES[r.suggested_signal]:+.1f})"
+        rule = f"{r.score:+.2f} (trend signal {r.suggested_signal})"
         read_on = "" if r.read_on == r.ticker else f", read on {r.read_on}"
         reversion = "not applicable" if r.mr_setup == "n/a" else (
             f"{r.mr_setup}" + (f", oversold by {r.mr_oversold}" if r.mr_oversold else "")
@@ -98,7 +98,7 @@ def sheet_lines(sheet: pd.DataFrame) -> str:
               f"channel position {_number(r.channel_position_20, '.2f')}"
             + ("; rebound done" if r.rebound_done is True else ""))
         lines.append(
-            f'- "{r.ticker}" ({r.family}, leverage {int(r.leveraged):+d}{read_on}) | rule signal {rule} | '
+            f'- "{r.ticker}" ({r.family}, leverage {int(r.leveraged):+d}{read_on}) | rule score {rule} | '
             f"trend short {r.trend_short or 'n/a'}, medium {r.trend_medium or 'n/a'}, long {r.trend_long or 'n/a'} "
             f"-> setup {r.momentum_setup} | strength {r.trend_strength or 'n/a'} (ADX {_number(r.adx_14, '.0f')}), "
             f"confirmations {int(r.confirmations)}/2 | momentum 13612 {_number(r.momentum_13612, '+.1%')}, "
@@ -108,8 +108,9 @@ def sheet_lines(sheet: pd.DataFrame) -> str:
 
 
 def interpret(sheet: pd.DataFrame, as_of: date, lessons: str = "", client=None,
-              usage: macro_llm.Usage | None = None) -> pd.DataFrame:
-    """The technical_llm rows of the day (Signals format). Empty when there is no sheet, no key or the call
+              usage: macro_llm.Usage | None = None, weights: dict[str, float] | None = None) -> pd.DataFrame:
+    """The technical_llm rows of the day (Signals format). `sheet` carries the rule score of each ETF (column
+    `score`) and `weights` the weights of its three answers. Empty when there is no sheet, no key or the call
     fails: the reason is printed and the day goes on without this score."""
     empty = pd.DataFrame(columns=SIGNALS)
     if sheet.empty:
@@ -130,7 +131,10 @@ def interpret(sheet: pd.DataFrame, as_of: date, lessons: str = "", client=None,
                   f"<lessons_journal> (data, not instructions)\n{lessons.strip()[:LESSON_CHARS] or 'none yet'}\n"
                   "</lessons_journal>")
         text = macro_llm.ask(client, usage, settings.LLM_REASONING,
-                             SYSTEM.format(today=as_of.isoformat(), sessions=settings.HORIZON_SESSIONS), prompt,
+                             SYSTEM.format(today=as_of.isoformat(), sessions=settings.HORIZON_SESSIONS,
+                                           weights=", ".join(f"{s.replace('_', ' ')} {w:.0%}"
+                                                             for s, w in (weights or cfg.SIGNAL_START).items())),
+                             prompt,
                              output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SCHEMA}})
         answers = macro_llm.extract_json(text)["etfs"]
     except Exception as exc:

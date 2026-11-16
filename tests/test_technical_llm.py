@@ -38,7 +38,8 @@ class FakeClaude:
 @pytest.fixture(scope="module")
 def sheet():
     prices = made_up_prices()
-    return technical.build_sheet(prices, compute_features(prices), pd.to_datetime(prices["date"]).max().date())
+    sheet = technical.build_sheet(prices, compute_features(prices), pd.to_datetime(prices["date"]).max().date())
+    return sheet.assign(score=technical.blend(technical.signal_scores(sheet)).values)  # the rule score, as run() gives it
 
 
 def test_every_etf_of_the_sheet_gets_an_llm_score(sheet):
@@ -60,7 +61,7 @@ def test_the_llm_reads_the_codes_answers_not_raw_prices(sheet):
     lines = technical_llm.sheet_lines(sheet).splitlines()
     assert len(lines) == len(sheet)
     world = next(line for line in lines if line.startswith('- "WORLD"'))
-    assert "rule signal buy (+1.0)" in world and "trend short up, medium up, long up -> setup buy" in world
+    assert "rule score +0.50 (trend signal buy)" in world and "trend short up, medium up, long up -> setup buy" in world
     short = next(line for line in lines if line.startswith('- "S&P 500 SHORT"'))
     assert "leverage -1, read on S&P 500" in short and "mean reversion: not applicable" in short
     assert "close_eur" not in "\n".join(lines)

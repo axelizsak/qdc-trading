@@ -10,7 +10,7 @@ Two readable models (no black box):
   - a shallow decision tree (3 levels): its output is a set of "if ... then ..." rules
   - a logistic regression: one weight per indicator, on standardized indicators
 
-Usage:  python -m ml_library.momentum_models data/cache/prices_ohlc_YYYY-MM-DD.csv
+Usage:  python -m backtest.momentum_models data/cache/prices_ohlc_YYYY-MM-DD.csv
 """
 import sys
 
@@ -122,6 +122,6 @@ def main(path: str) -> pd.DataFrame:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python -m ml_library.momentum_models data/cache/prices_ohlc_YYYY-MM-DD.csv")
+        print("Usage: python -m backtest.momentum_models data/cache/prices_ohlc_YYYY-MM-DD.csv")
         sys.exit(1)
     main(sys.argv[1])

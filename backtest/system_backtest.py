@@ -7,8 +7,11 @@ Two ways to replay it:
     Monday and Thursday with the same rules. It gives the Sharpe ratio from daily returns, the measure the
     team optimises, and compares variants day by day.
 
-What is replayed, for every past 3-week window:
-    technical agent (rule score) -> Portfolio Manager (code portfolio, no LLM) -> orders -> book
+What is replayed:
+    technical agent (technical_det) -> Portfolio Manager (code portfolio, no LLM) -> orders -> book
+  - the technical agent's answers on the morning of every session since `--since`, and the learning rule
+    (agents/learning.py) that re-weights them after each session, exactly as live: a decision only uses the
+    weights learned from the sessions before it, so the backtest is walk-forward by construction;
   - decisions on a Monday, Thursday, Monday, Thursday, Monday, as in the competition;
   - each one from the prices known that morning; an order fills at the last close before its day;
   - at most MAX_ORDERS_PER_DAY orders, the Portfolio Manager's hard limits, START_CAPITAL_EUR to start;
@@ -19,9 +22,8 @@ portfolio, the Risk Manager's reading). An LLM already knows what happened in th
 returns articles written later, so a backtest of them would look into the future. They are judged forward
 only, by the review loop (graph/review_loop.py).
 
-A variant changes one thing (a setting, or how the technical sheet becomes a score) and is compared with
-the others on the same windows. To test an idea, add a line to VARIANTS (and a function to SCORES if the
-idea is a new way to read the sheet), then run:
+A variant changes one setting and is compared with the others on the same windows (or days). To test an idea,
+add a line to VARIANTS, then run:
 
     python -m backtest.system_backtest                               # every variant, windows since 2022
     python -m backtest.system_backtest --variants current no_timing --since 2024-01-01
@@ -47,7 +49,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from agents import portfolio, technical
+from agents import learning, portfolio, technical
 from agents import portfolio_config as pm_cfg
 from agents import strategy_config as tech_cfg
 from data import config as settings
@@ -56,49 +58,8 @@ from data.schemas import HOLDINGS, SIGNALS
 RESULTS = Path(__file__).resolve().parent / "results"
 DECISION_OFFSETS = [0, 3, 7, 10, 14]  # Monday, Thursday, Monday, Thursday, Monday
 VALUATION_OFFSET = 16  # the Wednesday after the last decision, like 23 December after 21 December
-PRICE_DAYS = 420  # calendar days of prices a decision sees (momentum needs a year of quotes)
-FEATURE_DAYS = 60  # calendar days of indicators a decision sees
+PRICE_DAYS = technical.PRICE_DAYS  # calendar days of prices a decision sees (momentum needs a year of quotes)
 MODULES = {"portfolio_config": pm_cfg, "strategy_config": tech_cfg, "config": settings}
-
-
-# --- How the technical sheet becomes a score: one function per idea -------------------------------------
-
-def rule_score(sheet: pd.DataFrame) -> pd.Series:
-    """Today's rule: buy +1, watch +0.5, neutral 0, avoid -1 (SIGNAL_SCORES)."""
-    return sheet["suggested_signal"].map(tech_cfg.SIGNAL_SCORES).astype(float)
-
-
-def skip_overbought(sheet: pd.DataFrame) -> pd.Series:
-    """The rule, but no entry on an ETF the mean-reversion measures call overbought."""
-    return rule_score(sheet).where(~((sheet["mr_setup"] == "avoid") & (rule_score(sheet) > 0)), 0.0)
-
-
-def buy_the_dip(sheet: pd.DataFrame) -> pd.Series:
-    """The rule, plus +0.5 on an ETF that is oversold while its long-term trend is not down."""
-    score = rule_score(sheet)
-    return score.where(~((sheet["mr_setup"] == "buy") & (score < 0.5)), 0.5)
-
-
-def dip_and_skip(sheet: pd.DataFrame) -> pd.Series:
-    """Both: no entry on an overbought ETF, +0.5 on an oversold one."""
-    score = skip_overbought(sheet)
-    return score.where(~((sheet["mr_setup"] == "buy") & (score < 0.5)), 0.5)
-
-
-def momentum_rank(sheet: pd.DataFrame) -> pd.Series:
-    """Buy setups ranked by their 13612 momentum instead of all scored +1 (30% momentum = full score)."""
-    strength = (sheet["momentum_13612"].astype(float) / 0.30).clip(0.2, 1.0).fillna(0.5)
-    score = rule_score(sheet)
-    return score.where(score <= 0, score * strength)
-
-
-def confirmed_only(sheet: pd.DataFrame) -> pd.Series:
-    """The rule, but a buy counts only with both confirmations (RSI and volume)."""
-    score = rule_score(sheet)
-    return score.where(~((score > 0) & (sheet["confirmations"] < 2)), 0.0)
-
-
-SCORES = {f.__name__: f for f in (rule_score, skip_overbought, buy_the_dip, dip_and_skip, momentum_rank, confirmed_only)}
 
 
 @dataclass(frozen=True)
@@ -106,14 +67,21 @@ class Variant:
     name: str
     what: str  # the one thing it changes, in words
     settings: dict = field(default_factory=dict)  # {"portfolio_config.TIMING_WEIGHT": 0.0}
-    score: str = "rule_score"  # a key of SCORES
 
 
 VARIANTS = [
-    Variant("current", "the system as it is"),
-    Variant("before_16_nov", "the settings before 16 November 2026: 'watch' scores +0.5, idle budget stays in cash",
-            {"portfolio_config.IDLE_TO_BENCHMARK": 0.0, "portfolio_config.BENCHMARK_CAP": 0.30,
-             "strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": 0.5, "neutral": 0.0, "avoid": -1.0}}),
+    Variant("current", "the system as it is: the technical answers weighted by what each earned since the start"),
+    # How the technical answers are weighted
+    Variant("trend_only", "only the trend rule counts (the system before 16 November 2026)",
+            {"strategy_config.SIGNAL_START": {"trend": 1.0, "mean_reversion": 0.0, "momentum": 0.0}}),
+    Variant("equal_fixed", "the three answers at 1/3 each, never re-weighted", {"config.LEARNING_SPEED": 0.0}),
+    Variant("learn_slower", "learning speed 1 instead of 2", {"config.LEARNING_SPEED": 1.0}),
+    Variant("learn_faster", "learning speed 5 instead of 2", {"config.LEARNING_SPEED": 5.0}),
+    # The score of each trend signal
+    Variant("watch_negative", "a 'watch' signal scores -0.5 instead of 0",
+            {"strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": -0.5, "neutral": 0.0, "avoid": -1.0}}),
+    Variant("buy_only", "only 'buy' scores: 'avoid' scores 0 instead of -1",
+            {"strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": 0.0, "neutral": 0.0, "avoid": 0.0}}),
     # The Portfolio Manager's settings
     Variant("anchor_baseline", "portfolio sized by score / volatility instead of the mean-variance optimiser",
             {"portfolio_config.ANCHOR": "baseline"}),
@@ -130,28 +98,14 @@ VARIANTS = [
     Variant("no_leverage", "no leveraged or inverse ETF at all", {"portfolio_config.MAX_LEVERAGED_SHARE": 0.0}),
     Variant("benchmark_allowed", "the code portfolios may buy the benchmark ETF itself",
             {"portfolio_config.BENCHMARK_ALLOWED": True}),
-    # Where the money without an idea goes (the leaderboard ranks on return)
+    # Where the money without an idea goes
     Variant("idle_in_cash", "idle budget stays in cash instead of following the benchmark",
             {"portfolio_config.IDLE_TO_BENCHMARK": 0.0}),
     Variant("benchmark_cap_30", "the benchmark top-up stops at 30% of the portfolio instead of 60%",
             {"portfolio_config.BENCHMARK_CAP": 0.30}),
-    # The competition's fill rule (to confirm with Belfius): the same system if an order fills at its own day's close
+    # The competition's fill rule: the same system if an order fills at its own day's close
     Variant("fill_same_day", "an order fills at the close of its own day instead of the close before",
             {"config.FILL_AT_PREVIOUS_CLOSE": False}),
-    # How the technical sheet becomes a score
-    Variant("skip_overbought", "no entry on an ETF the mean-reversion measures call overbought", score="skip_overbought"),
-    Variant("buy_the_dip", "+0.5 on an oversold ETF whose long-term trend is not down", score="buy_the_dip"),
-    Variant("dip_and_skip", "both of the above", score="dip_and_skip"),
-    Variant("momentum_rank", "buy setups ranked by their momentum instead of all scored +1", score="momentum_rank"),
-    Variant("confirmed_only", "a buy counts only with both confirmations", score="confirmed_only"),
-    # The score of each rule signal (found by the signal study: "watch" ETFs lag, "avoid" ETFs do not)
-    Variant("watch_negative", "a 'watch' signal scores -0.5 instead of 0",
-            {"strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": -0.5, "neutral": 0.0, "avoid": -1.0}}),
-    Variant("buy_only", "only 'buy' scores: 'watch' and 'avoid' score 0",
-            {"strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": 0.0, "neutral": 0.0, "avoid": 0.0}}),
-    Variant("buy_only_confirmed", "only a 'buy' with both confirmations scores",
-            {"strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": 0.0, "neutral": 0.0, "avoid": 0.0}},
-            score="confirmed_only"),
 ]
 
 
@@ -177,7 +131,8 @@ def overrides(values: dict):
 class Market:
     prices: pd.DataFrame  # Prices format, `date` as timestamps, sorted
     closes: pd.DataFrame  # real close per day (rows) and ticker (columns)
-    sheets: dict[date, pd.DataFrame]  # the technical sheet each decision day would have seen
+    answers: dict[date, pd.DataFrame]  # the technical answers each day would have seen (Technical answers format)
+    sessions: list[date]  # the days with a quote: the sessions the learning judges
 
     def before(self, day: date, days: int = PRICE_DAYS) -> pd.DataFrame:
         """The prices a decision of `day` sees: strictly before it."""
@@ -222,45 +177,58 @@ def window_starts(closes: pd.DataFrame, since: date) -> list[date]:
     return out
 
 
-def build_sheet(prices: pd.DataFrame, features: pd.DataFrame, day: date) -> pd.DataFrame:
-    """The technical sheet a decision of `day` would have seen, from data strictly before it."""
-    stamp = pd.Timestamp(day)
-    known = prices[(prices["date"] < stamp) & (prices["date"] >= stamp - pd.Timedelta(days=PRICE_DAYS))]
-    recent = features[(features["date"] < stamp) & (features["date"] >= stamp - pd.Timedelta(days=FEATURE_DAYS))]
-    if known.empty or recent.empty:
-        return pd.DataFrame()
-    return technical.build_sheet(known, recent, known["date"].max().date())
-
-
 def prepare(prices: pd.DataFrame, features: pd.DataFrame, since: date) -> tuple[Market, list[date]]:
     prices = prices.assign(date=pd.to_datetime(prices["date"])).sort_values(["date", "ticker"]).reset_index(drop=True)
     features = features.assign(date=pd.to_datetime(features["date"]))
     closes = prices.pivot(index="date", columns="ticker", values="close_eur").sort_index()
     starts = window_starts(closes, since)
     windows = {start + timedelta(days=offset) for start in starts for offset in DECISION_OFFSETS}
-    days = sorted(windows | set(decision_days(closes, since)))  # the windows' days and the daily book's
-    sheets = {day: build_sheet(prices, features, day) for day in days}
-    return Market(prices, closes, sheets), starts
+    sessions = [d.date() for d in closes.index if d.date() >= since]
+    days = sorted(windows | set(decision_days(closes, since)) | set(sessions))  # decisions, and every session
+    print(f"Technical answers of {len(days)} days...")
+    found = learning.technical_answers(prices, features, days, closes.index.max().date() + timedelta(days=1))
+    answers = {date.fromisoformat(d): rows.reset_index(drop=True) for d, rows in found.groupby("date")}
+    return Market(prices, closes, answers, [d for d in sessions if d in answers]), starts
 
 
 # --- One window -----------------------------------------------------------------------------------------------
 
-def signals_for(sheet: pd.DataFrame, score: str, day: date) -> pd.DataFrame:
-    """The sheet as technical_det signals (Signals format), scored by SCORES[score]."""
-    return pd.DataFrame({"ticker": sheet["ticker"].values, "date": day.isoformat(), "agent": technical.AGENT_DET,
-                         "score": SCORES[score](sheet).clip(-1, 1).values,
-                         "confidence": (sheet["confirmations"] / 2).values, "rationale": "backtest"}, columns=SIGNALS)
+_LEARNED: dict[tuple[int, str], pd.DataFrame] = {}
 
 
-def trade(market: Market, day: date, units: dict[str, float], cash: float, score: str) -> tuple[float, int | None, int]:
+def technical_weights(market: Market, variant: Variant) -> pd.DataFrame:
+    """The technical answers' weights, session by session, under the variant's settings (computed once per variant;
+    call it while the variant's settings are on)."""
+    key = (id(market), variant.name)
+    if key not in _LEARNED:
+        sessions = pd.concat([market.answers[d] for d in market.sessions], ignore_index=True)
+        end = market.closes.index.max().date() + timedelta(days=1)
+        _LEARNED[key], _ = learning.daily_weights(learning.answer_results(sessions),
+                                                  learning.shares(technical.starting_weights()), end,
+                                                  known=settings.TECHNICAL_SIGNALS)
+    return _LEARNED[key]
+
+
+def technical_signals(market: Market, variant: Variant, day: date) -> pd.DataFrame | None:
+    """technical_det on the morning of `day` (Signals format): the answers weighted with what was learned before it."""
+    found = market.answers.get(day)
+    if found is None or found.empty:
+        return None
+    weights = learning.weights_before(technical_weights(market, variant), day)
+    return pd.DataFrame({"ticker": found["ticker"], "date": day.isoformat(), "agent": technical.AGENT_DET,
+                         "score": technical.blend(technical.signal_scores(found), weights).clip(-1, 1).values,
+                         "confidence": (found["confirmations"] / 2).values, "rationale": "backtest"}, columns=SIGNALS)
+
+
+def trade(market: Market, day: date, units: dict[str, float], cash: float, variant: Variant) -> tuple[float, int | None, int]:
     """One decision day on a book: the Portfolio Manager's orders, filled at the competition's price. Changes
     `units` in place. Returns (cash after, orders made or None when the day failed, trading rules broken)."""
-    sheet = market.sheets.get(day)
-    if sheet is None or sheet.empty:
+    signals = technical_signals(market, variant, day)
+    if signals is None:
         return cash, None, 0
     holdings = pd.DataFrame([{"ticker": t, "units": u} for t, u in units.items() if u > 1e-9], columns=HOLDINGS)
     try:
-        _, orders, _ = portfolio.run(signals_for(sheet, score, day), {technical.AGENT_DET: 1.0}, "",
+        _, orders, _ = portfolio.run(signals, {technical.AGENT_DET: 1.0}, "",
                                      holdings, cash, market.before(day), day, use_llm=False)
     except Exception:
         return cash, None, 0
@@ -284,7 +252,7 @@ def run_window(market: Market, start: date, variant: Variant) -> dict:
     patched = {**variant.settings, "config.TRADING_DAYS": days, "portfolio_config.VALUATION_END": end}
     with overrides(patched):
         for day in days:
-            cash, made, broken = trade(market, day, units, cash, variant.score)
+            cash, made, broken = trade(market, day, units, cash, variant)
             if made is None:
                 failed_days += 1
                 continue
@@ -317,14 +285,14 @@ def run_continuous(market: Market, variant: Variant, days: list[date] | None = N
     the value in ETFs), and on the closes where a decision takes effect its orders, broken rules and failed days.
     A decision of day D is in force from the first close on or after D (its fill, the close before, is the same
     value either way)."""
-    days = sorted(market.sheets) if days is None else days
+    days = decision_days(market.closes, min(market.answers)) if days is None else days
     units: dict[str, float] = {}
     cash, decisions = float(settings.START_CAPITAL_EUR), []
     patched = {**variant.settings, "config.TRADING_DAYS": days, "portfolio_config.VALUATION_END": days[-1]}
     with overrides(patched):
         start = market.fill_day(days[0])
         for day in days:
-            cash, made, broken = trade(market, day, units, cash, variant.score)
+            cash, made, broken = trade(market, day, units, cash, variant)
             decisions.append((pd.Timestamp(day), dict(units), cash, made or 0, broken, int(made is None)))
     closes = market.closes.ffill()
     closes = closes[closes.index >= start]
@@ -442,32 +410,6 @@ def run_daily(market: Market, variants: list[Variant], workers: int | None = Non
 
 # --- The quality of a score on its own: does it rank the ETFs? ------------------------------------------------
 
-def score_quality(market: Market, score: str, sessions: int | None = None) -> dict:
-    """How a score did over the next sessions, on every decision day: mean rank correlation with the return,
-    share of buy calls that rose, and the mean return of the ETFs it calls a buy against all scored ETFs."""
-    sessions = settings.HORIZON_SESSIONS if sessions is None else sessions
-    closes = market.closes.ffill()
-    ics, hits, picks, everything = [], [], [], []
-    for day, sheet in market.sheets.items():
-        before = int((closes.index < pd.Timestamp(day)).sum())
-        if sheet.empty or before == 0 or before - 1 + sessions >= len(closes):
-            continue
-        forward = closes.iloc[before - 1 + sessions] / closes.iloc[before - 1] - 1
-        frame = pd.DataFrame({"score": SCORES[score](sheet).values, "ret": forward.reindex(sheet["ticker"]).values}).dropna()
-        if len(frame) < 5:
-            continue
-        if frame["score"].nunique() > 1:
-            ics.append(frame["score"].rank().corr(frame["ret"].rank()))
-        buys = frame[frame["score"] >= 0.5]
-        if len(buys):
-            hits.append(float((buys["ret"] > 0).mean()))
-            picks.append(float(buys["ret"].mean()))
-            everything.append(float(frame["ret"].mean()))
-    return {"days": len(ics), "ic": float(np.nanmean(ics)) if ics else np.nan,
-            "buy_hit_rate": float(np.mean(hits)) if hits else np.nan,
-            "buy_ret": float(np.mean(picks)) if picks else np.nan, "all_ret": float(np.mean(everything)) if everything else np.nan}
-
-
 STUDY_HORIZONS = [1, 3, 5, 10, 15]  # sessions: the next day, the next trading date, ..., the whole window
 STUDY_GROUPS = {  # what the technical sheet says about an ETF -> the column and the value that says it
     "rule: buy": ("suggested_signal", "buy"), "rule: watch": ("suggested_signal", "watch"),
@@ -486,8 +428,8 @@ def signal_study(market: Market, horizons: list[int] | None = None, days: list[d
     horizons = STUDY_HORIZONS if horizons is None else horizons
     closes = market.closes.ffill()
     samples: dict[tuple[str, int], list[tuple[float, int]]] = {}
-    for day, sheet in market.sheets.items():
-        if days is not None and day not in days:
+    for day, sheet in market.answers.items():
+        if day.weekday() not in (0, 3) or (days is not None and day not in days):  # the decision days: 3 sessions apart
             continue
         before = int((closes.index < pd.Timestamp(day)).sum())
         if sheet.empty or before == 0:
@@ -526,7 +468,7 @@ def study_by_half(market: Market, sessions: int | None = None) -> pd.DataFrame:
     """The signal study over the first and the second half of the decision days, at one horizon: one row per
     group with its edge and t-value in each half. An answer of the sheet is worth trusting when both agree."""
     sessions = settings.HORIZON_SESSIONS if sessions is None else sessions
-    days = sorted(market.sheets)
+    days = sorted(d for d in market.answers if d.weekday() in (0, 3))
     halves = [signal_study(market, [sessions], part).set_index("group") for part in (days[:len(days) // 2], days[len(days) // 2:])]
     out = pd.DataFrame({"edge_h1": halves[0]["edge"], "t_h1": halves[0]["t"], "edge_h2": halves[1]["edge"], "t_h2": halves[1]["t"]})
     out["same_sign"] = (out["edge_h1"] * out["edge_h2"]) > 0
@@ -567,7 +509,7 @@ def fill_rule_study(market: Market, picks: int = 5) -> pd.DataFrame:
     opens = prices.pivot(index="date", columns="ticker", values="open_eur").sort_index()
     before = closes.shift(1)
     day_return, gap = closes / before - 1, opens / before - 1
-    first = min(market.sheets) if market.sheets else closes.index.min().date()
+    first = min(market.answers) if market.answers else closes.index.min().date()
     rows = []
     for day in closes.index[closes.index >= pd.Timestamp(first)]:
         if day.weekday() not in (0, 3):
@@ -621,9 +563,9 @@ def run(market: Market, starts: list[date], variants: list[Variant], workers: in
         return pd.DataFrame(list(pool.map(_task, jobs, chunksize=8)))
 
 
-def summarise(results: pd.DataFrame, market: Market, variants: list[Variant]) -> pd.DataFrame:
+def summarise(results: pd.DataFrame, variants: list[Variant]) -> pd.DataFrame:
     """One row per variant: what the windows returned against the benchmark and against the first variant
-    (the system as it is) on the same windows, the risk taken, and how good its score is on its own."""
+    (the system as it is) on the same windows, and the risk taken."""
     returns = results.pivot(index="start", columns="variant", values="ret")
     reference = returns[variants[0].name]
     rows = []
@@ -638,8 +580,6 @@ def summarise(results: pd.DataFrame, market: Market, variants: list[Variant]) ->
 
         gap = (mine["ret"] - reference).dropna()
         halves = [gap.iloc[:len(gap) // 2], gap.iloc[len(gap) // 2:]]  # the windows are sorted by date
-        with overrides(variant.settings):  # a variant may change what each rule signal scores
-            quality = score_quality(market, variant.score)
         rows.append({"variant": variant.name, "what": variant.what, "windows": n,
                      "mean_ret": mine["ret"].mean(), "mean_bench": mine["bench_ret"].mean(),
                      "mean_excess": mine["excess"].mean(), "t_excess": t_value(mine["excess"]),
@@ -654,9 +594,7 @@ def summarise(results: pd.DataFrame, market: Market, variants: list[Variant]) ->
                      "holds": bool(halves[0].mean() > 0 and halves[1].mean() > 0),
                      "ret_h1": mine["ret"].iloc[:n // 2].mean(), "ret_h2": mine["ret"].iloc[n // 2:].mean(),
                      "mean_invested": mine["invested"].mean(), "mean_orders": mine["orders"].mean(),
-                     "broken_rules": int(mine["broken_rules"].sum()), "failed_days": int(mine["failed_days"].sum()),
-                     "score_ic": quality["ic"], "buy_hit_rate": quality["buy_hit_rate"],
-                     "buy_ret_3d": quality["buy_ret"], "all_ret_3d": quality["all_ret"]})
+                     "broken_rules": int(mine["broken_rules"].sum()), "failed_days": int(mine["failed_days"].sum())})
     return pd.DataFrame(rows)
 
 
@@ -680,7 +618,8 @@ def show(summary: pd.DataFrame) -> str:
 
 
 def main_daily(market: Market, variants: list[Variant], args) -> None:
-    print(f"One book from {min(market.sheets)} to {max(market.sheets)}, {len(market.sheets)} decision days, "
+    days = decision_days(market.closes, min(market.answers))
+    print(f"One book from {days[0]} to {days[-1]}, {len(days)} decision days, "
           f"{len(variants)} variant(s) to run")
     daily = run_daily(market, variants, args.workers)
     known = RESULTS / "system_backtest_daily.csv"
@@ -712,7 +651,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.daily:
         main_daily(market, variants, args)
         return
-    print(f"{len(starts)} windows from {starts[0]} to {starts[-1]}, {len(market.sheets)} decision days, "
+    print(f"{len(starts)} windows from {starts[0]} to {starts[-1]}, {len(market.answers)} days of technical answers, "
           f"{len(variants)} variant(s) to run")
     results = run(market, starts, variants, args.workers)
     known = RESULTS / "system_backtest.csv"
@@ -723,7 +662,7 @@ def main(argv: list[str] | None = None) -> None:
     variants = [v for v in VARIANTS if v.name in set(results["variant"])]
     order = {v.name: i for i, v in enumerate(variants)}
     results = results.sort_values(["variant", "start"], key=lambda c: c.map(order) if c.name == "variant" else c)
-    summary = summarise(results, market, variants)
+    summary = summarise(results, variants)
     study = signal_study(market)
     rule = fill_rule_study(market)
     RESULTS.mkdir(exist_ok=True)

@@ -287,7 +287,7 @@ def test_real_signal_steps_keep_their_signals_in_logs(logs, tmp_path, monkeypatc
     real_logs = tmp_path / "real"
     monkeypatch.setattr(settings, "LOGS_DIR", real_logs)
     monkeypatch.setitem(settings.USE_MOCK, "technical", False)
-    monkeypatch.setitem(pipeline.REAL, "technical", lambda prices, features, as_of, lessons: pipeline.mock.mock_signals(
+    monkeypatch.setitem(pipeline.REAL, "technical", lambda prices, features, as_of, lessons, **extra: pipeline.mock.mock_signals(
         as_of.isoformat(), agents=["technical_det"]).assign(rationale="real technical"))
 
     pipeline.run_day(DAY, logs)  # portfolio and risk are still on mocks
@@ -354,30 +354,19 @@ def test_a_failing_logbook_never_stops_the_day(logs, monkeypatch):
 
 
 def test_starting_weights_go_only_to_agents_that_gave_a_score(logs, monkeypatch):
-    def technical_det_only(prices, features, as_of, lessons):  # the LLM technical score does not exist yet
+    def technical_det_only(prices, features, as_of, lessons, **extra):  # the LLM technical score does not exist yet
         return pipeline.mock.mock_signals(as_of.isoformat(), agents=["technical_det"])
 
     monkeypatch.setitem(pipeline.MOCK, "technical", technical_det_only)
     pipeline.run_day(DAY, logs)
     # each family counts the same; technical_llm gave nothing, so technical_det carries its family's half
     assert _state(logs)["agent_weights"] == {"technical_det": 0.5, "macro_market": 0.25, "macro_etf": 0.25}
-    assert pipeline.starting_weights(settings.SIGNAL_AGENTS) == dict.fromkeys(settings.SIGNAL_AGENTS, 0.25)
     assert not (logs / "incidents.csv").exists()
 
     # a rerun reads the day's signals back from the logs, even though one technical score is missing
     monkeypatch.setitem(pipeline.MOCK, "technical", _boom)
     assert pipeline.run_day(DAY, logs, rerun=True) is not None
     assert not (logs / "incidents.csv").exists()
-
-
-def test_logged_weights_are_rescaled_over_the_agents_that_scored(logs):
-    logs.mkdir(parents=True)
-    pd.DataFrame({"date": "2026-12-04", "agent": settings.SIGNAL_AGENTS, "weight": [0.4, 0.2, 0.3, 0.1],
-                  "hit_rate": [0.6, 0.5, 0.5, 0.4]}).to_csv(logs / "agent_weights.csv", index=False)
-    weights = pipeline.load_agent_weights(logs, DAY, ["technical_det", "macro_market", "macro_etf"])
-    assert weights == pytest.approx({"technical_det": 0.5, "macro_market": 0.375, "macro_etf": 0.125})
-    assert pipeline.load_agent_weights(logs, date(2026, 12, 1), ["technical_det"]) == {"technical_det": 1.0}
-
 
 
 def test_the_risk_manager_gets_the_ex_dividend_dates(logs, monkeypatch):
