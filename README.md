@@ -1,239 +1,100 @@
 # QDC Trading — ReBel Agentic AI Challenge
 
-Multi-agent system for the QTEM Data Challenge (Fall 2026, Belfius × QuantumBlack).
-The agents analyse the 50-ETF universe and propose trades. A human approves every order before it is submitted.
+A multi-agent system that trades 50 ETFs for the QTEM Data Challenge (Belfius × QuantumBlack, fall 2026).
+The agents propose, a human approves every order.
 
 ## The competition
 
-- **Capital:** €10,000 per team, no transaction costs, sufficient cash required.
-- **Trading days:** Mon 7, Thu 10, Mon 14, Thu 17, Mon 21 December 2026.
-- **Orders:** max 5 per trading day (side, units, ticker), submitted through the Belfius form.
-- **Grading:** performance **and** methodology, critical thinking towards agent outputs, and re-assessment of the model during the trading window.
-
-| Date | Deliverable |
-|---|---|
-| 22 Nov 2026, 23:59 | Mid-term report (analyses + code) |
-| 7–23 Dec 2026 | Trading window |
-| 16 Jan 2027, 23:59 | Final report + team organisation annex (the Belfius deck says 17 Jan) |
-
-> **Fill price:** an order on day T fills at the last close before T, on the ETF's own exchange. The Belfius deck says both this and "the closing price of the trading day itself"; the team's rule is the previous close. It is one setting, `FILL_AT_PREVIOUS_CLOSE` in `data/config.py`, that every module follows, and the system is tested under both rules. What this rule is worth is finding 1 in `backtest/README.md`. After the first trading day, compare the fills on the Belfius platform with `logs/logbook/<date>.md`.
->
-> **Units:** the Portfolio Manager sizes orders in fractional units (4 decimals). If the Belfius form turns out to take whole units only, set `ORDER_UNIT_DECIMALS = 0` in `data/config.py`.
+- €10,000, no transaction costs, at most 5 orders a day, on Mon 7, Thu 10, Mon 14, Thu 17 and Mon 21 December 2026.
+- Graded on performance **and** method: critical thinking towards the agents, and re-assessment of the model.
+- Mid-term report 22 Nov 2026 · final report 16 Jan 2027.
+- Our reading of two open rules, each one setting in `data/config.py`: an order fills at the **last close before its
+  day** (`FILL_AT_PREVIOUS_CLOSE`), and in **fractional units** (`ORDER_UNIT_DECIMALS`).
 
 ## How it works
 
-Four scores per ETF, one portfolio, three human reviews, and one learning rule that re-weights everything every morning.
-
 ![Workflow of one trading day](docs/workflow.png)
 
-**One day, step by step** (`graph/pipeline.py` runs it; the cockpit's "Run the day" button starts it)
-
-| # | Step | What it does | Code | LLM? |
-|---|---|---|---|---|
-| 1 | Data | Real prices of the 50 ETFs, 37 indicators, and the ex-dividend dates of the distributing ETFs | `data/data_agent.py`, `data/features.py`, `data/dividends.py` | No |
-| 2 | Learning ("Performance Monitoring and Learning" in the diagram) | Re-weights every expert from what following it earned (the rule below), writes the lessons | `graph/review_loop.py`, `agents/learning.py` | No |
-| 3 | Technical | Two scores from prices: `technical_det` (three answers of the rules, trend, mean reversion and momentum, weighted by what each earned since 2022) and `technical_llm` (Claude weighs the rules' answers when they disagree) | `agents/technical.py`, `agents/technical_llm.py` | Second score only |
-| 4 | Macro / News | Two scores from the news: `macro_market` (15 macro views through the exposure table) and `macro_etf` (20 theme analysts, each reading the news, the price tape and its own past calls) | `agents/macro_news.py` and `agents/macro_*.py` | Yes |
-| 5 | Portfolio Manager | Combines the four scores, builds the target portfolio, proposes at most 5 orders with a memo | `agents/portfolio.py` | Yes |
-| 6 | Your review of the orders | Approve, change, reject or add orders | cockpit, Today page | You |
-| 7 | Risk Manager | Risk of the portfolio after those orders: a board, every metric, and an independent reading of the memo | `agents/risk.py` | Reading only |
-| 8 | Your review of the risk, then of the summary | Accept, send the day back with feedback (at most twice), or stop: no trade today | cockpit, Today page | You |
-| 9 | Order log and logbook | The Belfius export, and an audit trail of everything said and decided, with a hash chain | `agents/logbook.py` | No |
-
-**How the scores become a portfolio.** Every score is in [-1, 1]. The Portfolio Manager combines them with one weight per agent:
-
-```
-final_score(ETF) = Σ w_agent × score_agent(ETF)      with Σ w_agent = 1
-```
-
-**How the system improves by itself: one rule for every weight** (`agents/learning.py`). After each trading session:
-
-```
-weight(expert) × e^(2 × what following that expert earned in the session)     then scaled to sum to 1, each between 5% and 80%
-```
-
-"What following it earned" is, for a score, the return of the ETFs it called up minus those it called down, against the average ETF; for a portfolio, its return. Three sets of experts follow this rule:
-
-| Weights | Start | Learning since |
+| Step | What it does | Code |
 |---|---|---|
-| The technical agent's three answers: trend, mean reversion, momentum ranking | 1/3 each | January 2022: the answers are replayed from prices (`logs/technical_answers.csv`) |
-| The four agents | technical 50%, macro 50%, split between the agents that scored that day | their first score (November 2026). An LLM cannot be replayed on the past: it already knows what happened |
-| Claude's portfolio against the code's, in the Portfolio Manager's blend | 60% / 40% | the first portfolio logged |
+| Data | Prices of the 50 ETFs, 37 indicators, ex-dividend dates | `data/` |
+| Learning | Re-weights everything from what each expert earned (below), writes the lessons | `graph/review_loop.py`, `agents/learning.py` |
+| Technical | Two scores: three rule answers weighted by what they earned since 2022, and Claude's reading of them | `agents/technical*.py` |
+| Macro / News | Two scores: 15 macro views, and 20 theme analysts reading the news | `agents/macro_*.py` |
+| Portfolio Manager | Combines the four scores, blends the code's portfolio with Claude's, picks at most 5 orders | `agents/portfolio*.py` |
+| You | Review the orders | cockpit, Today page |
+| Risk Manager | Measures the portfolio after your orders on 22 metrics; Claude writes an independent reading | `agents/risk*.py` |
+| You | Review the risk, then sign off the summary; each review can send the day back or stop it | cockpit, Today page |
+| Logbook | Writes the orders and an audit trail of the day, hash-chained | `agents/logbook.py` |
 
-Every weight of every session is in `logs/weights.csv`. The facts behind them go into `logs/lessons.md` (which agent is right on which kind of call, the largest misses, the weakest macro sources), which the agents read before they decide. The ETF analysts also see their own past calls, and the Risk Manager corrects its volatility forecast.
+**One rule for every weight.** After each session, a weight is multiplied by e^(2 × what following that expert earned),
+then the weights are rescaled to sum to 1 and kept between 5% and 80%. It weighs the technical agent's three answers
+(since 2022), the four agents (since their first score), and Claude's portfolio against the code's.
 
-**Two rules.** Code calculates and the LLM judges: no LLM ever produces a number that code could compute. Nothing is traded without the three human reviews, and the trading rules (at most 5 orders, enough cash, no selling more than held) are checked in code on every proposal and every approval.
+**Two principles.** Code calculates, Claude judges: no LLM produces a number code could compute. Nothing is traded
+without the three human reviews, and the trading rules are checked in code on every proposal and every approval.
 
-## Adjust the model
+## Get started
 
-Every setting is one line in one file. To know whether a change is worth making, test it in the backtest before you make it: add one line to `VARIANTS` in `backtest/system_backtest.py` and run it. It replays the code-only system since 2022 with the competition's rules and the learning rule, as one book valued every day (its Sharpe ratio) and as every 3-week window, and compares your variant with the current system on the same days (see `backtest/README.md` for how to read it, and for what the runs found).
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python 3.11+
+cp .env.example .env                                                  # ANTHROPIC_API_KEY, EODHD_API_KEY; never commit it
+.venv/bin/python -m pytest                                            # no test calls the network or Claude
+streamlit run app/streamlit_app.py                                    # the cockpit
+```
+
+**Every weekday morning:** open the cockpit and click **Run the day** (about $4.30 of Claude, mostly Macro/News). The
+scores and portfolios are logged before your first review, which is all the learning needs. Doing the three reviews
+on practice days adds evidence of human judgement. Then commit `logs/` with `scripts/ship.sh "Add the days of …"`.
+
+Without the cockpit: `python -m graph.pipeline` (runs to the first review), `--approve-all`, or `--answer file.json`.
+To try something without touching the graded logs, point everything at a copy: `QDC_LOGS_DIR=/tmp/trial`.
+
+## The cockpit
+
+Dashboard · **Today** (your three reviews) · one page per agent · **Learning** (the weights and the backtest) ·
+**How it works** (the diagram: click a box to see what it does and its code) · Logbook.
+
+**Online, read-only.** With `QDC_READ_ONLY=1` the cockpit runs nothing and shows what the committed logs hold. To put
+it on Streamlit Community Cloud (free, the repo stays private): on [share.streamlit.io](https://share.streamlit.io)
+create an app from `axelizsak/qdc-trading`, branch `main`, file `app/streamlit_app.py`, Python 3.12; put
+`QDC_READ_ONLY = "1"` in its Secrets, and nothing else; choose who sees it in Settings → Sharing. It redeploys at each
+merge.
+
+## Change the model
+
+Every setting is one line. Test a change on the past first: add a line to `VARIANTS` in
+`backtest/system_backtest.py` and run `python -m backtest.system_backtest --daily` (results and how to read them in
+`backtest/README.md`).
 
 | To change | Where |
 |---|---|
-| The technical rules: trend horizons, ADX and RSI levels, mean-reversion thresholds, the score of each signal | `agents/strategy_config.py` |
-| What the LLM technical layer is asked to weigh | the prompt in `agents/technical_llm.py` |
-| The macro factors, and how much each ETF moves with each factor | `MACRO_FACTORS` in `data/config.py`, `data/macro_exposure.csv` |
-| What the macro searches look for, and the analysts' brief per theme | `CROSS_TOPICS` in `agents/macro_llm.py`, `THEME_BRIEFS` and the prompt in `agents/macro_analysts.py` |
-| How the portfolio is built: invested share, number of positions, risk aversion, timing | `agents/portfolio_config.py` |
-| The hard limits on every portfolio: one ETF at most 30%, leveraged and inverse ETFs at most 15% together | `MAX_POSITION`, `MAX_LEVERAGED_SHARE` in `agents/portfolio_config.py` |
-| Where the money without an idea goes: cash, or the benchmark ETF | `IDLE_TO_BENCHMARK`, `BENCHMARK_CAP` in `agents/portfolio_config.py` |
-| Fractional or whole units in the orders | `ORDER_UNIT_DECIMALS` in `data/config.py` (4, or 0 for whole units) |
-| The price an order fills at: the close before its day, or the close of its day | `FILL_AT_PREVIOUS_CLOSE` in `data/config.py` |
-| How fast every weight moves, its bounds, and the first day the technical answers are replayed from | `LEARNING_SPEED`, `WEIGHT_MIN`, `WEIGHT_MAX`, `LEARNING_START` in `data/config.py` |
-| The starting weights: of each family of agents, of the technical answers, of Claude's portfolio | `AGENT_FAMILIES` in `data/config.py`, `SIGNAL_START` in `agents/strategy_config.py`, `TRUST_START` in `agents/portfolio_config.py` |
-| The score of each technical answer | `SIGNAL_SCORES`, `MEAN_REVERSION_SCORES` in `agents/strategy_config.py` |
-| The horizon the LLM scores are asked for, and graded on in the lessons | `HORIZON_SESSIONS` in `data/config.py` |
-| The risk warning levels | `agents/risk_config.py` |
-| The competition rules: capital, trading days, orders per day, benchmark | `data/config.py` |
-| Which Claude model each agent uses | `CLAUDE_MODEL_FAST`, `CLAUDE_MODEL_REASONING` in `.env` |
+| Competition rules, fill price, units, the learning speed and bounds, the agents' starting weights | `data/config.py` |
+| The technical rules and the score of each answer | `agents/strategy_config.py` |
+| How the portfolio is built, its hard limits, Claude's starting share | `agents/portfolio_config.py` |
+| The risk reference levels | `agents/risk_config.py` |
+| The macro factors and each ETF's exposure to them | `data/config.py`, `data/macro_exposure.csv` |
+| What Claude is asked | the prompts in `agents/macro_analysts.py`, `agents/macro_llm.py`, `agents/technical_llm.py`, `agents/portfolio_llm.py` |
 
-## Repository layout
+## Repository
 
 ```
-qdc-trading/
-  data/        prices and indicators (data_agent.py, features.py), the 50 ETFs (etf_universe.csv),
-               the rules and settings (config.py), every shared table (schemas.py), mock data (mock.py)
-  agents/      technical.py + technical_llm.py + strategy_config.py     the two technical scores
-               macro_news.py + macro_llm.py + macro_analysts.py
-                 + macro_tape.py + macro_sources/                       the two macro scores
-               portfolio*.py                                            the Portfolio Manager
-               risk*.py                                                 the Risk Manager
-               logbook.py                                               the audit trail
-               learning.py                                              the one learning rule
-  graph/       pipeline.py (one day, step by step) and review_loop.py (the learning step, every morning)
-  app/         the Streamlit cockpit: Dashboard, Today (your reviews), one page per agent, Learning,
-               How it works (the clickable diagram), Logbook
-  backtest/    system_backtest.py replays the whole code-only system since 2022, learning included (results in
-               backtest/results/)
-  logs/        everything the agents said and the humans decided (graded evidence, see logs/README.md)
-  tests/       one file per module; no test calls the network or Claude
+data/       prices, indicators, the 50 ETFs, settings, every shared table (schemas.py) and its mock (mock.py)
+agents/     technical, macro/news, portfolio manager, risk manager, logbook, and the learning rule
+graph/      pipeline.py (one day, step by step) and review_loop.py (the learning step)
+app/        the Streamlit cockpit
+backtest/   the system replayed since 2022 (results in backtest/results/)
+logs/       everything the agents said and the humans decided: graded evidence (logs/README.md)
+tests/      one file per module
 ```
 
-Python modules only: no notebooks in the repo.
+## Team
 
-## Shared data formats
-
-These were fixed on day 1 and are defined in `data/schemas.py`. Build your module against mock data (`python -m data.mock`) so that nobody has to wait for anyone else.
-
-| Table | Columns |
+| | Scope |
 |---|---|
-| Prices | `date, ticker, open_eur, high_eur, low_eur, close_eur, adj_close_eur, volume` (real closes; the adjusted close is for indicators) |
-| Signals | `ticker, date, agent, score [-1,1], confidence [0,1], rationale` |
-| Portfolio | `ticker, target_weight` |
-| Orders | `date, side, ticker, units` (matches the Belfius form) |
-| Holdings | `ticker, units` (cash is tracked separately) |
-| Features | `date, ticker, feature, value` (long format: the 37 indicators of `data/features.py`) |
-| Weights | `date, level [technical\|agents\|portfolio], name, weight, result` (every weight of the system, every session; weights sum to 1 per date and level) |
-| Technical answers | `date, ticker, suggested_signal, mr_setup, momentum_13612, confirmations, trend_strength, session_return` (what the technical rules said each morning since 2022, and what the ETF then did) |
-| Evidence | `date, factor, source, kind [number\|text\|exploration], value, summary, url` |
-| Macro views | `date, factor, direction [-1,1], confidence, rationale, counter_argument, sources` |
-| ETF views | `date, ticker, direction [-1,1], confidence, rationale, counter_argument, sources, catalyst_date, catalyst` (theme analysts; the catalyst is the next scheduled event for the ETF, when one was found) |
-| Source registry | `source, kind, factors, status [active\|testing\|dropped], first_seen, n_uses, hit_rate` |
-| Order log | `date, ticker, ai_side, ai_units, decision [approved\|modified\|rejected\|added], side, units, reason` |
-| Incidents | `date, step, error` |
-| Risk report | `date, metric, value, limit, status [ok\|warning\|breach], comment` (one row per metric) |
-| Reviews | `date, round, gate [orders\|risk\|summary], decision [approved\|revised\|stopped], feedback` |
-| PM portfolios | `date, source [baseline\|optimizer\|llm\|final], ticker, weight` (what the Portfolio Manager built each day) |
-| Recommendations | `recommendation_id, created_at, date, ticker, side, units, price_eur, price_date, value_eur, weight_now, weight_target, impact, timing, why` (append-only) |
-| Risk forecasts | `date, kind [weight\|forecast], name, value` (what each risk assessment was made on, and what it forecast) |
-| Risk calibration | `date, vol_scale, days_graded, mean_ratio, floor_breaches, floor_days` |
-| Ex-dividends | `ticker, ex_date, amount_eur, basis` (distributing ETFs; `basis` is "paid" or "expected: ..." when estimated from last year's schedule) |
-| Macro exposure | `ticker, multiplier, <one column per macro factor>` (`data/macro_exposure.csv`, a proposal for the team to review) |
+| Axel | Macro / News, pipeline and learning, cockpit, backtest, repo |
+| Achille | Data agent, technical agent |
+| Alexander | Portfolio Manager, Risk Manager, Logbook |
 
-`factor` is one of `MACRO_FACTORS` in `data/config.py`. List columns (`sources`, `factors`) are `;`-joined strings.
-
-`ticker` is always the Belfius short name from `data/etf_universe.csv` (e.g. `WORLD`, `NASDAQ 3X`), never the Yahoo symbol.
-
-`agent` is one of `technical_det`, `technical_llm`, `macro_market` or `macro_etf` (see `SIGNAL_AGENTS` in `data/config.py`). Each agent family writes two rows per ETF, so the Portfolio Manager weights every score on its own and learns which one predicts better. Before any evidence, each family (technical, macro) counts the same, split between its agents that gave a score that day: an agent that gives no score takes no weight. Rows with agent `macro_news` in `logs/signals.csv` are the single blended score used until 14 November.
-
-## Setup
-
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env      # add your ANTHROPIC_API_KEY and EODHD_API_KEY. Never commit .env
-pytest
-```
-
-Run a day. Any day works: before 7 December it is practice, to collect the agents' signals every day and test the orders (practice orders never count in the competition, which starts from €10,000). The pipeline pauses at each of the three reviews (the cockpit's Today page does the same):
-
-```bash
-python -m graph.pipeline                                      # today: agents run, orders proposed, pause
-python -m graph.pipeline --answer a.json                      # answer the review waiting (format in graph/pipeline.py)
-python -m graph.pipeline --approve-all                        # approve every review left, write the order log
-```
-
-Every step now runs its real module, so a day writes to `logs/`, which is graded evidence. To try a strategy or a setting without touching it, point the whole system at a copy of the logs:
-
-```bash
-cp -R logs /tmp/trial && rm -f /tmp/trial/checkpoints.sqlite*
-QDC_LOGS_DIR=/tmp/trial streamlit run app/streamlit_app.py    # or: QDC_LOGS_DIR=/tmp/trial python -m graph.pipeline
-```
-
-A day costs about $0.15 of Claude on top of the Macro/News run: the LLM technical score, one Portfolio Manager call per round and one Risk Manager reading per round.
-
-See what the system has learned, without running a day:
-
-```bash
-python -m graph.review_loop               # the learning step alone: writes logs/weights.csv and logs/lessons.md
-```
-
-Test a setting or an idea on the past (about 10 minutes for every variant, 1 minute for one):
-
-```bash
-python -m backtest.system_backtest                        # every variant on every 3-week window since 2022
-python -m backtest.system_backtest --variants watch_zero  # one variant, merged into the results
-```
-
-Run the Macro/News agent every business day. Claude is the only key it needs:
-
-```bash
-python -m agents.macro_news               # today: report in logs/macro/<date>.md, with the cost of the run
-```
-
-Open the cockpit: the Dashboard runs the day, the Today page takes your three reviews, one page per agent shows what it said, Learning shows the weights and the backtest, How it works is the clickable diagram:
-
-```bash
-streamlit run app/streamlit_app.py
-```
-
-**The cockpit on the web, read-only.** With `QDC_READ_ONLY=1` the cockpit runs nothing: no "Run the day", no review
-buttons. Every page shows what the committed logs hold, and the latest logged day opens first. To put it online with
-Streamlit Community Cloud (free; the GitHub repo can stay private):
-
-1. On [share.streamlit.io](https://share.streamlit.io), sign in with GitHub and create an app: repository
-   `axelizsak/qdc-trading`, branch `main`, main file `app/streamlit_app.py`, Python 3.12.
-2. In Advanced settings → Secrets, write `QDC_READ_ONLY = "1"`, and nothing else: no API key goes there.
-3. In the app's settings → Sharing, choose who sees it: public, or only the people you invite by email.
-
-The app redeploys at each push to `main`, so it shows the logs as they are after each merge. Prices are downloaded
-from Yahoo Finance when a page needs them; without the EODHD key, NASDAQ 3X has no price there.
-
-Each step uses its mock while its switch in `USE_MOCK` (`data/config.py`) is on. Runs on mocks write to `logs/mock/`, which is not committed.
-
-Data agent (prices of the 50 ETFs):
-
-```bash
-python -m data.symbols      # step 1, once: Yahoo symbol of each ETF -> data/etf_symbols.csv (about 3 minutes)
-python -m data.data_agent   # step 2: daily OHLC prices since 2020 + quality checks -> data/cache/
-```
-
-NASDAQ 3X is not on Yahoo for Xetra: its prices come from EODHD (free plan, official Deutsche Boerse
-data distributor). Create a free key on eodhd.com and add `EODHD_API_KEY=...` to your `.env`.
-
-## Work split
-
-| Person | Scope |
-|---|---|
-| Axel | Macro / News agent · LangGraph pipeline and learning · Streamlit cockpit · repo management |
-| Achille | Data agent · ETF mapping · Technical agent · backtests |
-| Alexander | Portfolio Manager · Risk Manager · Logbook |
-
-## Contributing
-
-1. Never commit or push to `main`; a git hook refuses it. Only Axel merges pull requests.
-2. Ship with `/ship` in Claude Code, or `scripts/ship.sh "what you changed"`: it creates a branch, runs the tests, commits, pushes and opens a PR.
-3. Never edit files on github.com, and never commit `.env`, API keys or the Belfius/QuantumBlack documents.
-4. A new data format goes into `data/schemas.py` with a mock and a test, in the same PR.
-5. Commit everything in `logs/` (graded evidence). Full rules in `CLAUDE.md`.
+Never push to `main`: ship with `scripts/ship.sh "what you changed"` (or `/ship` in Claude Code), and Axel merges.
+Never commit `.env`, an API key or the Belfius / QuantumBlack documents. Full rules in `CLAUDE.md`.
