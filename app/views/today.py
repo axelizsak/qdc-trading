@@ -1,13 +1,10 @@
-"""Orders: the three human reviews of the day, then the export for the Belfius form.
+"""Today: your three reviews of the day, one at a time, then the export for the Belfius form.
 
-1. Orders review: approve, modify or reject each proposed order and add your own. A reason is
-   required to change an order. Checks: at most 5 orders, enough cash, enough units to sell.
-   Units have ORDER_UNIT_DECIMALS decimals (data/config.py). An order fills at the last close before the day.
-2. Risk review: the Risk Manager's board, its independent reading and every metric, for the
-   portfolio once those orders are filled.
-3. Summary review: the executive summary. Approving it writes the order log and the logbook.
-At every review you can also send the day back to the Portfolio Manager with your feedback,
-or stop it: no trade today.
+1. Orders: approve, change, reject or add orders (a reason is needed to change one). The trading rules are checked
+   as you edit: at most 5 orders, enough cash, enough units to sell.
+2. Risk: the Risk Manager's status per area and its warnings, for the portfolio once your orders are filled.
+3. Summary: what you are about to sign off. Approving writes the order log and the logbook.
+At every review you can send the day back to the Portfolio Manager with your feedback, or stop it: no trade today.
 """
 import pandas as pd
 import streamlit as st
@@ -19,14 +16,13 @@ from data.universe import load_universe
 from graph import pipeline
 
 DECISION = {"Approve": "approved", "Modify": "modified", "Reject": "rejected"}
-STATUS = {"ok": "✓ ok", "warning": "▲ warning", "breach": "✕ breach"}
 UNIT_STEP = float(10 ** -settings.ORDER_UNIT_DECIMALS)  # 0.0001 for fractional units, 1 for whole units
 UNIT_FORMAT = f"%.{settings.ORDER_UNIT_DECIMALS}f"
 
 as_of, logs = ui.as_of(), ui.pipeline_logs()
 status, state, pending = pipeline.day_status(as_of, logs)
 universe = load_universe()
-ui.page("Orders", "Three checks before anything is traded: the orders, the risk, then the executive summary.")
+ui.page("Today", "Three checks before anything is traded: the orders, the risk, then the summary.")
 
 
 def belfius_export(log: pd.DataFrame) -> bytes:
@@ -37,26 +33,21 @@ def belfius_export(log: pd.DataFrame) -> bytes:
     return form.to_csv(index=False).encode()
 
 
-def compact(summary: str) -> str:
-    """The executive summary without its title and with small headings, to fit in the page."""
-    lines = summary.splitlines()
-    if lines and lines[0].startswith("# "):
-        lines = lines[1:]
-    return ui.demote("\n".join(lines))
-
-
-def show_reviews() -> None:
+def your_reviews() -> None:
     reviews = pd.DataFrame(state.get("reviews", []), columns=REVIEWS)
     if len(reviews):
-        ui.label("Your reviews", "every answer of the day, with the feedback sent back")
-        st.dataframe(reviews.drop(columns="date"), hide_index=True, width="stretch")
+        ui.label("Your answers today")
+        st.dataframe(reviews.drop(columns="date"), hide_index=True, width="stretch", column_config={
+            "round": "Round", "gate": "Review", "decision": "Your answer",
+            "feedback": st.column_config.TextColumn("Feedback", width="large")})
 
 
 def review_actions(approve_label: str, extra: dict | None = None, blocked: bool = False) -> None:
-    """Feedback box and the three answers. Feedback is required to send the day back or to stop it."""
+    """Feedback, then the three answers. Feedback is needed to send the day back or to stop it."""
     gate, round_, left = pending["gate"], pending["round"], pending["revisions_left"]
-    feedback = st.text_area("Feedback", key=f"feedback_{gate}_{round_}", height=90,
-                            placeholder="Required to send the day back or to stop it: what should change, and why")
+    ui.label("Your answer")
+    feedback = st.text_area("Feedback", key=f"feedback_{gate}_{round_}", height=80, label_visibility="collapsed",
+                            placeholder="Feedback: needed to send the day back or to stop it")
     has_feedback = bool(feedback.strip())
     go, back, stop = st.columns([2, 2, 1.4])
     answer = None
@@ -67,8 +58,7 @@ def review_actions(approve_label: str, extra: dict | None = None, blocked: bool 
                    icon=":material/undo:", width="stretch",
                    help=f"{left} of {settings.MAX_REVISIONS} left today" if left > 0 else "No revision left today"):
         answer = {"decision": "revised", "feedback": feedback, **(extra or {})}
-    if stop.button("No trade today", disabled=not has_feedback, key="stop", icon=":material/block:",
-                   width="stretch"):
+    if stop.button("No trade today", disabled=not has_feedback, key="stop", icon=":material/block:", width="stretch"):
         answer = {"decision": "stopped", "feedback": feedback}
     if answer is not None:
         try:
@@ -79,11 +69,22 @@ def review_actions(approve_label: str, extra: dict | None = None, blocked: bool 
             st.rerun()
 
 
+def orders_table(orders: pd.DataFrame) -> None:
+    prices, _ = data.day_prices(as_of, state)
+    close = pipeline.fill_prices(prices, as_of)
+    table = orders.drop(columns="date").assign(price=orders["ticker"].map(close))
+    table["value"] = table["units"].astype(float) * table["price"]
+    st.dataframe(table, hide_index=True, width="stretch", column_config={
+        "ticker": st.column_config.TextColumn("ETF"), "side": st.column_config.TextColumn("Side"),
+        "units": st.column_config.NumberColumn("Units", format=UNIT_FORMAT),
+        "price": st.column_config.NumberColumn("Fill price", format="€%.2f"),
+        "value": st.column_config.NumberColumn("Value", format="€%.0f")})
+
+
 if status == "not started":
-    ui.kpis([("Status", "Not started"), ("Orders", "—")])
-    st.write("")
-    st.page_link("views/home.py", label="Run the day first: it pauses here for your first review",
-                 icon=":material/arrow_back:")
+    st.info("The day has not run yet. Run it from the dashboard: it stops here for your first review.",
+            icon=":material/info:")
+    st.page_link("views/dashboard.py", label="Go to the dashboard", icon=":material/arrow_back:")
     st.stop()
 
 if status == "done":
@@ -91,30 +92,36 @@ if status == "done":
     day_log = log[log["date"].astype(str) == as_of.isoformat()] if log is not None else pd.DataFrame()
     if state.get("outcome") == "stopped":
         last = state["reviews"][-1]
-        ui.kpis([("Status", "No trade today", None, "down"), ("Stopped at", pipeline.GATE_NAMES[last["gate"]]),
+        ui.kpis([("Today", "No trade", None, "down"), ("Stopped at", pipeline.GATE_NAMES[last["gate"]]),
                  ("Round", last["round"])])
         st.info(f"Your reason: {last['feedback']}", icon=":material/block:")
     else:
         executed = day_log[day_log["decision"] != "rejected"] if len(day_log) else day_log
-        ui.kpis([("Status", "Approved", None, "up"), ("Orders to submit", len(executed)),
+        ui.kpis([("Today", "Approved", None, "up"), ("Orders to submit", len(executed)),
                  ("Changed by you", int((day_log["decision"] != "approved").sum()) if len(day_log) else 0),
                  ("Rounds", state.get("round", 1))])
-        ui.label("Order log", "AI suggestion next to your decision")
-        st.dataframe(day_log, hide_index=True, width="stretch")
-        st.download_button("Export for the Belfius form", belfius_export(day_log), f"orders_{as_of}.csv",
-                           "text/csv", icon=":material/download:", type="primary")
-        with st.expander("Executive summary you approved"):
-            st.markdown(compact(state.get("summary", "")))
-    show_reviews()
+        st.write("")
+        left, right = st.columns([1, 1])
+        left.download_button("Export for the Belfius form", belfius_export(day_log), f"orders_{as_of}.csv", "text/csv",
+                             icon=":material/download:", type="primary", width="stretch")
+        right.download_button("The summary you signed", state.get("summary", ""), f"summary_{as_of}.md", "text/markdown",
+                              icon=":material/description:", width="stretch")
+        ui.label("Order log", "the AI's proposal next to your decision")
+        text = {"ai_side": "", "side": "", "reason": ""}  # empty, not "None", where the AI or you left nothing
+        st.dataframe(day_log.drop(columns="date").astype(dict.fromkeys(text, object)).fillna(text), hide_index=True,
+                     width="stretch", column_config={
+            "ticker": "ETF", "ai_side": "AI side", "ai_units": st.column_config.NumberColumn("AI units", format=UNIT_FORMAT),
+            "decision": "Your decision", "side": "Side", "units": st.column_config.NumberColumn("Units", format=UNIT_FORMAT),
+            "reason": st.column_config.TextColumn("Reason", width="large")})
+    your_reviews()
     st.stop()
 
-# --- Waiting for one of your reviews ----------------------------------------------------------
+# --- A review is waiting -----------------------------------------------------------------------
 gate = pending["gate"]
 ui.review_steps(pending, state)
 if pending["round"] > 1:
     st.caption(f"Round {pending['round']}: the Portfolio Manager revised its proposal after your feedback · "
                f"{pending['revisions_left']} revision(s) left today")
-st.write("")
 for incident in pending["incidents"]:
     st.warning(ui.incident_text(incident), icon=":material/error:")
 
@@ -122,48 +129,44 @@ if gate == "risk":
     orders = pd.DataFrame(pending["approved_orders"], columns=ORDERS)
     report = pd.DataFrame(pending["risk_report"], columns=RISK_REPORT)
     counts = report["status"].value_counts()
-    breaches, warnings = int(counts.get("breach", 0)), int(counts.get("warning", 0))
-    ui.kpis([("Review", "Risk", None, "hot"), ("Orders you approved", len(orders)),
-             ("Breaches", breaches, None, "down" if breaches else None),
-             ("Warnings", warnings, None, "hot" if warnings else None)])
-    ui.label("Risk after the orders", "the Risk Manager's view of the portfolio once your orders are filled")
+    ui.kpis([("Orders you approved", len(orders)), ("Breaches", int(counts.get("breach", 0)), None,
+                                                     "down" if counts.get("breach", 0) else None),
+             ("Warnings", int(counts.get("warning", 0)), None, "wait" if counts.get("warning", 0) else None),
+             ("Inside their levels", int(counts.get("ok", 0)))])
+    areas = data.md_table(pending.get("risk_board") or "", "| Area")
     if report.empty:
         st.info("No risk assessment today: the Risk Manager failed (see above).", icon=":material/info:")
-    else:
-        if pending.get("risk_board"):
-            with st.container(border=True):  # one status per area, then positions, factors and odds
-                st.markdown(ui.demote("\n".join(pending["risk_board"].splitlines()[1:])))
-        if pending.get("risk_reading"):
-            with st.expander("Independent reading · what the memo claims against the numbers, events, scenarios",
-                             expanded=True):
-                st.markdown(ui.demote("\n".join(pending["risk_reading"].splitlines()[1:])))
-        ui.label("Every metric", f"{len(report)} checks · a warning is information, only a breach breaks a rule")
-        st.dataframe(report.drop(columns="date").assign(status=report["status"].map(STATUS)), hide_index=True,
-                     width="stretch", column_config={
-                         "metric": st.column_config.TextColumn("Metric"),
-                         "value": st.column_config.NumberColumn("Value", format="%.4g"),
-                         "limit": st.column_config.NumberColumn("Reference level", format="%g"),
-                         "status": st.column_config.TextColumn("Status"),
-                         "comment": st.column_config.TextColumn("Comment", width="large"),
-                     })
+    elif len(areas):
+        ui.label("Risk by area", "once your orders are filled")
+        ui.chips([(f"{a.Area}: {a.Status}", a.Status.lower()) for a in areas.itertuples()])
+        st.write("")
+        st.dataframe(areas.rename(columns={"In one line": "Why"}), hide_index=True, width="stretch",
+                     column_config={"Why": st.column_config.TextColumn("Why", width="large")})
+    st.page_link("views/risk.py", label="Every metric and the independent reading", icon=":material/arrow_forward:")
     ui.label("Orders you approved")
-    st.dataframe(orders.drop(columns="date"), hide_index=True, width="stretch",
-                 column_config={"units": st.column_config.NumberColumn("units", format=UNIT_FORMAT)})
-    ui.label("Your answer", "accept the risk, or send the day back with the limits you want")
+    orders_table(orders)
     review_actions("Accept the risk")
-    show_reviews()
+    your_reviews()
     st.stop()
 
 if gate == "summary":
     orders = pd.DataFrame(pending["approved_orders"], columns=ORDERS)
-    ui.kpis([("Review", "Executive summary", None, "hot"), ("Orders to submit", len(orders)),
-             ("Round", pending["round"])])
-    ui.label("Executive summary", "what you are about to sign off")
-    with st.container(border=True):
-        st.markdown(compact(pending["summary"]))
-    ui.label("Your answer", "approving writes the order log for the Belfius form")
+    cash = float(state.get("cash_eur", settings.START_CAPITAL_EUR))
+    prices, _ = data.day_prices(as_of, state)
+    after = pipeline.cash_after(orders, cash, pipeline.fill_prices(prices, as_of))
+    report = pd.DataFrame(state.get("risk_report", []), columns=RISK_REPORT)
+    changes = pipeline.order_notes(state.get("human_decisions", []))
+    ui.kpis([("Orders to submit", len(orders)), ("Cash after", f"€{after:,.0f}"),
+             ("Risk warnings", int((report["status"] != "ok").sum())),
+             ("Your changes", len(changes.split("; ")) if changes else 0)])
+    ui.label("What you sign off")
+    orders_table(orders)
+    if changes:
+        st.caption("Your changes to the AI's proposal: " + changes)
+    st.download_button("Read the full summary", pending["summary"], f"summary_{as_of}.md", "text/markdown",
+                       icon=":material/description:")
     review_actions("Approve and write the order log")
-    show_reviews()
+    your_reviews()
     st.stop()
 
 # --- Orders review --------------------------------------------------------------------------
@@ -174,11 +177,12 @@ holdings = pd.DataFrame(state.get("holdings", []), columns=HOLDINGS)
 cash = float(state.get("cash_eur", settings.START_CAPITAL_EUR))
 figures = st.empty()
 
-ui.label("Investment memo", "the Portfolio Manager's reasoning")
-with st.container(border=True):
-    st.markdown(ui.demote(pending["memo"]))
+summary = data.memo_summary(pending.get("memo", ""))
+if summary:
+    st.info(summary, icon=":material/smart_toy:")
+st.page_link("views/portfolio.py", label="The Portfolio Manager's target and full memo", icon=":material/arrow_forward:")
 
-ui.label("Proposed orders", "change the decision, side or units · a reason is required to modify or reject")
+ui.label("Proposed orders", "change the decision, side or units · a reason is needed to modify or reject")
 editor = proposed.rename(columns={"side": "ai_side", "units": "ai_units"})[["ticker", "ai_side", "ai_units"]]
 editor["ai_units"] = editor["ai_units"].astype(float)  # the Portfolio Manager sizes orders in fractional units
 editor = editor.assign(decision="Approve", side=editor["ai_side"], units=editor["ai_units"], reason="")
@@ -195,16 +199,16 @@ edited = st.data_editor(
         "reason": st.column_config.TextColumn("Reason"),
     },
 )
-with st.expander("Add an order of your own"):
+added = pd.DataFrame({"ticker": pd.Series(dtype=str), "side": pd.Series(dtype=str),
+                      "units": pd.Series(dtype=float), "reason": pd.Series(dtype=str)})
+if st.toggle("Add an order of your own", key=f"add_{pending['round']}"):
     added = st.data_editor(
-        pd.DataFrame({"ticker": pd.Series(dtype=str), "side": pd.Series(dtype=str),
-                      "units": pd.Series(dtype=float), "reason": pd.Series(dtype=str)}),
-        num_rows="dynamic", hide_index=True, width="stretch", key=f"added_{pending['round']}",
+        added, num_rows="dynamic", hide_index=True, width="stretch", key=f"added_{pending['round']}",
         column_config={
             "ticker": st.column_config.SelectboxColumn("ETF", options=universe["ticker"].tolist()),
             "side": st.column_config.SelectboxColumn("Side", options=["BUY", "SELL"]),
             "units": st.column_config.NumberColumn("Units", min_value=UNIT_STEP, step=UNIT_STEP, format=UNIT_FORMAT),
-            "reason": st.column_config.TextColumn("Reason (required)"),
+            "reason": st.column_config.TextColumn("Reason (needed)"),
         },
     )
 
@@ -234,18 +238,14 @@ except (ValueError, KeyError, TypeError) as exc:
         problems.append(str(exc).removeprefix("order_log: "))
 
 cash_after = pipeline.cash_after(executed, cash, close)
-change = cash_after - cash
 with figures.container():
     ui.kpis([
-        ("Review", "Orders", None, "hot"),
         ("Orders to submit", f"{len(executed)} / {settings.MAX_ORDERS_PER_DAY}"),
         ("Cash now", f"€{cash:,.0f}"),
-        ("Cash after", f"€{cash_after:,.0f}", f"{'−' if change < 0 else '+'}€{abs(change):,.0f} at the fill prices"),
+        ("Cash after", f"€{cash_after:,.0f}", "at the fill prices"),
         ("Checks", "OK" if not problems else f"{len(problems)} to fix", None, None if not problems else "down"),
     ])
-
-ui.label("Your answer", "approve to send these orders to the Risk Manager")
 for problem in problems:
     st.error(problem, icon=":material/block:")
 review_actions("Approve the orders", {"orders": decisions}, blocked=bool(problems))
-show_reviews()
+your_reviews()

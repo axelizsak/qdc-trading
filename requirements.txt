@@ -6,8 +6,6 @@ anthropic
 httpx
 langgraph
 langgraph-checkpoint-sqlite
-scikit-learn
-statsmodels
 streamlit
 python-dotenv
 pytest

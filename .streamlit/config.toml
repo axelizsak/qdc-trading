@@ -1,29 +1,26 @@
-# Cockpit theme: black terminal, amber accent, one fixed dark theme.
-# Data colours are the colour-blind-validated dark steps (blue = up/buy, red = down/sell).
+# Cockpit theme: clean and light, one accent colour. In the data, blue = up / buy, red = down / sell, grey = neutral.
 
 [browser]
 gatherUsageStats = false
 
 [theme]
-base = "dark"
-primaryColor = "#ffa31a"
-backgroundColor = "#000000"
-secondaryBackgroundColor = "#0e0e0e"
-textColor = "#e6e3dc"
-borderColor = "#232323"
-linkColor = "#ffb547"
-font = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap, sans-serif"
-headingFont = "IBM Plex Mono:https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap, monospace"
-codeFont = "IBM Plex Mono:https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap, monospace"
-baseRadius = "small"
+base = "light"
+primaryColor = "#2563eb"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f5f7"
+textColor = "#1f2328"
+borderColor = "#e3e5e8"
+linkColor = "#2563eb"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap, sans-serif"
+headingFont = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@500;600&display=swap, sans-serif"
+codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap, monospace"
+baseRadius = "medium"
 showWidgetBorder = true
-dataframeBorderColor = "#1c1c1c"
-dataframeHeaderBackgroundColor = "#0b0b0b"
-orangeColor = "#ffa31a"
-codeTextColor = "#d8d5ce"
-codeBackgroundColor = "#161616"
-greenColor = "#22c55e"
-redColor = "#ef5b5b"
-chartCategoricalColors = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"]
-chartDivergingColors = ["#e66767", "#c95453", "#8f3f3e", "#4a2a29", "#2b2b2b", "#1c3157", "#1c5cab", "#3987e5", "#86b6ef"]
-chartSequentialColors = ["#0d2440", "#104281", "#184f95", "#1c5cab", "#256abf", "#2a78d6", "#3987e5", "#5598e7", "#6da7ec", "#86b6ef"]
+dataframeBorderColor = "#eceef1"
+dataframeHeaderBackgroundColor = "#f8f9fa"
+greenColor = "#16a34a"
+redColor = "#dc2626"
+orangeColor = "#d97706"
+chartCategoricalColors = ["#2563eb", "#ea580c", "#16a34a", "#9333ea", "#0891b2", "#ca8a04", "#db2777", "#64748b"]
+chartDivergingColors = ["#b91c1c", "#dc2626", "#f87171", "#fecaca", "#e5e7eb", "#bfdbfe", "#60a5fa", "#2563eb", "#1d4ed8"]
+chartSequentialColors = ["#eff6ff", "#dbeafe", "#bfdbfe", "#93c5fd", "#60a5fa", "#3b82f6", "#2563eb", "#1d4ed8", "#1e40af", "#1e3a8a"]

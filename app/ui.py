@@ -1,4 +1,4 @@
-"""Shared look and context of the cockpit: terminal styling, header, key figures, pipeline strip."""
+"""Shared look and context of the cockpit: light styling, header, key figures, step chips."""
 from datetime import date
 from html import escape
 from pathlib import Path
@@ -11,8 +11,7 @@ from graph import pipeline
 
 STEPS = ["data", "technical", "macro_news", "portfolio", "risk"]
 STEP_LABELS = {"data": "Data", "technical": "Technical", "macro_news": "Macro / News", "portfolio": "Portfolio",
-               "risk": "Risk", "logbook": "Logbook", "learning": "Learning",
-               "dividends": "Ex-dividend dates"}
+               "risk": "Risk", "logbook": "Logbook", "learning": "Learning", "dividends": "Ex-dividend dates"}
 FACTOR_LABELS = {
     "ecb_rates": "ECB rates", "fed_us_rates": "Fed / US rates", "inflation": "Inflation",
     "growth_recession": "Growth", "eurusd": "EUR / USD", "oil": "Oil", "energy_weather": "Energy & weather",
@@ -21,44 +20,50 @@ FACTOR_LABELS = {
     "crypto": "Crypto", "risk_appetite": "Risk appetite",
 }
 
-# Terminal palette. Data colours: validated dark steps; amber is for interface accents only.
+# Light palette. In the data: blue = up / buy, red = down / sell, grey = neutral; amber = waiting for you.
 T = {
-    "ink": "#e6e3dc", "muted": "#8a877f", "line": "#232323", "panel": "#0b0b0b", "amber": "#ffa31a",
-    "positive": "#3987e5", "negative": "#e66767", "neutral": "#2b2b2b", "rule": "#5a5852",
-    "up": "#22c55e", "down": "#ef5b5b", "series": ["#3987e5", "#d95926", "#199e70"],
+    "ink": "#1f2328", "muted": "#6b7280", "line": "#e5e7eb", "panel": "#ffffff", "soft": "#f4f5f7",
+    "accent": "#2563eb", "wait": "#d97706", "positive": "#2563eb", "negative": "#dc2626", "neutral": "#d1d5db",
+    "rule": "#9ca3af", "up": "#16a34a", "down": "#dc2626", "series": ["#2563eb", "#ea580c", "#16a34a"],
 }
-MONO = "'IBM Plex Mono', ui-monospace, monospace"
+FONT = "Inter"
 
 CSS = f"""
 <style>
-.block-container {{padding-top: 3.2rem; max-width: 1280px;}}
-.qdc-bar {{display:flex; align-items:baseline; gap:14px; font-family:{MONO}; font-size:.78rem;
-  letter-spacing:.1em; text-transform:uppercase; color:{T['muted']};}}
-.qdc-bar .brand {{color:{T['amber']}; font-weight:600; letter-spacing:.16em;}}
-.qdc-bar .sep {{color:{T['rule']};}}
-.qdc-bar .hot {{color:{T['amber']};}}
-.qdc-title {{font-family:{MONO}; font-size:1.55rem; font-weight:500; color:{T['ink']}; margin:.6rem 0 .1rem;}}
-.qdc-sub {{color:{T['muted']}; font-size:.92rem; margin-bottom:1.1rem;}}
-.qdc-label {{font-family:{MONO}; color:{T['amber']}; font-size:.72rem; letter-spacing:.16em; text-transform:uppercase;
-  border-bottom:1px solid {T['line']}; padding-bottom:6px; margin:1.9rem 0 .8rem;}}
-.qdc-label span {{color:{T['muted']}; letter-spacing:.06em; text-transform:none; font-family:inherit; margin-left:10px;}}
-.qdc-kpis {{display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:1px; background:{T['line']};
-  border:1px solid {T['line']}; border-radius:4px; overflow:hidden;}}
-.qdc-kpi {{background:{T['panel']}; padding:14px 16px 13px;}}
-.qdc-kpi .l {{font-family:{MONO}; font-size:.66rem; letter-spacing:.14em; text-transform:uppercase; color:{T['muted']};}}
-.qdc-kpi .v {{font-size:1.6rem; font-weight:500; color:{T['ink']}; margin-top:6px; line-height:1.15;}}
-.qdc-kpi .v.hot {{color:{T['amber']};}}
-.qdc-kpi .d {{font-family:{MONO}; font-size:.74rem; margin-top:5px; color:{T['muted']};}}
+.block-container {{padding-top: 3rem; max-width: 1240px;}}
+.qdc-bar {{display:flex; align-items:baseline; gap:12px; font-size:.82rem; color:{T['muted']};}}
+.qdc-bar .brand {{color:{T['accent']}; font-weight:600;}}
+.qdc-bar .sep {{color:{T['line']};}}
+.qdc-bar .wait {{color:{T['wait']}; font-weight:500;}}
+.qdc-title {{font-size:1.65rem; font-weight:600; color:{T['ink']}; margin:.5rem 0 .1rem;}}
+.qdc-sub {{color:{T['muted']}; font-size:.95rem; margin-bottom:1.2rem;}}
+.qdc-label {{color:{T['muted']}; font-size:.78rem; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+  margin:1.8rem 0 .7rem;}}
+.qdc-label span {{font-weight:400; letter-spacing:0; text-transform:none; margin-left:8px;}}
+.qdc-kpis {{display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px;}}
+.qdc-kpi {{border:1px solid {T['line']}; border-radius:10px; padding:14px 16px; background:{T['panel']};}}
+.qdc-kpi .l {{font-size:.78rem; color:{T['muted']};}}
+.qdc-kpi .v {{font-size:1.5rem; font-weight:600; color:{T['ink']}; margin-top:4px; line-height:1.2;}}
+.qdc-kpi .v.wait {{color:{T['wait']};}}
+.qdc-kpi .d {{font-size:.8rem; margin-top:4px; color:{T['muted']};}}
 .qdc-kpi .d.up {{color:{T['up']};}} .qdc-kpi .d.down {{color:{T['down']};}}
-.qdc-pipe {{display:flex; align-items:stretch; gap:6px; flex-wrap:wrap;}}
-.qdc-step {{flex:1; min-width:118px; border:1px solid {T['line']}; border-radius:4px; padding:10px 12px; background:{T['panel']};}}
-.qdc-step .n {{font-family:{MONO}; font-size:.74rem; letter-spacing:.1em; text-transform:uppercase; color:{T['ink']};}}
-.qdc-step .m {{font-size:.72rem; color:{T['muted']}; margin-top:3px;}}
-.qdc-step .s {{font-family:{MONO}; font-size:.72rem; margin-top:8px;}}
-.qdc-arrow {{align-self:center; color:{T['rule']}; font-family:{MONO};}}
-.ok {{color:{T['up']};}} .fail {{color:{T['down']};}} .idle {{color:{T['muted']};}} .wait {{color:{T['amber']};}}
-.qdc-note {{font-family:{MONO}; font-size:.7rem; letter-spacing:.08em; color:{T['muted']}; text-transform:uppercase;}}
-.qdc-note b {{color:{T['amber']}; font-weight:500;}}
+.qdc-steps {{display:flex; align-items:stretch; gap:8px; flex-wrap:wrap; margin-bottom:14px;}}
+.qdc-step {{flex:1; min-width:110px; border:1px solid {T['line']}; border-radius:10px; padding:10px 12px;
+  background:{T['soft']};}}
+.qdc-step .n {{font-size:.86rem; font-weight:600; color:{T['ink']};}}
+.qdc-step .s {{font-size:.8rem; margin-top:4px;}}
+.qdc-step.now {{border-color:{T['wait']}; background:#fffbeb;}}
+.ok {{color:{T['up']};}} .fail {{color:{T['down']};}} .idle {{color:{T['muted']};}} .wait {{color:{T['wait']};}}
+.qdc-chips {{display:flex; gap:8px; flex-wrap:wrap;}}
+.qdc-chip {{border-radius:999px; padding:5px 12px; font-size:.84rem; font-weight:500;}}
+.qdc-chip.ok {{background:#f0fdf4; color:#15803d;}} .qdc-chip.warning {{background:#fffbeb; color:#b45309;}}
+.qdc-chip.breach {{background:#fef2f2; color:#b91c1c;}} .qdc-chip.none {{background:{T['soft']}; color:{T['muted']};}}
+.qdc-chip.code {{background:#f4f5f7; color:#4b5563; border:1px solid #9ca3af;}}
+.qdc-chip.llm {{background:#eff6ff; color:#1d4ed8; border:1px solid #2563eb;}}
+.qdc-chip.you {{background:#fffbeb; color:#b45309; border:1px solid #d97706;}}
+.qdc-chip.back {{color:#b45309; background:none; padding-left:0;}} .qdc-chip.next {{color:#1d4ed8; background:none;}}
+code, pre {{font-variant-ligatures: none;}}
+.qdc-note {{font-size:.8rem; color:{T['muted']};}} .qdc-note b {{color:{T['wait']}; font-weight:600;}}
 </style>
 """
 
@@ -78,12 +83,8 @@ def pipeline_logs() -> Path:
 
 
 def macro_logs() -> Path:
-    """The Macro/News agent always writes its real outputs to logs/."""
+    """The Macro/News agent and the learning step always write their real outputs to logs/."""
     return settings.LOGS_DIR
-
-
-def tokens() -> dict:
-    return T
 
 
 def html(markup: str) -> None:
@@ -91,7 +92,7 @@ def html(markup: str) -> None:
 
 
 def header() -> None:
-    """Top bar on every page: brand, trading day and its status, mock mode, date picker."""
+    """Top bar on every page: brand, trading day and where it stands, mock mode, date picker."""
     html(CSS)
     st.session_state.setdefault("as_of", default_day())
     left, right = st.columns([5, 1], vertical_alignment="center")
@@ -100,18 +101,15 @@ def header() -> None:
                       help="Trading days: " + ", ".join(d.strftime("%d %b") for d in settings.TRADING_DAYS))
     day = as_of()
     status, state, pending = pipeline.day_status(day, pipeline_logs())
-    orders = len(state.get("approved_orders") or state.get("proposed_orders", []))
-    parts = [f"<span class='brand'>QDC ▸ Terminal</span>", f"{day:%a %d %b %Y}"]
+    parts = ["<span class='brand'>QDC Trading</span>", f"{day:%a %d %b %Y}"]
     if day not in settings.TRADING_DAYS:
         parts.append("practice day" if day < settings.TRADING_DAYS[0] else "not a trading day")
     where = day_label(status, state, pending)
-    parts.append(f"<span class='hot'>waiting · {where}</span>" if status == "waiting for approval" else where)
-    if status != "not started":
-        parts.append(f"{orders} order{'s' if orders != 1 else ''}")
+    parts.append(f"<span class='wait'>waiting for you · {where}</span>" if status == "waiting for approval" else where)
     if any(settings.USE_MOCK.values()):
         parts.append("mock mode")
     with left:
-        html("<div class='qdc-bar'>" + " <span class='sep'>│</span> ".join(parts) + "</div>")
+        html("<div class='qdc-bar'>" + " <span class='sep'>|</span> ".join(parts) + "</div>")
 
 
 def page(title: str, question: str) -> None:
@@ -123,15 +121,21 @@ def label(text: str, aside: str = "") -> None:
 
 
 def kpis(items: list[tuple]) -> None:
-    """Key figures in one row. Each item: (label, value, delta text or None, 'up'|'down'|'hot'|None)."""
+    """Key figures in one row. Each item: (label, value, delta text or None, 'up'|'down'|'wait'|None)."""
     cells = []
     for item in items:
         name, value, delta, tone = (list(item) + [None, None])[:4]
-        value_cls = "v hot" if tone == "hot" else "v"
+        value_cls = "v wait" if tone == "wait" else "v"
         delta_html = f"<div class='d {tone or ''}'>{escape(delta)}</div>" if delta else ""
         cells.append(f"<div class='qdc-kpi'><div class='l'>{escape(name)}</div>"
                      f"<div class='{value_cls}'>{escape(str(value))}</div>{delta_html}</div>")
     html("<div class='qdc-kpis'>" + "".join(cells) + "</div>")
+
+
+def chips(items: list[tuple[str, str]]) -> None:
+    """Status pills, each (text, 'ok'|'warning'|'breach'|'none')."""
+    html("<div class='qdc-chips'>" + "".join(f"<span class='qdc-chip {cls}'>{escape(text)}</span>"
+                                             for text, cls in items) + "</div>")
 
 
 def day_label(status: str, state: dict, pending: dict | None) -> str:
@@ -155,59 +159,46 @@ def incident_text(incident: dict) -> str:
 
 
 def demote(markdown: str, levels: int = 2) -> str:
-    """Markdown with every heading `levels` smaller, so an agent's report fits inside a page section."""
+    """Markdown with every heading `levels` smaller, so an agent's text fits inside a page section."""
     return "\n".join("#" * levels + line if line.startswith("#") else line for line in markdown.splitlines())
 
 
-def step_cells(cells: list[tuple[str, str, str, str]]) -> None:
-    """Boxes left to right, each (name, mode, state, css class)."""
-    boxes = [f"<div class='qdc-step'><div class='n'>{escape(name)}</div><div class='m'>{escape(mode)}</div>"
-             f"<div class='s {cls}'>{escape(text)}</div></div>" for name, mode, text, cls in cells]
-    html("<div class='qdc-pipe'>" + "<div class='qdc-arrow'>›</div>".join(boxes) + "</div>")
+def steps(cells: list[tuple[str, str, str, bool]]) -> None:
+    """Boxes left to right, each (name, state text, css class of the state, is it the one waiting)."""
+    html("<div class='qdc-steps'>" + "".join(
+        f"<div class='qdc-step{' now' if now else ''}'><div class='n'>{escape(name)}</div>"
+        f"<div class='s {cls}'>{escape(text)}</div></div>" for name, text, cls, now in cells) + "</div>")
 
 
-def pipeline_strip(status: str, state: dict, pending: dict | None) -> None:
-    """The day's agents left to right, each with its mode and its state, then where your reviews stand."""
+def day_steps(status: str, state: dict, pending: dict | None) -> None:
+    """The day's steps left to right, each with its state, then where your reviews stand."""
     failed = {i["step"] for i in state.get("incidents", [])}
-    round_, passed = state.get("round", 1), passed_reviews(state)
     cells = []
-    for key in STEPS:
-        mode = "mock" if settings.USE_MOCK[key] else "real"
-        if key == "portfolio" and round_ > 1:
-            mode += f" · round {round_}"
+    for key in ["data", "learning", "technical", "macro_news", "portfolio", "risk"]:
         if status == "not started":
-            cells.append((STEP_LABELS[key], mode, "○ not run", "idle"))
+            cells.append((STEP_LABELS[key], "not run", "idle", False))
         elif key in failed:
-            cells.append((STEP_LABELS[key], mode, "✕ failed", "fail"))
-        elif key == "risk" and "orders" not in passed:
-            cells.append((STEP_LABELS[key], mode, "– skipped" if status == "done" else "○ after your review", "idle"))
+            cells.append((STEP_LABELS[key], "failed", "fail", False))
+        elif key == "risk" and "orders" not in passed_reviews(state):
+            cells.append((STEP_LABELS[key], "after your review" if status != "done" else "skipped", "idle", False))
         else:
-            cells.append((STEP_LABELS[key], mode, "● ok", "ok"))
-        if key == "data":  # the learning step runs right after the data: it has no mock, it is code on the logs
-            cells.append((STEP_LABELS["learning"], "learns from the logs", *(
-                ("○ not run", "idle") if status == "not started" else
-                ("✕ failed", "fail") if "learning" in failed else ("● ok", "ok"))))
-    you = {"not started": ("○ not run", "idle"),
-           "waiting for approval": (f"◐ {day_label(status, state, pending)}", "wait"),
-           "done": ("■ no trade today", "idle") if state.get("outcome") == "stopped" else ("● approved", "ok")}[status]
-    cells.append(("You", "3 reviews", *you))
-    step_cells(cells)
+            cells.append((STEP_LABELS[key], "done", "ok", False))
+    you = {"not started": ("not run", "idle", False),
+           "waiting for approval": (day_label(status, state, pending), "wait", True),
+           "done": ("no trade today", "idle", False) if state.get("outcome") == "stopped" else ("approved", "ok", False)}
+    cells.append(("You", *you[status]))
+    steps(cells)
 
 
 def review_steps(pending: dict, state: dict) -> None:
-    """The three human reviews of the day, with the one waiting highlighted."""
+    """The three human reviews of the day, the one waiting highlighted."""
     passed = passed_reviews(state)
-    cells = []
-    for i, gate in enumerate(REVIEW_GATES, 1):
-        if gate in passed:
-            cells.append((f"{i} · {gate}", "you", "● approved", "ok"))
-        elif gate == pending["gate"]:
-            cells.append((f"{i} · {gate}", "you", "◐ waiting for you", "wait"))
-        else:
-            cells.append((f"{i} · {gate}", "you", "○ next", "idle"))
-    step_cells(cells)
+    steps([(f"{i} · {gate.capitalize()}", "approved" if gate in passed else
+            "waiting for you" if gate == pending["gate"] else "next",
+            "ok" if gate in passed else "wait" if gate == pending["gate"] else "idle", gate == pending["gate"])
+           for i, gate in enumerate(REVIEW_GATES, 1)])
 
 
 def mock_note(is_mock: bool, what: str = "No real data yet") -> None:
     if is_mock:
-        html(f"<div class='qdc-note'><b>mock data</b> · {escape(what)}</div>")
+        html(f"<div class='qdc-note'><b>Mock data</b> · {escape(what)}</div>")

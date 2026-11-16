@@ -35,9 +35,9 @@ Four scores per ETF, one portfolio, three human reviews, and one learning rule t
 | 3 | Technical | Two scores from prices: `technical_det` (three answers of the rules, trend, mean reversion and momentum, weighted by what each earned since 2022) and `technical_llm` (Claude weighs the rules' answers when they disagree) | `agents/technical.py`, `agents/technical_llm.py` | Second score only |
 | 4 | Macro / News | Two scores from the news: `macro_market` (15 macro views through the exposure table) and `macro_etf` (20 theme analysts, each reading the news, the price tape and its own past calls) | `agents/macro_news.py` and `agents/macro_*.py` | Yes |
 | 5 | Portfolio Manager | Combines the four scores, builds the target portfolio, proposes at most 5 orders with a memo | `agents/portfolio.py` | Yes |
-| 6 | Your review of the orders | Approve, change, reject or add orders | cockpit, Orders page | You |
+| 6 | Your review of the orders | Approve, change, reject or add orders | cockpit, Today page | You |
 | 7 | Risk Manager | Risk of the portfolio after those orders: a board, every metric, and an independent reading of the memo | `agents/risk.py` | Reading only |
-| 8 | Your review of the risk, then of the summary | Accept, send the day back with feedback (at most twice), or stop: no trade today | cockpit, Orders page | You |
+| 8 | Your review of the risk, then of the summary | Accept, send the day back with feedback (at most twice), or stop: no trade today | cockpit, Today page | You |
 | 9 | Order log and logbook | The Belfius export, and an audit trail of everything said and decided, with a hash chain | `agents/logbook.py` | No |
 
 **How the scores become a portfolio.** Every score is in [-1, 1]. The Portfolio Manager combines them with one weight per agent:
@@ -101,9 +101,10 @@ qdc-trading/
                logbook.py                                               the audit trail
                learning.py                                              the one learning rule
   graph/       pipeline.py (one day, step by step) and review_loop.py (the learning step, every morning)
-  app/         the Streamlit cockpit: Portfolio, Orders, Research, Logbook
+  app/         the Streamlit cockpit: Dashboard, Today (your reviews), one page per agent, Learning,
+               How it works (the clickable diagram), Logbook
   backtest/    system_backtest.py replays the whole code-only system since 2022, learning included (results in
-               backtest/results/); the other files are Achille's studies behind the technical rules
+               backtest/results/)
   logs/        everything the agents said and the humans decided (graded evidence, see logs/README.md)
   tests/       one file per module; no test calls the network or Claude
 ```
@@ -155,7 +156,7 @@ cp .env.example .env      # add your ANTHROPIC_API_KEY and EODHD_API_KEY. Never 
 pytest
 ```
 
-Run a day. Any day works: before 7 December it is practice, to collect the agents' signals every day and test the orders (practice orders never count in the competition, which starts from €10,000). The pipeline pauses at each of the three reviews (the cockpit's Orders page does the same):
+Run a day. Any day works: before 7 December it is practice, to collect the agents' signals every day and test the orders (practice orders never count in the competition, which starts from €10,000). The pipeline pauses at each of the three reviews (the cockpit's Today page does the same):
 
 ```bash
 python -m graph.pipeline                                      # today: agents run, orders proposed, pause
@@ -191,7 +192,7 @@ Run the Macro/News agent every business day. Claude is the only key it needs:
 python -m agents.macro_news               # today: report in logs/macro/<date>.md, with the cost of the run
 ```
 
-Open the cockpit (run the day, read the signals and macro views, approve orders, follow the portfolio):
+Open the cockpit: the Dashboard runs the day, the Today page takes your three reviews, one page per agent shows what it said, Learning shows the weights and the backtest, How it works is the clickable diagram:
 
 ```bash
 streamlit run app/streamlit_app.py

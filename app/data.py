@@ -6,12 +6,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from agents import learning
 from data import config as settings
 from data import mock
 from data.schemas import (
     PRICES, SIGNALS, validate_etf_views, validate_evidence, validate_macro_views, validate_order_log, validate_prices,
-    validate_signals, validate_source_registry, validate_weights,
+    validate_signals, validate_weights,
 )
 from graph import pipeline
 
@@ -58,34 +57,9 @@ def etf_views(logs: Path) -> tuple[pd.DataFrame, bool]:
     return (views, False) if views is not None and len(views) else (mock.mock_etf_views(), True)
 
 
-def source_registry(logs: Path) -> tuple[pd.DataFrame, bool]:
-    reg = _csv(logs / "source_registry.csv", validate_source_registry)
-    return (reg, False) if reg is not None and len(reg) else (mock.mock_source_registry(), True)
-
-
 def weights(logs: Path) -> tuple[pd.DataFrame, bool]:
     table = _csv(logs / "weights.csv", validate_weights)
     return (table, False) if table is not None and len(table) else (mock.mock_weights(), True)
-
-
-def agent_weights_on(as_of: date, logs: Path, state: dict, agents: list[str]) -> dict[str, float]:
-    """The agent weights of the day: those the Portfolio Manager used once the day ran, else the latest learned
-    ones over `agents` (logs/weights.csv), else the starting weights."""
-    if state.get("agent_weights"):
-        return state["agent_weights"]
-    table = _csv(logs / "weights.csv", validate_weights)
-    if table is not None:
-        rows = table[(table["level"] == "agents") & (table["date"].astype(str) <= as_of.isoformat())]
-        last = rows[rows["date"].astype(str) == rows["date"].astype(str).max()]
-        mine = {n: float(w) for n, w in zip(last["name"], last["weight"]) if n in agents}
-        if sum(mine.values()) > 0:
-            return {n: w / sum(mine.values()) for n, w in mine.items()}
-    return learning.starting_weights(agents)
-
-
-def lessons(logs: Path) -> str | None:
-    path = logs / "lessons.md"
-    return path.read_text(encoding="utf-8") if path.exists() else None
 
 
 def macro_report(day: date, *folders: Path) -> str | None:
@@ -160,3 +134,78 @@ def positions(as_of: date, logs: Path, prices: pd.DataFrame) -> tuple[pd.DataFra
     total = out["value_eur"].sum() + cash
     out["weight"] = out["value_eur"] / total if total else np.nan
     return out.sort_values("value_eur", ascending=False), cash
+
+
+def weights_on(logs: Path, day: date) -> dict[str, dict[str, float]]:
+    """The weights the learning step set for `day` (or the latest before it), per level: technical, agents, portfolio."""
+    table = _csv(logs / "weights.csv", validate_weights)
+    if table is None:
+        return {}
+    table = table[table["date"].astype(str) <= day.isoformat()]
+    out = {}
+    for level, rows in table.groupby("level", sort=False):
+        last = rows[rows["date"].astype(str) == rows["date"].astype(str).max()]
+        out[level] = dict(zip(last["name"], last["weight"].astype(float)))
+    return out
+
+
+BACKTEST = settings.ROOT / "backtest" / "results"
+CURVES = {"current": "The system", "trend_only": "Trend rule alone"}
+
+
+def backtest_curves() -> pd.DataFrame | None:
+    """The daily backtest's value of €START_CAPITAL in the system, in the trend rule alone and in the benchmark.
+    Columns: date, series, value_eur. None before the backtest was run."""
+    path = BACKTEST / "system_backtest_daily.csv"
+    if not path.exists():
+        return None
+    daily = pd.read_csv(path, usecols=["variant", "date", "value", "bench"])
+    daily = daily[daily["variant"].isin(CURVES)]
+    curves = daily.assign(series=daily["variant"].map(CURVES))[["date", "series", "value"]]
+    bench = daily[daily["variant"] == "current"].assign(series=BENCHMARK_LABEL)[["date", "series", "bench"]]
+    out = pd.concat([curves, bench.rename(columns={"bench": "value"})], ignore_index=True)
+    return out.rename(columns={"value": "value_eur"}).assign(date=lambda d: pd.to_datetime(d["date"]))
+
+
+def backtest_summary() -> pd.DataFrame | None:
+    """One row per variant of the daily backtest (backtest/results/system_backtest_daily_summary.csv)."""
+    path = BACKTEST / "system_backtest_daily_summary.csv"
+    return pd.read_csv(path) if path.exists() else None
+
+
+def md_table(markdown: str, first_header: str) -> pd.DataFrame:
+    """The Markdown table whose header starts with `first_header` (e.g. '| Area'), as a DataFrame of strings."""
+    lines = markdown.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.startswith(first_header)), None)
+    if start is None:
+        return pd.DataFrame()
+    cells = lambda line: [c.strip() for c in line.strip().strip("|").split("|")]  # noqa: E731
+    rows = []
+    for line in lines[start + 2:]:
+        if not line.startswith("|"):
+            break
+        rows.append(cells(line))
+    return pd.DataFrame(rows, columns=cells(lines[start]))
+
+
+def section(markdown: str, heading: str) -> str:
+    """The text under a Markdown heading (e.g. '### To consider'), up to the next heading."""
+    lines = markdown.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip() == heading), None)
+    if start is None:
+        return ""
+    out = []
+    for line in lines[start + 1:]:
+        if line.startswith("#"):
+            break
+        out.append(line)
+    return "\n".join(out).strip()
+
+
+def memo_summary(memo: str) -> str:
+    """The Portfolio Manager's own summary: the first paragraph of its memo that is not a title or an id."""
+    for paragraph in memo.split("\n\n"):
+        text = paragraph.strip()
+        if text and not text.startswith(("#", "Recommendation ", "|")):
+            return text
+    return ""
