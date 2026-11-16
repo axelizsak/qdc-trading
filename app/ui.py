@@ -163,6 +163,30 @@ def demote(markdown: str, levels: int = 2) -> str:
     return "\n".join("#" * levels + line if line.startswith("#") else line for line in markdown.splitlines())
 
 
+@st.cache_data(show_spinner=False)
+def _pdf_of(text: str) -> bytes | None:
+    """The PDF of a Markdown text, or None if it cannot be made (the .md download still works)."""
+    from app.pdf import to_pdf  # only loaded when a document is offered
+
+    try:
+        return to_pdf(text)
+    except Exception:  # a document the PDF maker cannot read must not break the page
+        return None
+
+
+def document_download(label: str, text: str, name: str, **kwargs) -> None:
+    """A button that offers a Markdown document as .md or .pdf, the reader's choice (`name` has no extension)."""
+    pdf = _pdf_of(text)
+    with st.popover(label, icon=kwargs.pop("icon", ":material/description:"), width=kwargs.pop("width", "content")):
+        st.download_button("Markdown (.md)", text, f"{name}.md", "text/markdown", width="stretch",
+                           key=f"{name}_md", **kwargs)
+        if pdf is None:
+            st.caption("The PDF could not be made for this document.")
+        else:
+            st.download_button("PDF (.pdf)", pdf, f"{name}.pdf", "application/pdf", width="stretch",
+                               key=f"{name}_pdf", **kwargs)
+
+
 def steps(cells: list[tuple[str, str, str, bool]]) -> None:
     """Boxes left to right, each (name, state text, css class of the state, is it the one waiting)."""
     html("<div class='qdc-steps'>" + "".join(

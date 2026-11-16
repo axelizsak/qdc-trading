@@ -49,6 +49,7 @@ if len(paragraphs) > 1:
     if len(scenarios):
         st.dataframe(scenarios, hide_index=True, width="stretch")
 
+ui.document_download("The full risk report", page, f"risk_{as_of}")
 ui.label("Every metric")
 st.dataframe(report.drop(columns="date").assign(status=report["status"].map(STATUS)), hide_index=True, width="stretch",
              column_config={"metric": st.column_config.TextColumn("Metric"),
