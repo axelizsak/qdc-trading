@@ -1,5 +1,12 @@
 """Backtest of the whole code-only system on past prices, with the competition's rules. Owner: Axel.
 
+Two ways to replay it:
+  - windows (default): the competition itself, again and again. Each Monday starts a 3-week window from cash.
+    It answers "what would our result in the competition have been".
+  - daily (--daily): one book over the whole history, never reset, valued at every close. Decisions on every
+    Monday and Thursday with the same rules. It gives the Sharpe ratio from daily returns, the measure the
+    team optimises, and compares variants day by day.
+
 What is replayed, for every past 3-week window:
     technical agent (rule score) -> Portfolio Manager (code portfolio, no LLM) -> orders -> book
   - decisions on a Monday, Thursday, Monday, Thursday, Monday, as in the competition;
@@ -18,11 +25,13 @@ idea is a new way to read the sheet), then run:
 
     python -m backtest.system_backtest                               # every variant, windows since 2022
     python -m backtest.system_backtest --variants current no_timing --since 2024-01-01
+    python -m backtest.system_backtest --daily                       # every variant, one book since 2022
 
 Results, in backtest/results/: system_backtest.csv (one row per variant and window),
 system_backtest_summary.csv (one row per variant), system_backtest_signals.csv (what each answer of the
 technical sheet was worth over the next 1 to 15 sessions) and system_backtest_fill_rule.csv (what the rule
 "an order fills at the previous close" is worth to someone who orders after the open). All three are printed.
+The daily run writes system_backtest_daily.csv (one row per variant and close) and system_backtest_daily_summary.csv.
 
 How to read the summary: windows start every week and last three, so they overlap; the t-value of the
 mean excess return counts them as one third as many. Below about 2 in absolute value, the difference
@@ -186,6 +195,21 @@ class Market:
         """Last close on or before `day`, per ticker: what a holding is worth that evening."""
         return self.closes[self.closes.index <= pd.Timestamp(day)].ffill().iloc[-1].dropna()
 
+    def fill_day(self, day: date) -> pd.Timestamp:
+        """The date of the close an order of `day` fills at."""
+        stamp = pd.Timestamp(day)
+        return self.closes.index[self.closes.index < stamp if settings.FILL_AT_PREVIOUS_CLOSE else self.closes.index <= stamp][-1]
+
+
+def decision_days(closes: pd.DataFrame, since: date) -> list[date]:
+    """Every Monday and Thursday from `since` to the last close: the days the competition trades on."""
+    last, day, out = closes.index.max().date(), since, []
+    while day <= last:
+        if day.weekday() in (0, 3):
+            out.append(day)
+        day += timedelta(days=1)
+    return out
+
 
 def window_starts(closes: pd.DataFrame, since: date) -> list[date]:
     """Every Monday from `since` whose window ends inside the prices."""
@@ -213,7 +237,8 @@ def prepare(prices: pd.DataFrame, features: pd.DataFrame, since: date) -> tuple[
     features = features.assign(date=pd.to_datetime(features["date"]))
     closes = prices.pivot(index="date", columns="ticker", values="close_eur").sort_index()
     starts = window_starts(closes, since)
-    days = sorted({start + timedelta(days=offset) for start in starts for offset in DECISION_OFFSETS})
+    windows = {start + timedelta(days=offset) for start in starts for offset in DECISION_OFFSETS}
+    days = sorted(windows | set(decision_days(closes, since)))  # the windows' days and the daily book's
     sheets = {day: build_sheet(prices, features, day) for day in days}
     return Market(prices, closes, sheets), starts
 
@@ -227,6 +252,28 @@ def signals_for(sheet: pd.DataFrame, score: str, day: date) -> pd.DataFrame:
                          "confidence": (sheet["confirmations"] / 2).values, "rationale": "backtest"}, columns=SIGNALS)
 
 
+def trade(market: Market, day: date, units: dict[str, float], cash: float, score: str) -> tuple[float, int | None, int]:
+    """One decision day on a book: the Portfolio Manager's orders, filled at the competition's price. Changes
+    `units` in place. Returns (cash after, orders made or None when the day failed, trading rules broken)."""
+    sheet = market.sheets.get(day)
+    if sheet is None or sheet.empty:
+        return cash, None, 0
+    holdings = pd.DataFrame([{"ticker": t, "units": u} for t, u in units.items() if u > 1e-9], columns=HOLDINGS)
+    try:
+        _, orders, _ = portfolio.run(signals_for(sheet, score, day), {technical.AGENT_DET: 1.0}, "",
+                                     holdings, cash, market.before(day), day, use_llm=False)
+    except Exception:
+        return cash, None, 0
+    fill = market.fill(day)
+    broken = int(len(orders) > settings.MAX_ORDERS_PER_DAY)
+    for order in orders.itertuples():
+        signed = float(order.units) if order.side == "BUY" else -float(order.units)
+        units[order.ticker] = units.get(order.ticker, 0.0) + signed
+        cash -= signed * float(fill[order.ticker])
+        broken += int(units[order.ticker] < -1e-9)
+    return cash, len(orders), broken + int(cash < -0.01)
+
+
 def run_window(market: Market, start: date, variant: Variant) -> dict:
     """Trade one window like the competition and return what it was worth at the end."""
     days = [start + timedelta(days=offset) for offset in DECISION_OFFSETS]
@@ -237,26 +284,12 @@ def run_window(market: Market, start: date, variant: Variant) -> dict:
     patched = {**variant.settings, "config.TRADING_DAYS": days, "portfolio_config.VALUATION_END": end}
     with overrides(patched):
         for day in days:
-            sheet = market.sheets.get(day)
-            if sheet is None or sheet.empty:
+            cash, made, broken = trade(market, day, units, cash, variant.score)
+            if made is None:
                 failed_days += 1
                 continue
-            holdings = pd.DataFrame([{"ticker": t, "units": u} for t, u in units.items() if u > 1e-9], columns=HOLDINGS)
-            try:
-                _, orders, _ = portfolio.run(signals_for(sheet, variant.score, day), {technical.AGENT_DET: 1.0}, "",
-                                             holdings, cash, market.before(day), day, use_llm=False)
-            except Exception:
-                failed_days += 1
-                continue
-            fill = market.fill(day)
-            broken_rules += int(len(orders) > settings.MAX_ORDERS_PER_DAY)
-            for order in orders.itertuples():
-                signed = float(order.units) if order.side == "BUY" else -float(order.units)
-                units[order.ticker] = units.get(order.ticker, 0.0) + signed
-                cash -= signed * float(fill[order.ticker])
-                broken_rules += int(units[order.ticker] < -1e-9)
-            broken_rules += int(cash < -0.01)
-            orders_made += len(orders)
+            orders_made += made
+            broken_rules += broken
     close = market.close(end)
     held = {t: u * float(close[t]) for t, u in units.items() if u > 1e-9}
     value = cash + sum(held.values())
@@ -268,6 +301,143 @@ def run_window(market: Market, start: date, variant: Variant) -> dict:
             "invested": sum(held.values()) / value if value else 0.0,
             "largest": max(held.values()) / value if held and value else 0.0,
             "failed_days": failed_days, "broken_rules": broken_rules}
+
+
+# --- The whole history as one book, valued at every close -----------------------------------------------------
+
+RISK_FREE = "OVERNIGHT CASH"  # the euro overnight rate: what money earns without risk, the Sharpe ratio's yardstick
+YEAR = 252  # trading days
+
+
+def run_continuous(market: Market, variant: Variant, days: list[date] | None = None) -> pd.DataFrame:
+    """The system as one book over the whole history: the competition's rules on every Monday and Thursday (at
+    most MAX_ORDERS_PER_DAY orders, the competition's fill price, the hard limits), but no reset to cash every
+    three weeks. One row per close from the fill of the first decision: variant, date, value (the book), bench
+    (the same money put in the benchmark that day), riskfree (1 grown at the overnight rate), invested (share of
+    the value in ETFs), and on the closes where a decision takes effect its orders, broken rules and failed days.
+    A decision of day D is in force from the first close on or after D (its fill, the close before, is the same
+    value either way)."""
+    days = sorted(market.sheets) if days is None else days
+    units: dict[str, float] = {}
+    cash, decisions = float(settings.START_CAPITAL_EUR), []
+    patched = {**variant.settings, "config.TRADING_DAYS": days, "portfolio_config.VALUATION_END": days[-1]}
+    with overrides(patched):
+        start = market.fill_day(days[0])
+        for day in days:
+            cash, made, broken = trade(market, day, units, cash, variant.score)
+            decisions.append((pd.Timestamp(day), dict(units), cash, made or 0, broken, int(made is None)))
+    closes = market.closes.ffill()
+    closes = closes[closes.index >= start]
+    bench = settings.START_CAPITAL_EUR * closes[settings.BENCHMARK] / closes[settings.BENCHMARK].iloc[0]
+    riskfree = (closes[RISK_FREE] / closes[RISK_FREE].dropna().iloc[0]).fillna(1.0) if RISK_FREE in closes else 1.0
+    rows, j = [], -1
+    held, cash_now = {}, float(settings.START_CAPITAL_EUR)
+    for t in closes.index:
+        made = broken = failed = 0
+        while j + 1 < len(decisions) and decisions[j + 1][0] <= t:
+            j += 1
+            _, held, cash_now, n, b, f = decisions[j]
+            made, broken, failed = made + n, broken + b, failed + f
+        invested = sum(u * float(closes.at[t, ticker]) for ticker, u in held.items() if u > 1e-9)
+        value = cash_now + invested
+        rows.append({"variant": variant.name, "date": t.date().isoformat(), "value": value, "bench": float(bench[t]),
+                     "riskfree": float(riskfree[t]) if not isinstance(riskfree, float) else riskfree,
+                     "invested": invested / value if value else 0.0, "orders": made, "broken_rules": broken,
+                     "failed_days": failed})
+    return pd.DataFrame(rows)
+
+
+def _sharpe(excess: pd.Series) -> float:
+    """Yearly Sharpe ratio from daily returns above the risk-free rate."""
+    spread = excess.std(ddof=1)
+    return float(excess.mean() / spread * np.sqrt(YEAR)) if spread and spread > 0 else np.nan
+
+
+def _sharpe_gap_t(a: pd.Series, b: pd.Series, rf: pd.Series) -> float:
+    """t-value of the difference of two Sharpe ratios measured on the same days (Jobson-Korkie, Memmel's
+    correction): two variants that move together have Sharpe ratios that differ by less noise."""
+    ea, eb = a - rf, b - rf
+    sa, sb_, rho = ea.mean() / ea.std(), eb.mean() / eb.std(), ea.corr(eb)
+    variance = (2 * (1 - rho) + 0.5 * (sa ** 2 + sb_ ** 2 - 2 * sa * sb_ * rho ** 2)) / len(ea)
+    return float((sa - sb_) / np.sqrt(variance)) if variance > 0 else np.nan
+
+
+def summarise_daily(daily: pd.DataFrame, variants: list[Variant]) -> pd.DataFrame:
+    """One row per variant, from its daily returns: Sharpe ratio (yearly return above the overnight rate per unit
+    of yearly volatility), in each half of the history too, return and volatility a year, the worst fall from a
+    peak, beta to the benchmark, and the gap with the first variant on the same days (its Sharpe ratio minus the
+    first's with the t-value of that gap; the return a year above the first's). A variant "holds" when its Sharpe
+    ratio is above the first's in both halves."""
+    first = variants[0].name
+    frames = {v.name: daily[daily["variant"] == v.name].set_index("date") for v in variants}
+    returns = {name: f["value"].pct_change().iloc[1:] for name, f in frames.items()}
+    reference = frames[first]
+    rf_all = reference["riskfree"].pct_change().iloc[1:]
+    bench = reference["bench"].pct_change().iloc[1:]
+    rows = []
+    for v in variants:
+        f, r = frames[v.name], returns[v.name]
+        rf = rf_all.reindex(r.index).fillna(0.0)
+        halves = [r.index[:len(r) // 2], r.index[len(r) // 2:]]
+        both = r.index.intersection(returns[first].index)
+        gap = r[both] - returns[first][both]
+        b = bench.reindex(r.index)
+        rows.append({"variant": v.name, "what": v.what, "years": len(r) / YEAR,
+                     "sharpe": _sharpe(r - rf), "sharpe_h1": _sharpe((r - rf)[halves[0]]),
+                     "sharpe_h2": _sharpe((r - rf)[halves[1]]),
+                     "ret_year": float((f["value"].iloc[-1] / f["value"].iloc[0]) ** (YEAR / len(r)) - 1),
+                     "vol_year": float(r.std() * np.sqrt(YEAR)),
+                     "max_drawdown": float((f["value"] / f["value"].cummax() - 1).min()),
+                     "beta": float(r.cov(b) / b.var()), "invested": float(f["invested"].mean()),
+                     "orders": int(f["orders"].sum()), "broken_rules": int(f["broken_rules"].sum()),
+                     "failed_days": int(f["failed_days"].sum()),
+                     "ret_vs_first": float(gap.mean() * YEAR),
+                     "t_sharpe_vs_first": np.nan if v.name == first else
+                     _sharpe_gap_t(r[both], returns[first][both], rf_all.reindex(both).fillna(0.0))})
+    out = pd.DataFrame(rows)
+    out["sharpe_vs_first"] = out["sharpe"] - out["sharpe"].iloc[0]
+    out["holds"] = (out["sharpe_h1"] > out["sharpe_h1"].iloc[0]) & (out["sharpe_h2"] > out["sharpe_h2"].iloc[0])
+    rf = rf_all.reindex(bench.index).fillna(0.0)
+    halves = [bench.index[:len(bench) // 2], bench.index[len(bench) // 2:]]
+    out["bench_sharpe"], out["bench_sharpe_h1"], out["bench_sharpe_h2"] = (
+        _sharpe(bench - rf), _sharpe((bench - rf)[halves[0]]), _sharpe((bench - rf)[halves[1]]))
+    out["bench_ret_year"] = float((reference["bench"].iloc[-1] / reference["bench"].iloc[0]) ** (YEAR / len(bench)) - 1)
+    out["bench_vol_year"] = float(bench.std() * np.sqrt(YEAR))
+    out["bench_max_drawdown"] = float((reference["bench"] / reference["bench"].cummax() - 1).min())
+    out["riskfree_year"] = float(reference["riskfree"].iloc[-1] ** (YEAR / len(bench)) - 1)
+    return out
+
+
+def show_daily(summary: pd.DataFrame) -> str:
+    """The daily summary as text, best Sharpe ratio first. A t-value of 2 or more on the Sharpe gap means it is
+    unlikely to be luck; "holds" means the variant is ahead in both halves of the history."""
+    first = summary["variant"].iloc[0]
+    lines = [f"{'variant':<19}{'Sharpe':>7}{'1st half':>9}{'2nd half':>9}{'return':>8}{'vol':>7}{'worst fall':>11}"
+             f"{'beta':>6}{'invested':>9}{f'vs {first}':>12}{'t':>6}{'holds':>7}"]
+    for r in summary.sort_values("sharpe", ascending=False).itertuples():
+        holds = "" if r.variant == first else ("yes" if r.holds else "no")
+        t = "" if r.variant == first else f"{r.t_sharpe_vs_first:+.1f}"
+        lines.append(f"{r.variant:<19}{r.sharpe:>7.2f}{r.sharpe_h1:>9.2f}{r.sharpe_h2:>9.2f}{r.ret_year:>+8.1%}"
+                     f"{r.vol_year:>7.1%}{r.max_drawdown:>+11.1%}{r.beta:>6.2f}{r.invested:>9.0%}"
+                     f"{r.sharpe_vs_first:>+12.2f}{t:>6}{holds:>7}")
+    r = summary.iloc[0]
+    lines.append(f"{'benchmark':<19}{r.bench_sharpe:>7.2f}{r.bench_sharpe_h1:>9.2f}{r.bench_sharpe_h2:>9.2f}"
+                 f"{r.bench_ret_year:>+8.1%}{r.bench_vol_year:>7.1%}{r.bench_max_drawdown:>+11.1%}{1:>6.2f}{1:>9.0%}")
+    lines.append(f"{r.years:.1f} years of daily returns; Sharpe = yearly return above the overnight rate "
+                 f"({r.riskfree_year:+.1%} a year) / yearly volatility.")
+    return "\n".join(lines)
+
+
+def _task_daily(variant: Variant) -> pd.DataFrame:
+    return run_continuous(_MARKET, variant)
+
+
+def run_daily(market: Market, variants: list[Variant], workers: int | None = None) -> pd.DataFrame:
+    """One daily book per variant, in parallel (a book is sequential: each decision starts from the last one)."""
+    if workers == 1:
+        return pd.concat([run_continuous(market, v) for v in variants], ignore_index=True)
+    with ProcessPoolExecutor(max_workers=workers, initializer=_load, initargs=(market,)) as pool:
+        return pd.concat(list(pool.map(_task_daily, variants)), ignore_index=True)
 
 
 # --- The quality of a score on its own: does it rank the ETFs? ------------------------------------------------
@@ -509,17 +679,39 @@ def show(summary: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
+def main_daily(market: Market, variants: list[Variant], args) -> None:
+    print(f"One book from {min(market.sheets)} to {max(market.sheets)}, {len(market.sheets)} decision days, "
+          f"{len(variants)} variant(s) to run")
+    daily = run_daily(market, variants, args.workers)
+    known = RESULTS / "system_backtest_daily.csv"
+    if args.variants and known.exists():  # a partial run replaces its variants and keeps the others
+        old = pd.read_csv(known)
+        if old["date"].min() == daily["date"].min() and old["date"].max() == daily["date"].max():
+            daily = pd.concat([old[~old["variant"].isin(daily["variant"])], daily], ignore_index=True)
+    variants = [v for v in VARIANTS if v.name in set(daily["variant"])]
+    summary = summarise_daily(daily, variants)
+    RESULTS.mkdir(exist_ok=True)
+    daily.round({"value": 2, "bench": 2, "riskfree": 6, "invested": 4}).to_csv(known, index=False)
+    summary.to_csv(RESULTS / "system_backtest_daily_summary.csv", index=False)
+    print(show_daily(summary))
+    print(f"\nWritten in {RESULTS}: system_backtest_daily.csv, system_backtest_daily_summary.csv")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Backtest the code-only system on past 3-week windows.")
     parser.add_argument("--since", type=date.fromisoformat, default=date(2022, 1, 3), help="first window, YYYY-MM-DD")
     parser.add_argument("--variants", nargs="*", help="names from VARIANTS (default: all); the other variants "
                                                       "already in the results file are kept")
     parser.add_argument("--workers", type=int, help="processes (default: one per core)")
+    parser.add_argument("--daily", action="store_true", help="one book over the whole history, valued every day")
     args = parser.parse_args(argv)
     variants = [v for v in VARIANTS if not args.variants or v.name in args.variants]
     from data import data_agent
     prices = data_agent.fetch_prices(args.since - timedelta(days=PRICE_DAYS + 30), date.today())
     market, starts = prepare(prices, data_agent.compute_features(prices), args.since)
+    if args.daily:
+        main_daily(market, variants, args)
+        return
     print(f"{len(starts)} windows from {starts[0]} to {starts[-1]}, {len(market.sheets)} decision days, "
           f"{len(variants)} variant(s) to run")
     results = run(market, starts, variants, args.workers)
