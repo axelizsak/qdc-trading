@@ -16,9 +16,9 @@ The agents analyse the 50-ETF universe and propose trades. A human approves ever
 | 7–23 Dec 2026 | Trading window |
 | 16 Jan 2027, 23:59 | Final report + team organisation annex (the Belfius deck says 17 Jan) |
 
-> **Fill price:** an order on day T fills at the last close before T, on the ETF's own exchange. The Belfius deck says both this and "the closing price of the trading day itself"; the team settled on the previous close. It is one setting, `FILL_AT_PREVIOUS_CLOSE` in `data/config.py`, that every module follows, and the system is tested under both rules. Which rule applies, and until what time an order is accepted, matters more than any other setting: see finding 1 in `backtest/README.md`. After the first trading day, compare the fills on the Belfius platform with `logs/logbook/<date>.md`.
+> **Fill price:** an order on day T fills at the last close before T, on the ETF's own exchange. The Belfius deck says both this and "the closing price of the trading day itself"; the team's rule is the previous close. It is one setting, `FILL_AT_PREVIOUS_CLOSE` in `data/config.py`, that every module follows, and the system is tested under both rules. What this rule is worth is finding 1 in `backtest/README.md`. After the first trading day, compare the fills on the Belfius platform with `logs/logbook/<date>.md`.
 >
-> **Units:** the Portfolio Manager sizes orders in fractional units (4 decimals). To confirm on the Belfius form before 7 December: if it only takes whole units, set `ORDER_UNIT_DECIMALS = 0` in `data/config.py`.
+> **Units:** the Portfolio Manager sizes orders in fractional units (4 decimals). If the Belfius form turns out to take whole units only, set `ORDER_UNIT_DECIMALS = 0` in `data/config.py`.
 
 ## How it works
 
@@ -68,6 +68,7 @@ Every setting is one line in one file. To know whether a change is worth making,
 | What the macro searches look for, and the analysts' brief per theme | `CROSS_TOPICS` in `agents/macro_llm.py`, `THEME_BRIEFS` and the prompt in `agents/macro_analysts.py` |
 | How the portfolio is built: invested share, number of positions, risk aversion, timing | `agents/portfolio_config.py` |
 | The hard limits on every portfolio: one ETF at most 30%, leveraged and inverse ETFs at most 15% together | `MAX_POSITION`, `MAX_LEVERAGED_SHARE` in `agents/portfolio_config.py` |
+| Where the money without an idea goes: cash, or the benchmark ETF | `IDLE_TO_BENCHMARK`, `BENCHMARK_CAP` in `agents/portfolio_config.py` |
 | Fractional or whole units in the orders | `ORDER_UNIT_DECIMALS` in `data/config.py` (4, or 0 for whole units) |
 | The price an order fills at: the close before its day, or the close of its day | `FILL_AT_PREVIOUS_CLOSE` in `data/config.py` |
 | How fast the agent weights move, and their bounds | `LEARN_*` and `AGENT_WEIGHT_*` in `agents/portfolio_config.py` |

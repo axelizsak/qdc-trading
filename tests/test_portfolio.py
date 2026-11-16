@@ -696,3 +696,18 @@ def test_orders_keep_a_margin_when_they_fill_at_a_close_not_known_yet(prices, si
     assert cost(same_day, cfg.SAME_DAY_CUSHION) <= 10_000.0 + 0.01  # still funded if every ETF closes 5 % higher
     # every buy is sized as if it filled 5 % above the last close
     assert cost(same_day, 0) == pytest.approx(cost(before, 0) / (1 + cfg.SAME_DAY_CUSHION), rel=0.01)
+
+
+def test_idle_budget_can_follow_the_benchmark(prices, monkeypatch):
+    one = _one_strong_score("GOLD")  # the code finds one idea: 30% in GOLD, the rest idle
+    plain, _, _ = propose(prices, one)
+    assert "WORLD" not in set(plain["ticker"])  # by default idle money stays in cash
+    monkeypatch.setattr(cfg, "IDLE_TO_BENCHMARK", 1.0)
+    topped = propose(prices, one)[0].set_index("ticker")["target_weight"]
+    assert topped["GOLD"] == pytest.approx(cfg.MAX_POSITION, abs=1e-3)
+    assert topped["WORLD"] == pytest.approx(cfg.BENCHMARK_CAP, abs=1e-3)  # capped, the rest is still cash
+    monkeypatch.setattr(cfg, "BENCHMARK_CAP", 0.90)
+    wide = propose(prices, one)[0].set_index("ticker")["target_weight"]
+    assert wide.sum() <= cfg.EXPOSURE_MAX + 1e-6 and wide["WORLD"] > 0.40
+    # the human's word still wins: a benchmark the human excluded is not bought
+    assert "WORLD" not in portfolio.top_up_with_benchmark(pd.Series({"GOLD": 0.3}), 0.9, {"GOLD", "WORLD"}, {"WORLD"}, set())

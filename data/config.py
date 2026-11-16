@@ -24,7 +24,7 @@ MAX_ORDERS_PER_DAY = 5
 # The price an order of day T fills at. True: the last close before T (what the team understood from Belfius, and
 # one slide of their deck). False: the close of T itself (another slide). Every module reads this one setting:
 # the book, the cash check, the Portfolio and Risk Managers, the logbook, the grading and the backtest.
-# It is not a detail: backtest/README.md shows what the difference is worth. To confirm with Belfius.
+# It is not a detail: backtest/README.md shows what the difference is worth.
 FILL_AT_PREVIOUS_CLOSE = True
 
 
@@ -39,8 +39,8 @@ def fills_from(days, order_day: str):
     return days < order_day if FILL_AT_PREVIOUS_CLOSE else days <= order_day
 
 
-# Decimals of an order's units. 4 = fractional units (what the team understood from Belfius, to confirm on the
-# order form). Set it to 0 if the form only takes whole units: the Portfolio Manager then sizes in whole units.
+# Decimals of an order's units. 4 = fractional units. Set it to 0 if the order form turns out to take whole units
+# only: the Portfolio Manager then sizes in whole units.
 ORDER_UNIT_DECIMALS = 4
 MAX_REVISIONS = 2  # times a day can go back to the Portfolio Manager with human feedback
 TRANSACTION_COST = 0.0
