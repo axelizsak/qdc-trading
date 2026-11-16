@@ -15,8 +15,12 @@ Output:
        oversold or overbought by Connors RSI 2, Bollinger z-score 20, Donchian 20-day channel
      - rebound done: price back above its SMA 5 (Connors exit)
   2. run: two scores per ETF in the Signals format, for the pipeline.
-     - technical_det: the momentum suggested signal, by rule. The mean reversion answers are in the sheet
-       and the rationale; how to combine both into one rule is decided after their backtests.
+     - technical_det: three answers of the sheet as scores, weighted (signal_scores, blend):
+         trend           the momentum rule's suggested signal (SIGNAL_SCORES)
+         mean_reversion  oversold +1, overbought -1 (MEAN_REVERSION_SCORES)
+         momentum        the rank by momentum 13612 among the ETFs of the day, -1 to +1
+       The weights are learned every day since 2022 by the system's learning rule (agents/learning.py,
+       run by graph/review_loop.py from logs/technical_answers.csv); they start at SIGNAL_START.
      - technical_llm: the LLM's own score from the same sheet (agents/technical_llm.py). It weighs what the
        rules cannot: a buy setup on a stretched ETF, a trend without confirmation, an inverse ETF.
 
@@ -31,12 +35,12 @@ import pandas as pd
 
 from agents import strategy_config as cfg
 from agents import technical_llm
+from data import config as settings
 from data.features import signal_prices
-from data.schemas import validate_signals
+from data.schemas import SIGNALS, TECHNICAL_ANSWERS, validate_signals
 from data.universe import load_universe
 
 AGENT_DET = "technical_det"
-AGENT_LLM = "technical_llm"
 
 
 # ---------- Question 1: direction ------------------------------------------------------------
@@ -470,28 +474,77 @@ def build_sheet(prices: pd.DataFrame, features: pd.DataFrame, as_of: date) -> pd
     return pd.DataFrame(rows)
 
 
-def signals_from_sheet(sheet: pd.DataFrame) -> pd.DataFrame:
-    """The suggested signal in the Signals format: score from SIGNAL_SCORES, confidence = confirmations / 2."""
-    rows = []
-    for _, row in sheet.iterrows():
-        rows.append({
-            "ticker": row["ticker"],
-            "date": row["date"],
-            "agent": AGENT_DET,
-            "score": cfg.SIGNAL_SCORES[row["suggested_signal"]],
-            "confidence": row["confirmations"] / 2,
-            "rationale": row["rationale"],
-        })
-    return validate_signals(pd.DataFrame(rows, columns=["ticker", "date", "agent", "score", "confidence", "rationale"]))
+PRICE_DAYS = 420  # calendar days of prices a sheet needs (momentum 13612 needs a year of quotes)
+FEATURE_DAYS = 60  # calendar days of indicators a sheet reads (it uses the last row and 20 quotes of OBV)
+
+
+def sheet_before(prices: pd.DataFrame, features: pd.DataFrame, day: date) -> pd.DataFrame:
+    """The sheet the agent would have built on the morning of `day`, from data strictly before it. `prices` and
+    `features` carry `date` as timestamps (convert them once: this is called for every past session)."""
+    stamp = pd.Timestamp(day)
+    known = prices[(prices["date"] < stamp) & (prices["date"] >= stamp - pd.Timedelta(days=PRICE_DAYS))]
+    recent = features[(features["date"] < stamp) & (features["date"] >= stamp - pd.Timedelta(days=FEATURE_DAYS))]
+    if known.empty or recent.empty:
+        return pd.DataFrame()
+    return build_sheet(known, recent, known["date"].max().date())
+
+
+ANSWERS = [c for c in TECHNICAL_ANSWERS if c != "session_return"]
+
+
+def answers(sheet: pd.DataFrame, day: date) -> pd.DataFrame:
+    """The answers of a sheet the learning reads (the Technical answers columns but the session's return), dated `day`."""
+    return sheet.reindex(columns=ANSWERS).assign(date=day.isoformat())[ANSWERS]
+
+
+def signal_scores(answers: pd.DataFrame) -> pd.DataFrame:
+    """The three answers as scores in [-1, 1], one column each (TECHNICAL_SIGNALS), for every row of `answers`
+    (a sheet, or many days of Technical answers: the momentum rank is taken within each date)."""
+    momentum = pd.to_numeric(answers["momentum_13612"], errors="coerce")
+    day = answers["date"].astype(str)
+    rank = momentum.groupby(day).rank()
+    count = momentum.groupby(day).transform("count")
+    return pd.DataFrame({
+        "trend": answers["suggested_signal"].map(cfg.SIGNAL_SCORES).astype(float),
+        "mean_reversion": answers["mr_setup"].map(cfg.MEAN_REVERSION_SCORES).fillna(0.0).astype(float),
+        "momentum": (2 * (rank - 1) / (count - 1) - 1).where(count > 1).fillna(0.0),
+    }, index=answers.index)[settings.TECHNICAL_SIGNALS]
+
+
+def starting_weights() -> dict[str, float]:
+    total = sum(cfg.SIGNAL_START.values())
+    return {s: cfg.SIGNAL_START.get(s, 0.0) / total for s in settings.TECHNICAL_SIGNALS}
+
+
+def blend(scores: pd.DataFrame, weights: dict[str, float] | None = None) -> pd.Series:
+    """technical_det: the answers' scores weighted (the starting weights when none are given)."""
+    weights = starting_weights() if weights is None else weights
+    return sum(scores[s] * weights.get(s, 0.0) for s in settings.TECHNICAL_SIGNALS)
+
+
+def signals_from_sheet(sheet: pd.DataFrame, weights: dict[str, float] | None = None) -> pd.DataFrame:
+    """technical_det in the Signals format: the weighted answers, confidence = confirmations / 2."""
+    weights = starting_weights() if weights is None else weights
+    scores = signal_scores(sheet)
+    score = blend(scores, weights).clip(-1, 1)
+    why = [f"trend {s.trend:+.0f} x {weights.get('trend', 0):.0%}, mean reversion {s.mean_reversion:+.0f} x "
+           f"{weights.get('mean_reversion', 0):.0%}, momentum rank {s.momentum:+.2f} x {weights.get('momentum', 0):.0%}"
+           for s in scores.itertuples()]
+    out = pd.DataFrame({"ticker": sheet["ticker"].values, "date": sheet["date"].values, "agent": AGENT_DET,
+                        "score": score.round(4).values, "confidence": (sheet["confirmations"] / 2).values,
+                        "rationale": [f"{w} | {r}" for w, r in zip(why, sheet["rationale"])]})
+    return validate_signals(out)
 
 
 def run(prices: pd.DataFrame, features: pd.DataFrame, as_of: date, lessons: str = "", client=None,
-        use_llm: bool = True) -> pd.DataFrame:
+        use_llm: bool = True, weights: dict[str, float] | None = None) -> pd.DataFrame:
     """Signals format: one technical_det row per scored ETF, and its technical_llm row when the LLM layer
-    answered (it needs ANTHROPIC_API_KEY; without it, or with use_llm=False, only technical_det)."""
+    answered (it needs ANTHROPIC_API_KEY; without it, or with use_llm=False, only technical_det).
+    `weights`: today's weights of the three answers (graph/review_loop.py), else their starting weights."""
     sheet = build_sheet(prices, features, as_of)
-    det = signals_from_sheet(sheet)
+    det = signals_from_sheet(sheet, weights) if len(sheet) else pd.DataFrame(columns=SIGNALS)
     if not use_llm or sheet.empty:
         return det
-    llm = technical_llm.interpret(sheet, as_of, lessons, client)
+    llm = technical_llm.interpret(sheet.assign(score=det["score"].values), as_of, lessons, client,
+                                 weights=starting_weights() if weights is None else weights)
     return validate_signals(pd.concat([det, llm], ignore_index=True)) if len(llm) else det

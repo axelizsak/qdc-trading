@@ -120,3 +120,15 @@ def test_pages_run_on_the_real_portfolio_and_risk_managers(logs, monkeypatch):
     assert any(">Intact<" in m.value for m in book.markdown)  # the hash chain of the day just recorded
     assert not (logs / "incidents.csv").exists()
 
+
+
+def test_the_research_page_shows_the_learned_weights_over_the_agents_that_scored(tmp_path):
+    from app import data
+    tmp_path.mkdir(exist_ok=True)
+    pd.DataFrame({"date": "2026-12-04", "level": "agents", "name": settings.SIGNAL_AGENTS, "weight": [0.4, 0.2, 0.3, 0.1],
+                  "result": None}).to_csv(tmp_path / "weights.csv", index=False)
+    shown = data.agent_weights_on(date(2026, 12, 7), tmp_path, {}, ["technical_det", "macro_market", "macro_etf"])
+    assert shown == pytest.approx({"technical_det": 0.5, "macro_market": 0.375, "macro_etf": 0.125})
+    before = data.agent_weights_on(date(2026, 12, 1), tmp_path, {}, ["technical_det"])  # nothing learned yet
+    assert before == {"technical_det": 1.0}
+    assert data.agent_weights_on(date(2026, 12, 7), tmp_path, {"agent_weights": {"x": 1.0}}, []) == {"x": 1.0}

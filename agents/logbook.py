@@ -7,7 +7,7 @@ and keeps an overview of the whole competition in <logs>/logbook/INDEX.md.
 Events of a day, in the order the page tells them
   signals            one row per signal agent: how many ETFs, the strongest and weakest scores              (signals.csv)
   macro_report       the Macro/News report of the day, with the cost line and a fingerprint                 (macro/<date>.md)
-  agent_weights      the agent weights learned for the day and their hit rates                              (agent_weights.csv)
+  agent_weights      the agent weights for the day, and Claude's share against the code's portfolio        (weights.csv)
   target_allocation  the Portfolio Manager's target weights and memo, one per round                         (record_round)
   recommendation     every order the Portfolio Manager proposed, round by round, with its reasons           (recommendations.csv)
   risk_report        the Risk Manager's count of ok, warning and breach, and one risk_flag per warning;
@@ -67,7 +67,6 @@ SECTIONS = [("Signals", ["signals"]), ("Macro/News", ["macro_report"]), ("Agent 
 PAGE_ORDER = [kind for _, kinds in SECTIONS for kind in kinds]
 SECTION_OF = {kind: i for i, (_, kinds) in enumerate(SECTIONS) for kind in kinds}
 LEARNING_KINDS = {"lesson", "reassessment"}
-STATE_KINDS = {"target_allocation", "risk_report", "risk_flag"}  # recorded at the gates
 STATE, LEARNING = "state:", "learning:"  # source prefixes of events the end-of-day pass must leave alone
 GATES = {"orders": 0, "risk": 1, "summary": 2}
 TOP = 3  # strongest and weakest signals named per agent
@@ -150,13 +149,15 @@ def macro_events(logs: Path, day: str) -> list[dict]:
 
 
 def weight_events(logs: Path, day: str) -> list[dict]:
-    rows = _on(_read(logs / "agent_weights.csv"), day)
+    rows = _on(_read(logs / "weights.csv"), day)
+    rows = rows[rows["level"].isin(["agents", "portfolio"])] if len(rows) else rows
     if rows.empty:
         return []
-    parts = [f"{r.agent} {r.weight:.0%}" + (f" (hit rate {r.hit_rate:.0%})" if pd.notna(r.hit_rate) else "")
-             for r in rows.itertuples()]
-    return [_event(day, "agent_weights", "portfolio_manager", "Agent weights for the day", "; ".join(parts),
-                   "agent_weights.csv")]
+    parts = [f"{r.name} {r.weight:.0%}" for r in rows[rows["level"] == "agents"].itertuples()]
+    llm = rows[(rows["level"] == "portfolio") & (rows["name"] == "llm")]
+    if len(llm):
+        parts.append(f"Claude's portfolio counts for {float(llm['weight'].iloc[0]):.0%} of the final blend")
+    return [_event(day, "agent_weights", "learning", "Weights for the day", "; ".join(parts), "weights.csv")]
 
 
 def recommendation_events(logs: Path, day: str) -> list[dict]:

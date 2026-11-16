@@ -6,13 +6,14 @@ import pytest
 from data import schemas
 from data.mock import (
     MOCKS,
-    mock_agent_weights,
     mock_evidence,
     mock_features,
     mock_holdings,
     mock_macro_views,
     mock_prices,
     mock_source_registry,
+    mock_technical_answers,
+    mock_weights,
 )
 
 
@@ -70,14 +71,24 @@ def test_features_rejects_bad_rows():
         schemas.validate_features(pd.concat([df, df.head(1)]))
 
 
-def test_agent_weights_rejects_bad_rows():
-    df = mock_agent_weights()
+def test_weights_reject_bad_rows():
+    df = mock_weights()
     with pytest.raises(ValueError, match="sum to 1"):
-        schemas.validate_agent_weights(df.assign(weight=0.1))
-    with pytest.raises(ValueError, match="unknown agent"):
-        schemas.validate_agent_weights(df.assign(agent="technical"))
-    with pytest.raises(ValueError, match="hit_rate"):
-        schemas.validate_agent_weights(df.assign(hit_rate=1.5))
+        schemas.validate_weights(df.assign(weight=0.1))
+    with pytest.raises(ValueError, match="unknown name"):
+        schemas.validate_weights(df.assign(name="technical"))
+    with pytest.raises(ValueError, match="unknown level"):
+        schemas.validate_weights(df.assign(level="risk"))
+    with pytest.raises(ValueError, match="result"):
+        schemas.validate_weights(df.assign(result=np.inf))
+
+
+def test_technical_answers_reject_bad_rows():
+    df = mock_technical_answers()
+    with pytest.raises(ValueError, match="suggested_signal"):
+        schemas.validate_technical_answers(df.assign(suggested_signal="strong buy"))
+    with pytest.raises(ValueError, match="duplicate"):
+        schemas.validate_technical_answers(pd.concat([df, df.head(1)]))
 
 
 def test_evidence_rejects_bad_rows():

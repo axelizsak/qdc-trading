@@ -4,19 +4,17 @@ Written by the review loop (graph/review_loop.py) from the logs and the prices: 
 
 ## Review of 2026-11-16
 
-Every score is judged on the 3 sessions that followed it. The technical rule score is also recomputed for the last 60 quote days.
+**Weights** (each session, a weight is multiplied by e^(2 x what following it earned in that session); start -> today
 
-**Agent weights** (starting weight -> weight the evidence supports)
+- The technical agent's three answers: mean_reversion 33% -> 16% (-0.013% a session over 1186, right 49%); momentum 33% -> 24% (+0.005% a session over 1245, right 54%); trend 33% -> 60% (+0.042% a session over 1240, right 53%)
+- The four agents: macro_etf 25% -> 25% (+0.157% a session over 3, right 67%); macro_market 25% -> 25% (+0.194% a session over 5, right 60%); technical_det 50% -> 50% (+0.005% a session over 5, right 60%)
+- Claude's portfolio (llm) against the code's (code): code 40% -> 40% (no session judged yet); llm 60% -> 60% (no session judged yet)
 
-- technical_det: 50% -> 51% (60 days judged, rank correlation +0.01, hit rate 49%)
-- macro_market: 25% -> 24% (6 days judged, rank correlation +0.00, hit rate 37%)
-- macro_etf: 25% -> 25% (3 days judged, rank correlation +0.02, hit rate 55%)
-
-**Where each agent is right** (calls with a score of at least 0.1)
+**Where each agent is right** (each score judged on the 3 sessions that followed it; calls with a score of at least 0.1)
 
 - macro_etf: calls up right 32% (n=22), calls down right 62% (n=34)
 - macro_market: calls up right 42% (n=24), calls down right 38% (n=86)
-- technical_det: calls up right 49% (n=196), calls down right 59% (n=132)
+- technical_det: calls up right 75% (n=52), calls down right 66% (n=61)
 
 **Largest misses of the last judged day** (13 Nov)
 

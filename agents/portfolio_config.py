@@ -2,10 +2,10 @@
 
 Only numbers and names here, no calculation: to change the strategy, change this file.
 
-The PM chooses as freely as possible. The only hard rules are Belfius's (5 orders a day, cash never below
-zero, no shorting, ETFs of the list), checked by the pipeline. Everything below is a *baseline suggestion* or
-a *learning setting*, never a limit: the LLM proposes its own weights, the final target blends the two, and
-how much the LLM counts is learned from how its portfolios did against the baseline.
+The PM chooses as freely as possible. Belfius's rules (5 orders a day, cash never below zero, no shorting, ETFs of
+the list) are checked by the pipeline, and two hard limits below apply to every portfolio. The rest is the code's
+own portfolio, a suggestion: the LLM proposes its own weights, the final target blends the two, and how much the
+LLM counts is learned from how its portfolios did against the code's.
 The Risk Manager and the memo's flags tell the human about concentration, theme, volatility and leverage.
 """
 from datetime import date
@@ -43,23 +43,10 @@ VOL_DEFAULT = 0.20            # for an ETF with too little history
 CONFIDENCE_FLOOR = 0.5
 FAILED_MARKER = "agent failed"   # rationale prefix of the neutral fallback rows (graph/pipeline.py)
 
-# --- Learning the agent weights ------------------------------------------------------------------------------
-AGENT_WEIGHT_MIN = 0.05
-AGENT_WEIGHT_MAX = 0.60
-LEARN_HORIZONS = (1, 3)       # quotes ahead used to judge a score: next day and about one trading date
-LEARN_ETA = 5.0               # how strongly a good rank correlation raises a weight
-LEARN_SHRINK = 10             # days of evidence at which a score counts for half of its measured skill
-HIT_MIN_SCORE = 0.1           # a score below this (in absolute value) is no call, so no hit or miss
-MIN_ETFS_FOR_IC = 5           # ETFs needed on a day to measure a rank correlation
-
-# --- Learning how much to trust the LLM's portfolio ----------------------------------------------------------
-# final target = trust x LLM weights + (1 - trust) x baseline weights.
-TRUST_PRIOR = 0.6             # before any evidence
-TRUST_MIN = 0.1
-TRUST_MAX = 0.9
-TRUST_SCALE = 0.01            # a mean advantage of 1 % over the baseline counts as a clear signal
-TRUST_STEP = 0.5              # largest move of the trust from its prior, at full evidence
-TRUST_SHRINK = 10             # days of evidence at which the advantage counts for half
+# --- How much Claude's portfolio counts ----------------------------------------------------------------------------
+# final target = trust x the LLM's weights + (1 - trust) x the code's ANCHOR portfolio. The trust starts here and
+# then follows the system's learning rule (agents/learning.py): the portfolio that earned more gains weight.
+TRUST_START = 0.6
 
 # --- Choosing the 5 orders of the day ----------------------------------------------------------------------
 # Impact of an order = how much it reduces the portfolio's ex-ante risk distance to its target (uses the covariance,

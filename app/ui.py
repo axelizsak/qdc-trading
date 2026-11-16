@@ -11,7 +11,7 @@ from graph import pipeline
 
 STEPS = ["data", "technical", "macro_news", "portfolio", "risk"]
 STEP_LABELS = {"data": "Data", "technical": "Technical", "macro_news": "Macro / News", "portfolio": "Portfolio",
-               "risk": "Risk", "logbook": "Logbook", "review": "Review loop",
+               "risk": "Risk", "logbook": "Logbook", "learning": "Learning",
                "dividends": "Ex-dividend dates"}
 FACTOR_LABELS = {
     "ecb_rates": "ECB rates", "fed_us_rates": "Fed / US rates", "inflation": "Inflation",
@@ -183,10 +183,10 @@ def pipeline_strip(status: str, state: dict, pending: dict | None) -> None:
             cells.append((STEP_LABELS[key], mode, "– skipped" if status == "done" else "○ after your review", "idle"))
         else:
             cells.append((STEP_LABELS[key], mode, "● ok", "ok"))
-        if key == "data":  # the review loop runs right after the data: it has no mock, it is code on the logs
-            cells.append((STEP_LABELS["review"], "learns from the logs", *(
+        if key == "data":  # the learning step runs right after the data: it has no mock, it is code on the logs
+            cells.append((STEP_LABELS["learning"], "learns from the logs", *(
                 ("○ not run", "idle") if status == "not started" else
-                ("✕ failed", "fail") if "review" in failed else ("● ok", "ok"))))
+                ("✕ failed", "fail") if "learning" in failed else ("● ok", "ok"))))
     you = {"not started": ("○ not run", "idle"),
            "waiting for approval": (f"◐ {day_label(status, state, pending)}", "wait"),
            "done": ("■ no trade today", "idle") if state.get("outcome") == "stopped" else ("● approved", "ok")}[status]

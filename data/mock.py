@@ -5,7 +5,7 @@ Usage:  python -m data.mock   (writes CSVs to data/mock/, which is gitignored)
 import numpy as np
 import pandas as pd
 
-from data.config import DATA_DIR, MACRO_FACTORS, SIGNAL_AGENTS
+from data.config import DATA_DIR, MACRO_FACTORS, SIGNAL_AGENTS, TECHNICAL_SIGNALS
 from data.schemas import (
     EX_DIVIDENDS,
     LIST_SEP,
@@ -19,7 +19,8 @@ from data.schemas import (
     RISK_FORECASTS,
     RISK_REPORT,
     STARTER_FEATURES,
-    validate_agent_weights,
+    TECHNICAL_ANSWERS,
+    WEIGHTS,
     validate_etf_views,
     validate_evidence,
     validate_ex_dividends,
@@ -42,6 +43,8 @@ from data.schemas import (
     validate_signals,
     validate_source_changes,
     validate_source_registry,
+    validate_technical_answers,
+    validate_weights,
 )
 from data.universe import tickers
 
@@ -143,21 +146,30 @@ def mock_features(as_of: str = "2026-11-30", seed: int = 0) -> pd.DataFrame:
     return validate_features(pd.DataFrame(rows))
 
 
-def mock_agent_weights(dates: tuple[str, ...] = ("2026-12-07", "2026-12-10"), seed: int = 0) -> pd.DataFrame:
-    """Equal weights with no hit rate on the first date, then reviewed weights. Format: Agent weights."""
+def mock_weights(dates: tuple[str, ...] = ("2026-12-07", "2026-12-10"), seed: int = 0) -> pd.DataFrame:
+    """Every level of weights: starting weights on the first date, then learned ones; the last date's result is
+    not known yet. Format: Weights."""
     rng = np.random.default_rng(seed)
-    n = len(SIGNAL_AGENTS)
+    levels = {"technical": TECHNICAL_SIGNALS, "agents": SIGNAL_AGENTS, "portfolio": ["llm", "code"]}
     frames = []
     for i, d in enumerate(dates):
-        weights = np.full(n, 1 / n) if i == 0 else rng.dirichlet(np.ones(n))
-        hit_rates = np.full(n, np.nan) if i == 0 else rng.uniform(0.3, 0.7, size=n).round(3)
-        frames.append(pd.DataFrame({
-            "date": pd.Timestamp(d).date(),
-            "agent": SIGNAL_AGENTS,
-            "weight": weights,
-            "hit_rate": hit_rates,
-        }))
-    return validate_agent_weights(pd.concat(frames, ignore_index=True))
+        for level, names in levels.items():
+            weights = np.full(len(names), 1 / len(names)) if i == 0 else rng.dirichlet(np.ones(len(names)) * 5)
+            results = np.full(len(names), np.nan) if i == len(dates) - 1 else rng.normal(0, 0.005, len(names)).round(5)
+            frames.append(pd.DataFrame({"date": d, "level": level, "name": names, "weight": weights, "result": results}))
+    return validate_weights(pd.concat(frames, ignore_index=True)[WEIGHTS])
+
+
+def mock_technical_answers(dates: tuple[str, ...] = ("2026-12-04", "2026-12-07"), seed: int = 0) -> pd.DataFrame:
+    """The technical rules' answers for a few ETFs on a few sessions. Format: Technical answers."""
+    rng = np.random.default_rng(seed)
+    names = tickers()[:8]
+    rows = [{"date": d, "ticker": t, "suggested_signal": rng.choice(["buy", "watch", "neutral", "avoid"]),
+             "mr_setup": rng.choice(["buy", "avoid", "none", "n/a"]), "momentum_13612": round(float(rng.normal(0.05, 0.1)), 4),
+             "confirmations": int(rng.integers(0, 3)), "trend_strength": rng.choice(["strong", "moderate", "absent"]),
+             "session_return": round(float(rng.normal(0, 0.01)), 5)}
+            for d in dates for t in names]
+    return validate_technical_answers(pd.DataFrame(rows, columns=TECHNICAL_ANSWERS))
 
 
 def mock_evidence(as_of: str = "2026-11-30") -> pd.DataFrame:
@@ -335,7 +347,8 @@ MOCKS = {
     "incidents": mock_incidents,
     "holdings": mock_holdings,
     "features": mock_features,
-    "agent_weights": mock_agent_weights,
+    "weights": mock_weights,
+    "technical_answers": mock_technical_answers,
     "evidence": mock_evidence,
     "macro_views": mock_macro_views,
     "source_registry": mock_source_registry,

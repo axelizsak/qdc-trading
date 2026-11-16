@@ -2,14 +2,16 @@
 
 Input:  all signals + agent weights + lessons journal + current holdings, cash and prices
         + the human feedback of the day when a proposal was sent back (empty on the first round)
-Steps:  1. learn the agent weights from how each score did so far (agents/portfolio_learning.py)
-        2. combine the scores of all agents per ETF, with those weights
+        + how much the LLM's portfolio counts (the trust). The agent weights and the trust come from the system's
+        learning rule (agents/learning.py, run every morning by graph/review_loop.py): the PM uses them as given.
+Steps:  1. -
+        2. combine the scores of all agents per ETF, with the agent weights
         3. the code builds two portfolios from the scores: a baseline (score / volatility) and a mean-variance
            optimiser (correlations count); ANCHOR says which one is the code's proposal and the yardstick
         4. the LLM judges the day (agents/portfolio_llm.py) and proposes its own target weights, as freely as it
            sees fit: the only hard rules are Belfius's. It also turns the human feedback into constraints
-        5. the final target blends the two: trust x LLM + (1 - trust) x anchor. The trust is learned from how
-           the LLM's logged portfolios did against the anchor's (the more it adds, the more it counts)
+        5. the final target blends the two: trust x LLM + (1 - trust) x anchor. Each day's portfolios are logged
+           (logs/pm_portfolios.csv), so the learning rule can tell which one earned more
         6. compare the target with the current portfolio and pick the orders for the day's 5 slots: the ones that
            reduce the portfolio's risk distance to the target the most, with timing as the tie-break
            (an order that is likely better made at the next trading date gives way to a near-equal one)
@@ -26,8 +28,8 @@ Belfius rules built in: an order on day T fills at the last close before T, so e
 price; sells fund buys on the same day; cash never goes below zero; fractional units; no shorting
 (inverse ETFs are ordinary ETFs here); dividends are not credited, and the PM does not penalise them
 (the Risk Manager warns about them).
-Extra inputs beyond the pipeline's call are keyword-only and optional: macro_summary, logs_dir (learning and the
-daily record of the portfolios), client, use_llm, extra_history.
+Extra inputs beyond the pipeline's call are keyword-only and optional: macro_summary, logs_dir (the daily record of
+the portfolios and recommendations), client, use_llm, trust, learning (the scoreboard shown in the memo).
 """
 
 import re
@@ -39,6 +41,7 @@ from uuid import uuid4
 import numpy as np
 import pandas as pd
 
+from agents import learning as agent_learning
 from agents import macro_llm, portfolio_learning, portfolio_llm, portfolio_log
 from agents import portfolio_config as cfg
 from data import config as settings
@@ -65,16 +68,6 @@ def clean_signals(signals: pd.DataFrame) -> pd.DataFrame:
     out = signals[~failed].copy()
     out["date"] = out["date"].astype(str)
     return out.sort_values("date").drop_duplicates(["ticker", "agent"], keep="last")
-
-
-def complete_weights(weights: dict[str, float], agents: list[str]) -> dict[str, float]:
-    """Weights for every agent that gave a score: an agent without a weight gets the average one,
-    then all are scaled to sum to 1 within the bounds."""
-    base = dict(weights) or {a: 1.0 for a in agents}
-    if not base:
-        return {}
-    average = float(np.mean(list(base.values())))
-    return portfolio_learning.bound_weights({a: base.get(a, average) for a in dict.fromkeys([*base, *agents])})
 
 
 def combine_signals(signals: pd.DataFrame, agent_weights: dict[str, float]) -> pd.DataFrame:
@@ -515,29 +508,57 @@ def timing(as_of: date) -> str:
             f"on {cfg.VALUATION_END:%d %b}; an order on a late date has few days left to earn anything.")
 
 
-def track_line(trust: float, track: dict) -> str:
+BOARD = ["name", "start", "weight", "sessions", "mean_result", "right_share"]
+
+
+def board_of(learning: pd.DataFrame | None, level: str, weights: dict[str, float]) -> pd.DataFrame:
+    """The learning scoreboard rows of one level (graph/review_loop.py), or the given weights without a record."""
+    record = (learning[learning["level"] == level].set_index("name") if learning is not None and len(learning)
+              else pd.DataFrame(columns=BOARD).set_index("name"))
+    if level != "agents":
+        return record.reset_index().reindex(columns=BOARD)
+    # the agents: today's weights over the agents that scored, from their starting weights among them, with their record
+    start = agent_learning.starting_weights(list(weights))
+    return pd.DataFrame([{"name": a, "start": start.get(a, np.nan), "weight": w,
+                          "sessions": int(record.at[a, "sessions"]) if a in record.index else 0,
+                          "mean_result": record.at[a, "mean_result"] if a in record.index else np.nan,
+                          "right_share": record.at[a, "right_share"] if a in record.index else np.nan}
+                         for a, w in weights.items()], columns=BOARD)
+
+
+def _record(r) -> str:
+    if not r.sessions:
+        return "no session judged yet"
+    return (f"{int(r.sessions)} sessions judged, {r.mean_result:+.2%} a session on average, "
+            f"right {r.right_share:.0%} of the time")
+
+
+def track_line(trust: float, track: pd.DataFrame) -> str:
     if pd.isna(trust):
         return f"The LLM's portfolio is not used today: the code's {cfg.ANCHOR} portfolio stands."
-    if not track.get("days"):
+    rows = track.set_index("name")
+    if "llm" not in rows.index or not rows.loc["llm", "sessions"]:
         return f"No track record yet: the LLM's portfolio counts for {trust:.0%} of the final blend (the starting value)."
-    return (f"Track record over {track['days']} day(s) judged: the LLM's portfolio returned {track['llm']:+.2%} on "
-            f"average, the code's {track['anchor']} portfolio {track[track['anchor']]:+.2%}, the benchmark "
-            + ("n/a" if pd.isna(track["benchmark"]) else f"{track['benchmark']:+.2%}")
-            + f". So the LLM's portfolio counts for {trust:.0%} of the final blend.")
+    code = (f", the code's {cfg.ANCHOR} portfolio {rows.loc['code', 'mean_result']:+.2%}"
+            if "code" in rows.index and rows.loc["code", "sessions"] else "")
+    return (f"Track record over {int(rows.loc['llm', 'sessions'])} session(s): the LLM's portfolio earned "
+            f"{rows.loc['llm', 'mean_result']:+.2%} a session on average{code}. "
+            f"So the LLM's portfolio counts for {trust:.0%} of the final blend.")
 
 
 def briefing(as_of: date, status: str, nav: float, cash_eur: float, weights_now: pd.Series, stats: pd.DataFrame,
              used: dict[str, float], table: pd.DataFrame, signals: pd.DataFrame, universe: pd.DataFrame,
-             drafts: dict[str, pd.Series], trust: float, track: dict, macro_summary: str, lessons: str, feedback: str) -> str:
+             drafts: dict[str, pd.Series], trust: float, track: pd.DataFrame, macro_summary: str, lessons: str,
+             feedback: str) -> str:
     """Everything the LLM reads, as text: the numbers the code calculated, never raw instructions."""
     lines = [f"Date: {as_of} ({status}). {timing(as_of)}", f"Portfolio value EUR {nav:,.0f}, cash EUR {cash_eur:,.0f}.",
              "Current holdings (share of the portfolio): "
              + (", ".join(f"{t} {w:.1%}" for t, w in weights_now.items()) or "none, all cash"), "",
-             "Agent weights (prior -> learned from past performance, used in the final scores below):"]
+             "Agent weights (start -> today, learned day by day from what following each agent earned; used in the "
+             "final scores below):"]
     for r in stats.itertuples():
-        ic = "no evidence yet" if pd.isna(r.ic) else f"{r.days} days judged, rank correlation {r.ic:+.2f}, hit rate " + (
-            "n/a" if pd.isna(r.hit_rate) else f"{r.hit_rate:.0%}")
-        lines.append(f"- {r.agent}: {r.prior:.2f} -> {r.weight:.2f} ({ic})")
+        start = "n/a" if pd.isna(r.start) else f"{r.start:.2f}"
+        lines.append(f"- {r.name}: {start} -> {r.weight:.2f} ({_record(r)})")
     agents = list(used)
     lines += ["", track_line(trust, track), "",
               *[f"The code's {name} portfolio (a suggestion; invests {w.sum():.0%}"
@@ -604,12 +625,12 @@ def write_memo(as_of: date, status: str, nav: float, info: dict, judgement: dict
                   f"so the code portfolios invest {info['exposure']:.0%}. " + track_line(info["trust"], info["track"])]
     if llm_note:
         lines.append(f"LLM judgement not used: {llm_note}")
-    lines += ["", "### Agent weights", "", "| Agent | Prior | Learned | Days judged | Rank corr. | Hit rate |",
-              "|---|---:|---:|---:|---:|---:|"]
+    lines += ["", "### Agent weights", "", "Learned day by day from what following each agent earned (agents/learning.py).",
+              "", "| Agent | Start | Today | Sessions judged | Mean result a session | Right |", "|---|---:|---:|---:|---:|---:|"]
     for r in stats.itertuples():
-        lines.append(f"| {r.agent} | {r.prior:.2f} | {r.weight:.2f} | {r.days} | "
-                     f"{'n/a' if pd.isna(r.ic) else f'{r.ic:+.2f}'} | "
-                     f"{'n/a' if pd.isna(r.hit_rate) else f'{r.hit_rate:.0%}'} |")
+        lines.append(f"| {r.name} | {'n/a' if pd.isna(r.start) else f'{r.start:.2f}'} | {r.weight:.2f} | {int(r.sessions)} | "
+                     f"{'n/a' if pd.isna(r.mean_result) else f'{r.mean_result:+.2%}'} | "
+                     f"{'n/a' if pd.isna(r.right_share) else f'{r.right_share:.0%}'} |")
     llm = portfolios.get("llm", pd.Series(dtype=float))
     names = sorted(set().union(*(p.index for p in portfolios.values()), now.index),
                    key=lambda t: -float(final.get(t, 0.0)))
@@ -657,18 +678,19 @@ def write_memo(as_of: date, status: str, nav: float, info: dict, judgement: dict
 
 def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, holdings: pd.DataFrame,
         cash_eur: float, prices: pd.DataFrame, as_of: date, feedback: str = "", *, macro_summary: str = "",
-        logs_dir: Path | str | None = None, client=None, use_llm: bool = True,
-        extra_history: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame, str]:
+        logs_dir: Path | str | None = None, client=None, use_llm: bool = True, trust: float | None = None,
+        learning: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame, str]:
     """Returns (target weights in the Portfolio format, proposed orders in the Orders format, investment memo).
 
     `feedback` holds one line per time the human sent the day back, e.g.
     "Round 1, risk review: too much in leveraged ETFs, cut them". Take it into account and say how in the memo.
 
-    Optional, keyword-only: `macro_summary` (the Macro/News report, read by the LLM); `logs_dir` (reads
-    <logs>/signals.csv to learn the agent weights and <logs>/pm_portfolios.csv to learn the trust in the LLM, and
-    logs today's portfolios there; without it the weights are used as given and nothing is written);
-    `extra_history` (more past signals to learn from, e.g. agents/portfolio_backfill.py); `client` (a Claude client,
-    default: the real one when ANTHROPIC_API_KEY is set); `use_llm=False` (the baseline alone).
+    `agent_weights` and `trust` are used as given: the learning rule sets them every morning (agents/learning.py).
+    An agent without a weight does not count; the weights are rescaled over the agents that scored each ETF.
+    Optional, keyword-only: `macro_summary` (the Macro/News report, read by the LLM); `logs_dir` (today's portfolios
+    and recommendations are logged there; without it nothing is written); `trust` (how much the LLM's portfolio
+    counts, default TRUST_START); `learning` (the learning scoreboard, shown in the memo); `client` (a Claude client,
+    default: the real one when ANTHROPIC_API_KEY is set); `use_llm=False` (the code's portfolio alone).
     """
     universe = load_universe().set_index("ticker")
     tickers = universe.index.tolist()
@@ -694,23 +716,12 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
     held = set(weights_now[weights_now > 0].index)
     status = day_status(as_of)
 
-    # 1. learn the agent weights and the trust in the LLM
+    # 1. the agent weights and the trust, as the learning rule set them this morning
     agents = sorted(clean_signals(signals)["agent"].unique())
-    prior = complete_weights(agent_weights, agents)
-    logged = portfolio_learning.load_history(logs_dir) if logs_dir is not None else None
-    histories = [h for h in (extra_history, logged) if h is not None and len(h)]
-    if histories:
-        history = pd.concat(histories, ignore_index=True).drop_duplicates(["ticker", "date", "agent"], keep="last")
-        learned, stats = portfolio_learning.learn_weights(history, prices, prior, as_of)
-    else:
-        learned = prior
-        stats = pd.DataFrame({"agent": list(prior), "days": 0, "ic": np.nan, "hit_rate": np.nan,
-                              "prior": list(prior.values()), "weight": list(prior.values())})
-    learned = complete_weights(learned, agents)
-    if logs_dir is not None:
-        trust, track = portfolio_learning.learn_trust(portfolio_learning.load_records(logs_dir), prices, as_of)
-    else:
-        trust, track = cfg.TRUST_PRIOR, {"days": 0}
+    learned = {a: float(agent_weights.get(a, 0.0)) for a in agents}
+    stats = board_of(learning, "agents", learned)
+    track = board_of(learning, "portfolio", {})
+    trust = cfg.TRUST_START if trust is None else float(trust)
 
     # 2. combine the scores; 3. a first baseline (only the human's "rejected" orders constrain it so far)
     vol, cov = risk_inputs(prices, as_of)

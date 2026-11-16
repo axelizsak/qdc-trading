@@ -22,7 +22,7 @@ The agents analyse the 50-ETF universe and propose trades. A human approves ever
 
 ## How it works
 
-Four scores per ETF, one portfolio, three human reviews, and a review loop that grades everything before the next day.
+Four scores per ETF, one portfolio, three human reviews, and one learning rule that re-weights everything every morning.
 
 ![Workflow of one trading day](docs/workflow.png)
 
@@ -31,8 +31,8 @@ Four scores per ETF, one portfolio, three human reviews, and a review loop that 
 | # | Step | What it does | Code | LLM? |
 |---|---|---|---|---|
 | 1 | Data | Real prices of the 50 ETFs, 37 indicators, and the ex-dividend dates of the distributing ETFs | `data/data_agent.py`, `data/features.py`, `data/dividends.py` | No |
-| 2 | Review loop | Grades every past score against what the ETFs then did, re-weights the agents, writes the lessons | `graph/review_loop.py` | No |
-| 3 | Technical | Two scores from prices: `technical_det` (rules: momentum and mean reversion) and `technical_llm` (Claude weighs the rules' answers when they disagree) | `agents/technical.py`, `agents/technical_llm.py` | Second score only |
+| 2 | Learning ("Performance Monitoring and Learning" in the diagram) | Re-weights every expert from what following it earned (the rule below), writes the lessons | `graph/review_loop.py`, `agents/learning.py` | No |
+| 3 | Technical | Two scores from prices: `technical_det` (three answers of the rules, trend, mean reversion and momentum, weighted by what each earned since 2022) and `technical_llm` (Claude weighs the rules' answers when they disagree) | `agents/technical.py`, `agents/technical_llm.py` | Second score only |
 | 4 | Macro / News | Two scores from the news: `macro_market` (15 macro views through the exposure table) and `macro_etf` (20 theme analysts, each reading the news, the price tape and its own past calls) | `agents/macro_news.py` and `agents/macro_*.py` | Yes |
 | 5 | Portfolio Manager | Combines the four scores, builds the target portfolio, proposes at most 5 orders with a memo | `agents/portfolio.py` | Yes |
 | 6 | Your review of the orders | Approve, change, reject or add orders | cockpit, Orders page | You |
@@ -46,19 +46,27 @@ Four scores per ETF, one portfolio, three human reviews, and a review loop that 
 final_score(ETF) = Σ w_agent × score_agent(ETF)      with Σ w_agent = 1
 ```
 
-Before any evidence, each family counts the same (technical 50%, macro 50%), split between its scores. An agent that gives no score that day takes no weight.
+**How the system improves by itself: one rule for every weight** (`agents/learning.py`). After each trading session:
 
-**How the system improves by itself.** Each day starts with the review loop:
-- every past score is judged on the 3 trading sessions that followed it, and the technical rule score is also replayed on the last 60 days of prices;
-- the agents that ranked the ETFs better gain weight, inside fixed bounds and slowly while the evidence is thin (`logs/agent_weights.csv`);
-- the facts go into `logs/lessons.md` (which agent is right on which kind of call, the largest misses, the weakest macro sources), which the agents read before they decide;
-- the ETF analysts see their own past calls with what happened, the Portfolio Manager learns how far to trust its own LLM, and the Risk Manager corrects its volatility forecast.
+```
+weight(expert) × e^(2 × what following that expert earned in the session)     then scaled to sum to 1, each between 5% and 80%
+```
+
+"What following it earned" is, for a score, the return of the ETFs it called up minus those it called down, against the average ETF; for a portfolio, its return. Three sets of experts follow this rule:
+
+| Weights | Start | Learning since |
+|---|---|---|
+| The technical agent's three answers: trend, mean reversion, momentum ranking | 1/3 each | January 2022: the answers are replayed from prices (`logs/technical_answers.csv`) |
+| The four agents | technical 50%, macro 50%, split between the agents that scored that day | their first score (November 2026). An LLM cannot be replayed on the past: it already knows what happened |
+| Claude's portfolio against the code's, in the Portfolio Manager's blend | 60% / 40% | the first portfolio logged |
+
+Every weight of every session is in `logs/weights.csv`. The facts behind them go into `logs/lessons.md` (which agent is right on which kind of call, the largest misses, the weakest macro sources), which the agents read before they decide. The ETF analysts also see their own past calls, and the Risk Manager corrects its volatility forecast.
 
 **Two rules.** Code calculates and the LLM judges: no LLM ever produces a number that code could compute. Nothing is traded without the three human reviews, and the trading rules (at most 5 orders, enough cash, no selling more than held) are checked in code on every proposal and every approval.
 
 ## Adjust the model
 
-Every setting is one line in one file. To know whether a change is worth making, test it in the backtest before you make it: add one line to `VARIANTS` in `backtest/system_backtest.py` and run it. It replays the code-only system on every 3-week window since 2022 with the competition's rules, and compares your variant with the current system on the same windows (see `backtest/README.md` for how to read it, and for what the first run found).
+Every setting is one line in one file. To know whether a change is worth making, test it in the backtest before you make it: add one line to `VARIANTS` in `backtest/system_backtest.py` and run it. It replays the code-only system since 2022 with the competition's rules and the learning rule, as one book valued every day (its Sharpe ratio) and as every 3-week window, and compares your variant with the current system on the same days (see `backtest/README.md` for how to read it, and for what the runs found).
 
 | To change | Where |
 |---|---|
@@ -71,9 +79,10 @@ Every setting is one line in one file. To know whether a change is worth making,
 | Where the money without an idea goes: cash, or the benchmark ETF | `IDLE_TO_BENCHMARK`, `BENCHMARK_CAP` in `agents/portfolio_config.py` |
 | Fractional or whole units in the orders | `ORDER_UNIT_DECIMALS` in `data/config.py` (4, or 0 for whole units) |
 | The price an order fills at: the close before its day, or the close of its day | `FILL_AT_PREVIOUS_CLOSE` in `data/config.py` |
-| How fast the agent weights move, and their bounds | `LEARN_*` and `AGENT_WEIGHT_*` in `agents/portfolio_config.py` |
-| The starting weight of each family of agents | `AGENT_FAMILIES` in `data/config.py` |
-| The horizon every score is judged on, and the days of prices the technical score is replayed on | `HORIZON_SESSIONS`, `REVIEW_BACKFILL_DAYS` in `data/config.py` |
+| How fast every weight moves, its bounds, and the first day the technical answers are replayed from | `LEARNING_SPEED`, `WEIGHT_MIN`, `WEIGHT_MAX`, `LEARNING_START` in `data/config.py` |
+| The starting weights: of each family of agents, of the technical answers, of Claude's portfolio | `AGENT_FAMILIES` in `data/config.py`, `SIGNAL_START` in `agents/strategy_config.py`, `TRUST_START` in `agents/portfolio_config.py` |
+| The score of each technical answer | `SIGNAL_SCORES`, `MEAN_REVERSION_SCORES` in `agents/strategy_config.py` |
+| The horizon the LLM scores are asked for, and graded on in the lessons | `HORIZON_SESSIONS` in `data/config.py` |
 | The risk warning levels | `agents/risk_config.py` |
 | The competition rules: capital, trading days, orders per day, benchmark | `data/config.py` |
 | Which Claude model each agent uses | `CLAUDE_MODEL_FAST`, `CLAUDE_MODEL_REASONING` in `.env` |
@@ -90,11 +99,11 @@ qdc-trading/
                portfolio*.py                                            the Portfolio Manager
                risk*.py                                                 the Risk Manager
                logbook.py                                               the audit trail
-  graph/       pipeline.py (one day, step by step) and review_loop.py (what the system learns)
+               learning.py                                              the one learning rule
+  graph/       pipeline.py (one day, step by step) and review_loop.py (the learning step, every morning)
   app/         the Streamlit cockpit: Portfolio, Orders, Research, Logbook
-  backtest/    system_backtest.py replays the whole code-only system on past 3-week windows (results in
-               backtest/results/); the other files are backtests of the technical strategies
-  ml_library/  shared models for those backtests
+  backtest/    system_backtest.py replays the whole code-only system since 2022, learning included (results in
+               backtest/results/); the other files are Achille's studies behind the technical rules
   logs/        everything the agents said and the humans decided (graded evidence, see logs/README.md)
   tests/       one file per module; no test calls the network or Claude
 ```
@@ -113,7 +122,8 @@ These were fixed on day 1 and are defined in `data/schemas.py`. Build your modul
 | Orders | `date, side, ticker, units` (matches the Belfius form) |
 | Holdings | `ticker, units` (cash is tracked separately) |
 | Features | `date, ticker, feature, value` (long format: the 37 indicators of `data/features.py`) |
-| Agent weights | `date, agent, weight, hit_rate` (weights sum to 1 per date) |
+| Weights | `date, level [technical\|agents\|portfolio], name, weight, result` (every weight of the system, every session; weights sum to 1 per date and level) |
+| Technical answers | `date, ticker, suggested_signal, mr_setup, momentum_13612, confirmations, trend_strength, session_return` (what the technical rules said each morning since 2022, and what the ETF then did) |
 | Evidence | `date, factor, source, kind [number\|text\|exploration], value, summary, url` |
 | Macro views | `date, factor, direction [-1,1], confidence, rationale, counter_argument, sources` |
 | ETF views | `date, ticker, direction [-1,1], confidence, rationale, counter_argument, sources, catalyst_date, catalyst` (theme analysts; the catalyst is the next scheduled event for the ETF, when one was found) |
@@ -165,7 +175,7 @@ A day costs about $0.15 of Claude on top of the Macro/News run: the LLM technica
 See what the system has learned, without running a day:
 
 ```bash
-python -m graph.review_loop               # grades the past scores, writes logs/agent_weights.csv and logs/lessons.md
+python -m graph.review_loop               # the learning step alone: writes logs/weights.csv and logs/lessons.md
 ```
 
 Test a setting or an idea on the past (about 10 minutes for every variant, 1 minute for one):
@@ -203,7 +213,7 @@ data distributor). Create a free key on eodhd.com and add `EODHD_API_KEY=...` to
 
 | Person | Scope |
 |---|---|
-| Axel | Macro / News agent · LangGraph pipeline and review loop · Streamlit cockpit · repo management |
+| Axel | Macro / News agent · LangGraph pipeline and learning · Streamlit cockpit · repo management |
 | Achille | Data agent · ETF mapping · Technical agent · backtests |
 | Alexander | Portfolio Manager · Risk Manager · Logbook |
 
