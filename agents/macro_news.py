@@ -23,7 +23,6 @@ Daily run (every business day):
     python -m agents.macro_news --force          # run a date again (otherwise read back from logs/)
 """
 import argparse
-from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
@@ -175,45 +174,65 @@ def register_sources(registry: pd.DataFrame, ev: pd.DataFrame, as_of: date) -> p
     return registry
 
 
-def update_source_hit_rates(as_of: date, returns: Mapping[str, float], logs_dir: Path | None = None,
-                            exposure: pd.DataFrame | None = None) -> dict:
-    """Grade the macro views of `as_of` against the ETF returns that followed. Called by the review loop.
+def grade_views(logs: Path, table: pd.DataFrame, exposure: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Every past macro view that can be judged: date, factor, direction, move, hit, sources.
 
-    returns: realised return per ticker over the period the views were for.
-    A view is right when its direction has the sign of the factor's realised move, measured as the
-    exposure-weighted return of the ETFs exposed to that factor. Every source a view cites gets one more
-    use and a new hit rate. A source wrong too often is dropped; a source on trial that is right often
-    enough is proposed as a regular source (a person decides, the status is not changed automatically).
-    """
-    logs = Path(logs_dir) if logs_dir else settings.LOGS_DIR
-    views = pd.read_csv(logs / "macro_views.csv")
-    views = validate_macro_views(views[views["date"].astype(str) == as_of.isoformat()])
-    registry = load_registry(logs).set_index("source")
+    `table`: closes before the day of the review (agents/macro_tape.closes). A view of day T is judged on the
+    move of the ETFs exposed to its factor (exposure-weighted, leverage included) from the last close before T
+    to HORIZON_SESSIONS sessions later. It is right when it has the sign of that move. A view smaller than
+    macro_tape.MIN_CALL is no call."""
+    columns = ["date", "factor", "direction", "move", "hit", "sources"]
+    path = logs / "macro_views.csv"
+    if not path.exists() or table.empty:
+        return pd.DataFrame(columns=columns)
+    views = pd.read_csv(path)
     exposure = load_exposure() if exposure is None else exposure
-    table = exposure.set_index("ticker")
-    realised = pd.Series(returns, dtype=float).dropna()
-    effective = table[MACRO_FACTORS].mul(table["multiplier"], axis=0).reindex(realised.index).dropna()
-    graded = 0
-    for v in views.itertuples():
-        exposed = effective[v.factor]
-        if v.direction == 0 or exposed.abs().sum() == 0:
-            continue
-        move = float((exposed * realised[exposed.index]).sum() / exposed.abs().sum())
-        hit = float(np.sign(move) == np.sign(v.direction))
-        graded += 1
-        for source in split_list(v.sources):
-            if source not in registry.index:
+    effective = exposure.set_index("ticker")[MACRO_FACTORS].mul(exposure.set_index("ticker")["multiplier"], axis=0)
+    rows = []
+    for day, day_views in views.groupby(views["date"].astype(str).str[:10]):
+        everything = pd.DataFrame({"date": day, "ticker": effective.index, "direction": 1.0})
+        realised = macro_tape.grade_calls(everything, table, pd.Series(dtype=float)).set_index("ticker")["ret"]
+        if realised.empty:
+            continue  # no close after that day yet
+        for v in day_views.itertuples():
+            exposed = effective[v.factor].reindex(realised.index).dropna()
+            if abs(v.direction) < macro_tape.MIN_CALL or exposed.abs().sum() == 0:
                 continue
-            n = int(registry.at[source, "n_uses"])
-            previous = registry.at[source, "hit_rate"]
-            registry.at[source, "hit_rate"] = hit if n == 0 or pd.isna(previous) else (previous * n + hit) / (n + 1)
-            registry.at[source, "n_uses"] = n + 1
+            move = float((exposed * realised[exposed.index]).sum() / exposed.abs().sum())
+            rows.append({"date": day, "factor": v.factor, "direction": float(v.direction), "move": move,
+                         "hit": bool(np.sign(move) == np.sign(v.direction)), "sources": v.sources})
+    return pd.DataFrame(rows, columns=columns)
+
+
+def review_sources(logs_dir: Path | None, table: pd.DataFrame, exposure: pd.DataFrame | None = None) -> dict:
+    """Grade every source on the views that cited it, and update logs/source_registry.csv. Called by the review loop.
+
+    Stateless: uses and hit rates are recomputed from all the views that can be judged, so running it twice
+    changes nothing. A source on trial (found by exploration) that is wrong too often is dropped, and one
+    that is right often enough is proposed as a regular source. A regular source is never dropped by code:
+    the weak ones are listed for a person to decide.
+    Returns {graded: the judged views, dropped, weak, propose_active}."""
+    logs = Path(logs_dir) if logs_dir else settings.LOGS_DIR
+    graded = grade_views(logs, table, exposure)
+    registry = load_registry(logs)
+    if registry.empty:
+        return {"graded": graded, "dropped": [], "weak": [], "propose_active": []}
+    registry = registry.set_index("source")
+    uses, hits = {}, {}
+    for v in graded.itertuples():
+        for source in split_list(v.sources):
+            uses[source] = uses.get(source, 0) + 1
+            hits[source] = hits.get(source, 0) + int(v.hit)
+    registry["n_uses"] = [uses.get(source, 0) for source in registry.index]
+    registry["hit_rate"] = [hits[source] / uses[source] if uses.get(source) else np.nan for source in registry.index]
     mature = registry["n_uses"] >= settings.SOURCE_MIN_USES
-    drop = mature & (registry["hit_rate"] < settings.SOURCE_DROP_HIT_RATE) & (registry["status"] != "dropped")
+    below = mature & (registry["hit_rate"] < settings.SOURCE_DROP_HIT_RATE)
+    drop = below & (registry["status"] == "testing")
     registry.loc[drop, "status"] = "dropped"
+    weak = below & (registry["status"] == "active")
     propose = mature & (registry["status"] == "testing") & (registry["hit_rate"] >= settings.SOURCE_PROMOTE_HIT_RATE)
     save_registry(logs, registry.reset_index())
-    return {"graded_views": graded, "dropped": sorted(registry.index[drop]),
+    return {"graded": graded, "dropped": sorted(registry.index[drop]), "weak": sorted(registry.index[weak]),
             "propose_active": sorted(registry.index[propose])}
 
 
@@ -260,7 +279,7 @@ def brief(as_of: date, views: pd.DataFrame, etf_views: pd.DataFrame | None, sign
     """What matters for the next sessions, first in the report and short: the events ahead, the analysts'
     strongest calls, the macro views in one line. Built by code from the run's own output."""
     lines = ["## Brief for the Portfolio Manager", "",
-             f"Horizon: the next {settings.MACRO_HORIZON_SESSIONS} trading sessions."]
+             f"Horizon: the next {settings.HORIZON_SESSIONS} trading sessions."]
     if grades is not None and len(grades):
         right, total = macro_tape.record(grades)
         if total:
@@ -314,14 +333,14 @@ def render(as_of: date, views: pd.DataFrame, ev: pd.DataFrame, failures: dict[st
         tape = "the tape of each ETF and their own graded calls" if table is not None and len(table) else "no prices"
         lines += ["", "## ETF analysts", "",
                   f"{len(etf_views)} ETFs scored by the theme analysts over the next "
-                  f"{settings.MACRO_HORIZON_SESSIONS} sessions. They read {tape} before judging. "
+                  f"{settings.HORIZON_SESSIONS} sessions. They read {tape} before judging. "
                   f"{AGENT_MARKET} = the views above through the exposure table; {AGENT_ETF} = analyst view x leverage. "
                   "Strongest analyst scores first."]
         if grades is not None and len(grades):
             right, total = macro_tape.record(grades)
             lines += ["", f"Analysts' record before today: {right} of {total} past calls right"
                           + (f" ({right / total:.0%})" if total else "") + f", graded over up to "
-                          f"{settings.MACRO_HORIZON_SESSIONS} sessions ({len(grades) - total} were no call)."]
+                          f"{settings.HORIZON_SESSIONS} sessions ({len(grades) - total} were no call)."]
         lines += ["", f"| ETF | {AGENT_MARKET} | {AGENT_ETF} | Next catalyst | Analyst rationale |", "|---|---|---|---|---|"]
         by_ticker = etf_views.reindex(columns=ETF_VIEWS).set_index("ticker")
         for ticker, r in scores.reindex(scores[AGENT_ETF].abs().sort_values(ascending=False).index).iterrows():

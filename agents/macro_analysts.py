@@ -104,7 +104,7 @@ GENERIC_BRIEF = "holdings, sector and macro drivers, flows, positioning and upco
 
 def system_prompt(theme: str, as_of: date) -> str:
     return SYSTEM.format(theme=theme, today=as_of.isoformat(), brief=THEME_BRIEFS.get(theme, GENERIC_BRIEF),
-                         searches=settings.MACRO_ANALYST_SEARCHES, sessions=settings.MACRO_HORIZON_SESSIONS,
+                         searches=settings.MACRO_ANALYST_SEARCHES, sessions=settings.HORIZON_SESSIONS,
                          untrusted=UNTRUSTED)
 
 

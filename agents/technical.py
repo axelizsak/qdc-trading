@@ -14,9 +14,11 @@ Output:
      - mean reversion setup: buy / avoid / none / n/a
        oversold or overbought by Connors RSI 2, Bollinger z-score 20, Donchian 20-day channel
      - rebound done: price back above its SMA 5 (Connors exit)
-  2. run: the momentum suggested signal in the Signals format (agent technical_det), for the pipeline.
-     The mean reversion answers are in the sheet and the rationale; how to combine both into one
-     score is decided after their backtests. The LLM layer (technical_llm) comes later.
+  2. run: two scores per ETF in the Signals format, for the pipeline.
+     - technical_det: the momentum suggested signal, by rule. The mean reversion answers are in the sheet
+       and the rationale; how to combine both into one rule is decided after their backtests.
+     - technical_llm: the LLM's own score from the same sheet (agents/technical_llm.py). It weighs what the
+       rules cannot: a buy setup on a stretched ETF, a trend without confirmation, an inverse ETF.
 
 Leveraged and inverse ETFs: direction and strength are read on the underlying index
 (column `underlying` of data/etf_universe.csv), then reversed for an inverse ETF.
@@ -28,6 +30,7 @@ import numpy as np
 import pandas as pd
 
 from agents import strategy_config as cfg
+from agents import technical_llm
 from data.features import signal_prices
 from data.schemas import validate_signals
 from data.universe import load_universe
@@ -480,7 +483,13 @@ def signals_from_sheet(sheet: pd.DataFrame) -> pd.DataFrame:
     return validate_signals(pd.DataFrame(rows, columns=["ticker", "date", "agent", "score", "confidence", "rationale"]))
 
 
-def run(prices: pd.DataFrame, features: pd.DataFrame, as_of: date, lessons: str = "") -> pd.DataFrame:
-    """Signals format, agent technical_det only for now (technical_llm comes later)."""
+def run(prices: pd.DataFrame, features: pd.DataFrame, as_of: date, lessons: str = "", client=None,
+        use_llm: bool = True) -> pd.DataFrame:
+    """Signals format: one technical_det row per scored ETF, and its technical_llm row when the LLM layer
+    answered (it needs ANTHROPIC_API_KEY; without it, or with use_llm=False, only technical_det)."""
     sheet = build_sheet(prices, features, as_of)
-    return signals_from_sheet(sheet)
+    det = signals_from_sheet(sheet)
+    if not use_llm or sheet.empty:
+        return det
+    llm = technical_llm.interpret(sheet, as_of, lessons, client)
+    return validate_signals(pd.concat([det, llm], ignore_index=True)) if len(llm) else det

@@ -7,7 +7,7 @@
 
 An analyst of day T knows the closes up to T-1, so everything here uses quotes before the day only.
 A call of day T is graded like the Portfolio Manager grades a score: from the last close before T to the
-close MACRO_HORIZON_SESSIONS sessions later (fewer while those closes are not known yet).
+close HORIZON_SESSIONS sessions later (fewer while those closes are not known yet).
 """
 from datetime import date
 
@@ -58,7 +58,7 @@ def grade_calls(views: pd.DataFrame | None, table: pd.DataFrame, leverage: pd.Se
     """Every past call that can be judged, one row each (GRADES): the return of the ETF from the last close
     before the call to `sessions` sessions later, and whether the call had its sign (None for "no call").
     `leverage` (per ticker, negative for an inverse ETF) turns a view on the underlying into one on the ETF."""
-    sessions = settings.MACRO_HORIZON_SESSIONS if sessions is None else sessions
+    sessions = settings.HORIZON_SESSIONS if sessions is None else sessions
     rows = []
     if views is None or views.empty or table.empty:
         return pd.DataFrame(columns=GRADES)

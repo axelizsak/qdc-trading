@@ -157,30 +157,38 @@ def test_exposure_table_covers_the_universe():
 
 # --- Hit rates -------------------------------------------------------------------------------
 
-def test_hit_rates_update_and_wrong_sources_are_dropped(tmp_path, monkeypatch):
+def test_sources_are_graded_on_the_views_that_cited_them(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "SOURCE_MIN_USES", 1)
+    pd.DataFrame([{"source": name, "kind": "text", "factors": "oil", "status": status, "first_seen": "2026-12-01",
+                   "n_uses": 0, "hit_rate": np.nan}
+                  for name, status in (("trial_right", "testing"), ("trial_wrong", "testing"), ("regular_wrong", "active"))]
+                 ).to_csv(tmp_path / "source_registry.csv", index=False)
+    view = {"date": "2026-12-04", "confidence": 0.7, "rationale": "r", "counter_argument": "c"}
     pd.DataFrame([
-        {"source": "good", "kind": "number", "factors": "oil", "status": "testing", "first_seen": "2026-12-01",
-         "n_uses": 0, "hit_rate": np.nan},
-        {"source": "bad", "kind": "text", "factors": "oil", "status": "active", "first_seen": "2026-12-01",
-         "n_uses": 0, "hit_rate": np.nan},
-    ]).to_csv(tmp_path / "source_registry.csv", index=False)
-    pd.DataFrame([
-        {"date": "2026-12-07", "factor": "oil", "direction": 0.8, "confidence": 0.7, "rationale": "r",
-         "counter_argument": "c", "sources": "good"},
-        {"date": "2026-12-07", "factor": "risk_appetite", "direction": 0.5, "confidence": 0.5, "rationale": "r",
-         "counter_argument": "c", "sources": "bad"},
+        {**view, "factor": "oil", "direction": 0.8, "sources": "trial_right"},
+        {**view, "factor": "risk_appetite", "direction": 0.5, "sources": "trial_wrong;regular_wrong"},
+        {**view, "factor": "crypto", "direction": 0.05, "sources": "trial_wrong"},  # too small: no call
+        {**view, "date": "2026-12-07", "factor": "oil", "direction": -0.9, "sources": "trial_right"},  # not judged yet
     ]).to_csv(tmp_path / "macro_views.csv", index=False)
-    returns = {t: -0.02 for t in tickers()}
-    returns.update({"OIL & GAS E&P": 0.05, "WORLD ENERGY": 0.04})
+    # after 3 Dec the oil ETFs rise and everything else falls
+    rows = [{"date": day, "ticker": t, "close_eur": 100.0 * (1 + step * (0.02 if t in ("OIL & GAS E&P", "WORLD ENERGY") else -0.01))}
+            for t in tickers() for step, day in enumerate(["2026-12-03", "2026-12-04", "2026-12-05", "2026-12-06"])]
+    table = macro_tape.closes(pd.DataFrame(rows), DAY)
 
-    result = macro_news.update_source_hit_rates(DAY, returns, tmp_path)
+    result = macro_news.review_sources(tmp_path, table)
 
+    graded = result["graded"].set_index("factor")
+    assert list(graded.index) == ["oil", "risk_appetite"] and graded["hit"].tolist() == [True, False]
     registry = pd.read_csv(tmp_path / "source_registry.csv").set_index("source")
-    assert result["graded_views"] == 2
-    assert registry.loc["good", "hit_rate"] == 1 and registry.loc["good", "n_uses"] == 1
-    assert result["propose_active"] == ["good"] and registry.loc["good", "status"] == "testing"
-    assert result["dropped"] == ["bad"] and registry.loc["bad", "status"] == "dropped"
+    assert registry.loc["trial_right", ["n_uses", "hit_rate", "status"]].tolist() == [1, 1.0, "testing"]
+    assert result["propose_active"] == ["trial_right"]
+    assert result["dropped"] == ["trial_wrong"] and registry.loc["trial_wrong", "status"] == "dropped"
+    # a regular source is never dropped by code: it is listed for a person to decide
+    assert result["weak"] == ["regular_wrong"] and registry.loc["regular_wrong", "status"] == "active"
+
+    again = macro_news.review_sources(tmp_path, table)  # running it twice changes nothing
+    assert pd.read_csv(tmp_path / "source_registry.csv").set_index("source")["n_uses"].to_dict() == registry["n_uses"].to_dict()
+    assert again["dropped"] == []  # already dropped
 
 
 # --- Collectors ------------------------------------------------------------------------------

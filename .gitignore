@@ -3,6 +3,10 @@
 anthropic_api_key.*
 .streamlit/secrets.toml
 
+# Notebooks stay out of the repo: explore locally, commit Python modules
+*.ipynb
+notebooks/
+
 # Python
 .venv/
 venv/
