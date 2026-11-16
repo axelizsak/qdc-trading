@@ -259,7 +259,7 @@ def fill_price(closes: pd.DataFrame, ticker: str, day: str) -> tuple[float, str]
     """(price, date of that price): the last close before `day`, or None when there is none."""
     if ticker not in closes.columns:
         return None
-    before = closes.loc[closes.index < day, ticker].dropna()
+    before = closes.loc[settings.fills_from(closes.index, day), ticker].dropna()
     return (float(before.iloc[-1]), str(before.index[-1])) if len(before) else None
 
 
@@ -281,7 +281,7 @@ def book_events(logs: Path, day: str, closes: pd.DataFrame) -> list[dict]:
         units[r.ticker] = units.get(r.ticker, 0.0) + sign * float(r.units)
         if r.date == day:
             out.append(_event(day, "fill", "code", f"{r.side} {_text(r.units)} {r.ticker} @ {price:.2f}",
-                              f"computed: close of {price_date} (last close before the order day), value "
+                              f"computed: close of {price_date} ({settings.fill_rule()}), value "
                               f"{float(r.units) * price:,.2f} EUR", "orders.csv", ticker=r.ticker,
                               data={"price": price, "units": float(r.units), "side": r.side}))
     on_day = closes.loc[closes.index <= day] if len(closes) else closes

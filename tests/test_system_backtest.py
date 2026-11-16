@@ -77,3 +77,23 @@ def test_the_summary_has_one_row_per_variant(market):
     assert summary["variant"].tolist() == ["current", "skip_overbought"] and (summary["windows"] == 2).all()
     assert summary["mean_excess"].tolist() == pytest.approx((summary["mean_ret"] - summary["mean_bench"]).tolist())
     assert "current" in sb.show(summary)
+
+
+def test_the_fill_rule_study_measures_what_ordering_after_the_open_is_worth(market):
+    data, _ = market
+    study = sb.fill_rule_study(data)
+    assert len(study) > 0 and set(pd.to_datetime(study["day"]).dt.day_of_week) <= {0, 3}  # Mondays and Thursdays
+    # the 5 biggest opening gaps are above the fill price at the open, and the day's 5 best ETFs are the ceiling
+    assert (study["morning_gap"] > 0).all()
+    assert (study["close_picks"] >= study["morning_picks"] - 1e-12).all() and (study["close_picks"] >= study["average_etf"]).all()
+    assert "trading days of the morning picks" in sb.show_fill_rule(study)
+
+
+def test_the_other_fill_rule_is_a_variant(market):
+    data, starts = market
+    same_day = next(v for v in sb.VARIANTS if v.name == "fill_same_day")
+    row = sb.run_window(data, starts[0], same_day)
+    assert row["broken_rules"] == 0  # the larger cash cushion covers a close above the last one
+    assert settings.FILL_AT_PREVIOUS_CLOSE is True  # put back after the run
+    current = sb.run_window(data, starts[0], sb.VARIANTS[0])
+    assert row["ret"] != current["ret"]  # a different fill price gives a different result

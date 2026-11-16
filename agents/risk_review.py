@@ -22,6 +22,7 @@ import pandas as pd
 from agents import portfolio_learning
 from agents import risk_config as cfg
 from agents.portfolio_config import MARKET_TICKER
+from data import config as settings
 from data.schemas import RISK_REPORT
 
 RISK_LOG = ["date", "kind", "name", "value"]
@@ -55,7 +56,7 @@ def load_log(logs_dir: Path | str) -> pd.DataFrame:
 def _path(table: pd.DataFrame, weights: pd.Series, day: str, quotes: int) -> pd.Series | None:
     """Daily returns of fixed `weights` over the `quotes` quotes after the fill price of `day` (the last close before it).
     Fewer quotes are returned when fewer are known; None when there are none."""
-    before = np.flatnonzero(table.index < day)
+    before = np.flatnonzero(settings.fills_from(table.index, day))
     if len(before) == 0 or before[-1] + 1 >= len(table):
         return None
     start = before[-1]

@@ -110,10 +110,11 @@ def portfolio_history(log: pd.DataFrame | None, prices: pd.DataFrame) -> pd.Data
     done["signed"] = done["units"].astype(float).where(done["side"] == "BUY", -done["units"].astype(float))
     quotes = (prices.assign(date=prices["date"].astype(str))
               .pivot(index="date", columns="ticker", values="close_eur").sort_index())
-    before_first = quotes.index[quotes.index < done["date"].min()]
+    before_first = quotes.index[quotes.index < done["date"].min()]  # the chart starts the day before the first order
     if len(before_first) == 0 or settings.BENCHMARK not in quotes.columns:
         return empty
-    done["fill"] = [quotes.loc[quotes.index < d, t].dropna().iloc[-1] for d, t in zip(done["date"], done["ticker"])]
+    done["fill"] = [quotes.loc[settings.fills_from(quotes.index, d), t].dropna().iloc[-1]
+                    for d, t in zip(done["date"], done["ticker"])]
     close = quotes.ffill()
     close = close[close.index >= before_first[-1]]
     rows = []

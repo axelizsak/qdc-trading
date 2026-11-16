@@ -684,3 +684,15 @@ def test_orders_are_in_whole_units_when_the_form_takes_no_fraction(prices, signa
     half = orders.head(1).assign(units=2.5)
     assert pipeline.check_orders(half, NO_HOLDINGS, 10_000.0, prices, DAY) == [f"Whole units only: {half['ticker'].iloc[0]}"]
     assert pipeline.fmt_units(3.0) == "3"
+
+
+def test_orders_keep_a_margin_when_they_fill_at_a_close_not_known_yet(prices, signals, monkeypatch):
+    _, before, _ = propose(prices, signals)
+    monkeypatch.setattr(settings, "FILL_AT_PREVIOUS_CLOSE", False)
+    _, same_day, _ = propose(prices, signals)
+    last = portfolio.last_closes(prices, DAY, before=False)
+    cost = lambda orders, move: float((orders["units"] * orders["ticker"].map(last) * (1 + move)).sum())  # noqa: E731
+    assert cost(same_day, 0) < cost(before, 0)  # fewer units bought: cash is kept for a higher close
+    assert cost(same_day, cfg.SAME_DAY_CUSHION) <= 10_000.0 + 0.01  # still funded if every ETF closes 5 % higher
+    # every buy is sized as if it filled 5 % above the last close
+    assert cost(same_day, 0) == pytest.approx(cost(before, 0) / (1 + cfg.SAME_DAY_CUSHION), rel=0.01)

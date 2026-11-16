@@ -43,9 +43,9 @@ from data.universe import load_universe
 # --- The portfolio after the orders ---------------------------------------------------------------------
 
 def fill_prices(prices: pd.DataFrame, as_of: date) -> pd.Series:
-    """Last close before `as_of` per ticker: the price an order of the day fills at."""
+    """The price an order of the day fills at, per ticker (the rule: settings.fills_from)."""
     day = pd.to_datetime(prices["date"]).dt.strftime("%Y-%m-%d")
-    rows = prices[day < as_of.isoformat()].assign(_day=day).sort_values("_day")
+    rows = prices[settings.fills_from(day, as_of.isoformat())].assign(_day=day).sort_values("_day")
     return rows.groupby("ticker")["close_eur"].last().astype(float)
 
 

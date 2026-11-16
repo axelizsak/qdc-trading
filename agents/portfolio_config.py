@@ -25,6 +25,7 @@ EXPOSURE_BASE = 0.85          # invested share when the market view is neutral
 EXPOSURE_SLOPE = 0.30         # + this x the market ETF's final score (in [-1, 1])
 EXPOSURE_MIN = 0.40
 EXPOSURE_MAX = 0.99           # a cash cushion of 1 %: the fill price is only known to the cent
+SAME_DAY_CUSHION = 0.05       # only when an order fills at the close of its own day: a buy is funded 5 % above the last close, a sell 5 % below
 BASELINE_POSITIONS = 8        # ETFs in the baseline
 BASELINE_CAP = 0.30           # baseline only: largest single weight
 MIN_ENTRY_SCORE = 0.15        # baseline only: final score needed to enter

@@ -20,8 +20,9 @@ idea is a new way to read the sheet), then run:
     python -m backtest.system_backtest --variants current no_timing --since 2024-01-01
 
 Results, in backtest/results/: system_backtest.csv (one row per variant and window),
-system_backtest_summary.csv (one row per variant) and system_backtest_signals.csv (what each answer of the
-technical sheet was worth over the next 1 to 15 sessions). The summary and the signal study are printed.
+system_backtest_summary.csv (one row per variant), system_backtest_signals.csv (what each answer of the
+technical sheet was worth over the next 1 to 15 sessions) and system_backtest_fill_rule.csv (what the rule
+"an order fills at the previous close" is worth to someone who orders after the open). All three are printed.
 
 How to read the summary: windows start every week and last three, so they overlap; the t-value of the
 mean excess return counts them as one third as many. Below about 2 in absolute value, the difference
@@ -112,9 +113,14 @@ VARIANTS = [
     Variant("fewer_positions", "5 positions at most instead of 15 (optimiser) and 8 (baseline)",
             {"portfolio_config.OPTIMIZER_POSITIONS": 5, "portfolio_config.BASELINE_POSITIONS": 5}),
     Variant("cap_20", "one ETF at most 20% instead of 30%", {"portfolio_config.MAX_POSITION": 0.20}),
+    Variant("risk_aversion_2", "the optimiser fears risk less (2 instead of 5)", {"portfolio_config.RISK_AVERSION": 2.0}),
+    Variant("risk_aversion_1", "the optimiser fears risk much less (1 instead of 5)", {"portfolio_config.RISK_AVERSION": 1.0}),
     Variant("no_leverage", "no leveraged or inverse ETF at all", {"portfolio_config.MAX_LEVERAGED_SHARE": 0.0}),
     Variant("benchmark_allowed", "the code portfolios may buy the benchmark ETF itself",
             {"portfolio_config.BENCHMARK_ALLOWED": True}),
+    # The competition's fill rule (to confirm with Belfius): the same system if an order fills at its own day's close
+    Variant("fill_same_day", "an order fills at the close of its own day instead of the close before",
+            {"config.FILL_AT_PREVIOUS_CLOSE": False}),
     # How the technical sheet becomes a score
     Variant("skip_overbought", "no entry on an ETF the mean-reversion measures call overbought", score="skip_overbought"),
     Variant("buy_the_dip", "+0.5 on an oversold ETF whose long-term trend is not down", score="buy_the_dip"),
@@ -164,8 +170,11 @@ class Market:
         return self.prices[(self.prices["date"] < stamp) & (self.prices["date"] >= stamp - pd.Timedelta(days=days))]
 
     def fill(self, day: date) -> pd.Series:
-        """Last close before `day`, per ticker: the price an order of `day` fills at."""
-        return self.closes[self.closes.index < pd.Timestamp(day)].ffill().iloc[-1].dropna()
+        """The price an order of `day` fills at, per ticker: the last close before it, or its own close
+        (FILL_AT_PREVIOUS_CLOSE in data/config.py)."""
+        stamp = pd.Timestamp(day)
+        known = self.closes.index < stamp if settings.FILL_AT_PREVIOUS_CLOSE else self.closes.index <= stamp
+        return self.closes[known].ffill().iloc[-1].dropna()
 
     def close(self, day: date) -> pd.Series:
         """Last close on or before `day`, per ticker: what a holding is worth that evening."""
@@ -347,6 +356,52 @@ def show_study(study: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
+def fill_rule_study(market: Market, picks: int = 5) -> pd.DataFrame:
+    """What the rule "an order of day T fills at the close of T-1" is worth to someone who orders after the
+    market has opened. One row per past Monday and Thursday:
+      average_etf      the return of the average ETF from the close of T-1 to the close of T
+      morning_picks    the same for the `picks` ETFs with the largest opening gap (known minutes after the open)
+      morning_gap      how far above the fill price those ETFs already were at the open
+      morning_up       the share of those picks that ended the day above their fill price
+      close_picks      the same return for the `picks` best ETFs of the day (an order sent at the close): the ceiling
+    Under the other rule (a fill at the close of T itself) all of this is zero: the price paid is the price of the
+    moment. The study says how much the answer to "which rule, and until when can we order?" matters."""
+    prices = market.prices
+    closes = prices.pivot(index="date", columns="ticker", values="close_eur").sort_index()
+    opens = prices.pivot(index="date", columns="ticker", values="open_eur").sort_index()
+    before = closes.shift(1)
+    day_return, gap = closes / before - 1, opens / before - 1
+    first = min(market.sheets) if market.sheets else closes.index.min().date()
+    rows = []
+    for day in closes.index[closes.index >= pd.Timestamp(first)]:
+        if day.weekday() not in (0, 3):
+            continue
+        returns, gaps = day_return.loc[day].dropna(), gap.loc[day].dropna()
+        both = returns.index.intersection(gaps.index)
+        if len(both) < 4 * picks:
+            continue
+        returns, gaps = returns[both], gaps[both]
+        chosen = gaps.nlargest(picks).index
+        rows.append({"day": day.date().isoformat(), "average_etf": returns.mean(), "morning_picks": returns[chosen].mean(),
+                     "morning_gap": gaps[chosen].mean(), "morning_up": float((returns[chosen] > 0).mean()),
+                     "close_picks": returns.nlargest(picks).mean()})
+    return pd.DataFrame(rows)
+
+
+def show_fill_rule(study: pd.DataFrame) -> str:
+    if study.empty:
+        return "no day to study"
+    mean = study.mean(numeric_only=True)
+    days = len(settings.TRADING_DAYS)
+    return (f"On {len(study)} past Mondays and Thursdays, from the close before to the close of the day:\n"
+            f"  the average ETF                                   {mean['average_etf']:+.2%}\n"
+            f"  the 5 ETFs with the largest opening gap           {mean['morning_picks']:+.2%}   "
+            f"(already {mean['morning_gap']:+.2%} at the open; {mean['morning_up']:.0%} of them end the day up; "
+            f"worst day {study['morning_picks'].min():+.1%})\n"
+            f"  the 5 best ETFs of the day (order sent at the close) {mean['close_picks']:+.2%}\n"
+            f"  {days} trading days of the morning picks, compounded: {(1 + mean['morning_picks']) ** days - 1:+.1%}")
+
+
 # --- Every window of every variant, in parallel ------------------------------------------------------------------
 
 _MARKET: Market | None = None
@@ -445,13 +500,17 @@ def main(argv: list[str] | None = None) -> None:
     results = results.sort_values(["variant", "start"], key=lambda c: c.map(order) if c.name == "variant" else c)
     summary = summarise(results, market, variants)
     study = signal_study(market)
+    rule = fill_rule_study(market)
     RESULTS.mkdir(exist_ok=True)
     results.to_csv(known, index=False)
     summary.to_csv(RESULTS / "system_backtest_summary.csv", index=False)
     study.to_csv(RESULTS / "system_backtest_signals.csv", index=False)
+    rule.to_csv(RESULTS / "system_backtest_fill_rule.csv", index=False)
     print(show(summary))
     print("\nWhat the technical sheet is worth (* = at least 2 standard errors from zero):\n" + show_study(study))
-    print(f"\nWritten in {RESULTS}: system_backtest.csv, system_backtest_summary.csv, system_backtest_signals.csv")
+    print("\nWhat the fill rule is worth (an order of day T filled at the close of T-1):\n" + show_fill_rule(rule))
+    print(f"\nWritten in {RESULTS}: system_backtest.csv, system_backtest_summary.csv, system_backtest_signals.csv, "
+          "system_backtest_fill_rule.csv")
 
 
 if __name__ == "__main__":

@@ -21,6 +21,24 @@ load_dotenv(ROOT / ".env")
 START_CAPITAL_EUR = 10_000
 BENCHMARK = "WORLD"  # iShares Core MSCI World, "Global equity (benchmark)" in the Belfius ETF list
 MAX_ORDERS_PER_DAY = 5
+# The price an order of day T fills at. True: the last close before T (what the team understood from Belfius, and
+# one slide of their deck). False: the close of T itself (another slide). Every module reads this one setting:
+# the book, the cash check, the Portfolio and Risk Managers, the logbook, the grading and the backtest.
+# It is not a detail: backtest/README.md shows what the difference is worth. To confirm with Belfius.
+FILL_AT_PREVIOUS_CLOSE = True
+
+
+def fill_rule() -> str:
+    """The rule in words, for the memos and the cockpit."""
+    return "the last close before its day" if FILL_AT_PREVIOUS_CLOSE else "the close of its own day"
+
+
+def fills_from(days, order_day: str):
+    """Which quote days (ISO strings) an order of `order_day` can fill at: the fill price is the last close
+    among them. Strictly before the order day under FILL_AT_PREVIOUS_CLOSE, up to it otherwise."""
+    return days < order_day if FILL_AT_PREVIOUS_CLOSE else days <= order_day
+
+
 # Decimals of an order's units. 4 = fractional units (what the team understood from Belfius, to confirm on the
 # order form). Set it to 0 if the form only takes whole units: the Portfolio Manager then sizes in whole units.
 ORDER_UNIT_DECIMALS = 4

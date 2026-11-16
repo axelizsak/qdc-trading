@@ -67,7 +67,7 @@ def grade_calls(views: pd.DataFrame | None, table: pd.DataFrame, leverage: pd.Se
         if view.ticker not in table.columns:
             continue
         quotes = table[view.ticker].dropna()
-        before = int((quotes.index < day).sum())  # quotes the analyst knew: the last one is the starting price
+        before = int(settings.fills_from(quotes.index, day).sum())  # the last of them is the fill price: the start
         known = min(sessions, len(quotes) - before)
         if before == 0 or known < 1:
             continue

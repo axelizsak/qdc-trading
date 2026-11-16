@@ -259,8 +259,8 @@ def load_book(logs: Path, prices: pd.DataFrame, as_of: date,
     """Holdings and cash before `as_of` (or after its orders, `with_the_day`), rebuilt from the executed
     orders of the same book (see same_book) in <logs>/orders.csv.
 
-    An order fills at the last close before its day (see fill_prices), as in the Portfolio Manager,
-    the Risk Manager and the Logbook.
+    An order fills at the price of fill_prices (the rule is one setting, FILL_AT_PREVIOUS_CLOSE), as in the
+    Portfolio Manager, the Risk Manager and the Logbook.
     """
     cash = float(settings.START_CAPITAL_EUR)
     path = logs / "orders.csv"
@@ -277,7 +277,8 @@ def load_book(logs: Path, prices: pd.DataFrame, as_of: date,
     signed = units.where(done["side"] == "BUY", -units)
     close = (prices.assign(date=prices["date"].astype(str))
              .pivot(index="date", columns="ticker", values="close_eur").sort_index())
-    fills = [close.loc[close.index < d, t].dropna().iloc[-1] for d, t in zip(done["date"].astype(str), done["ticker"])]
+    fills = [close.loc[settings.fills_from(close.index, d), t].dropna().iloc[-1]
+             for d, t in zip(done["date"].astype(str), done["ticker"])]
     cash -= float((signed * fills).sum())
     position = signed.groupby(done["ticker"]).sum()
     holdings = position[position > 0].rename("units").rename_axis("ticker").reset_index()
@@ -288,10 +289,11 @@ GATE_NAMES = {"orders": "orders review", "risk": "risk review", "summary": "summ
 
 
 def fill_prices(prices: pd.DataFrame, as_of: date) -> pd.Series:
-    """The price an order of `as_of` fills at, per ticker: the last close before that day, on the ETF's
-    own exchange (the Belfius rule the team confirmed). Every module values an order this way."""
-    day = prices["date"].astype(str)
-    p = prices[day < as_of.isoformat()].assign(_day=day).sort_values("_day")
+    """The price an order of `as_of` fills at, per ticker, on the ETF's own exchange: the last close before
+    that day, or the close of that day itself (FILL_AT_PREVIOUS_CLOSE in data/config.py). Every module values
+    an order this way. While the day's close is not known yet, both rules give the last close known."""
+    day = prices["date"].astype(str).str[:10]
+    p = prices[settings.fills_from(day, as_of.isoformat())].assign(_day=day).sort_values("_day")
     return p.groupby("ticker")["close_eur"].last().astype(float)
 
 
@@ -414,7 +416,7 @@ def executive_summary(state: DayState, as_of: date) -> str:
             known = price is not None and pd.notna(price)
             lines.append(f"| {o.side} | {o.ticker} | {fmt_units(o.units)} | {f'€{price:,.2f}' if known else 'no price'} "
                          f"| {f'€{float(o.units) * price:,.0f}' if known else '—'} |")
-        lines += ["", "An order fills at the last close before the day."]
+        lines += ["", f"An order fills at {settings.fill_rule()}."]
         lines += ["", f"Cash: €{cash:,.0f} now, €{cash_after(orders, cash, close):,.0f} after the orders."]
     changes = order_notes(state.get("human_decisions", []))
     if changes:

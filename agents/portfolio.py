@@ -116,9 +116,9 @@ def last_closes(prices: pd.DataFrame, as_of: date, before: bool) -> pd.Series:
 
 
 def fill_dates(prices: pd.DataFrame, as_of: date) -> pd.Series:
-    """Date of the fill price (the last quote before `as_of`) per ticker, as ISO strings."""
+    """Date of the fill price of an order of `as_of` per ticker, as ISO strings (the rule: settings.fills_from)."""
     day = _iso(prices["date"])
-    rows = prices[day < as_of.isoformat()]
+    rows = prices[settings.fills_from(day, as_of.isoformat())]
     return day[rows.index].groupby(rows["ticker"]).max()
 
 
@@ -493,7 +493,7 @@ def timing(as_of: date) -> str:
     later = [d for d in settings.TRADING_DAYS if d > as_of]
     left = (f"{len(later)} trading date(s) left after today ({', '.join(f'{d:%d %b}' for d in later)})"
             if later else "no trading date left after today")
-    return (f"{left}. An order of today fills at the last close before today and counts until the final valuation "
+    return (f"{left}. An order of today fills at {settings.fill_rule()} and counts until the final valuation "
             f"on {cfg.VALUATION_END:%d %b}; an order on a late date has few days left to earn anything.")
 
 
@@ -562,7 +562,7 @@ def day_status(as_of: date) -> str:
 
 
 ASSUMPTIONS = [
-    "An order fills at the last close before its day, on the ETF's own exchange; costs are zero.",
+    f"An order fills at {settings.fill_rule()}, on the ETF's own exchange; costs are zero.",
     ("Fractional units are allowed" if settings.ORDER_UNIT_DECIMALS else "Orders are in whole units")
     + "; sells fund buys on the same day; cash never goes below zero.",
     "At most 5 orders a day; no shorting (inverse ETFs are ordinary ETFs here).",
@@ -600,7 +600,7 @@ def write_memo(as_of: date, status: str, nav: float, info: dict, judgement: dict
     for t in names:
         cells = [f"{p.get(t, 0.0):.1%}" for p in (now, portfolios["baseline"], portfolios["optimizer"], llm, final)]
         lines.append(f"| {t} | " + " | ".join(cells) + " |")
-    lines += ["", "### Orders for today (filled at the last close before the day)", ""]
+    lines += ["", f"### Orders for today (filled at {settings.fill_rule()})", ""]
     if detail.empty:
         lines.append("No orders: the portfolio is already close to its target.")
     else:
@@ -654,7 +654,7 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
     """
     universe = load_universe().set_index("ticker")
     tickers = universe.index.tolist()
-    fill = last_closes(prices, as_of, before=True)  # the price an order of today fills at
+    fill = last_closes(prices, as_of, before=settings.FILL_AT_PREVIOUS_CLOSE)  # the price an order of today fills at
     upto = last_closes(prices, as_of, before=False)
     priced = set(fill.index)
     price_dates = fill_dates(prices, as_of)
@@ -756,8 +756,11 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
                                                    columns=PORTFOLIO))
 
     # 6. the orders: sized at the fill price, checked against the (higher) latest close for the cash
-    buy_price = pd.concat([fill, upto], axis=1).max(axis=1)
-    sell_price = pd.concat([fill, upto], axis=1).min(axis=1)
+    # When an order fills at the close of its own day, that close is not known yet: a buy is funded as if it
+    # filled SAME_DAY_CUSHION higher and a sell as if it filled as much lower, so the cash still covers the orders.
+    margin = 0.0 if settings.FILL_AT_PREVIOUS_CLOSE else cfg.SAME_DAY_CUSHION
+    buy_price = pd.concat([fill, upto], axis=1).max(axis=1) * (1 + margin)
+    sell_price = pd.concat([fill, upto], axis=1).min(axis=1) * (1 - margin)
     sides = {t: "BUY" if final.get(t, 0.0) > weights_now.get(t, 0.0) else "SELL"
              for t in set(final.index) | set(weights_now.index)}
     can_wait = any(d > as_of for d in settings.TRADING_DAYS)  # on the last trading date nothing can be deferred
