@@ -7,6 +7,7 @@ Everything here is committed, because it is graded evidence of the AI suggestion
 | `orders.csv` | Every proposed order with the human decision, plus orders the human added (Order log format) |
 | `reviews.csv` | Every human review of the day (orders, risk, summary) with the feedback sent back (Reviews format) |
 | `summary/<date>.md` | The executive summary the human approved before the orders were submitted |
+| `memo/<date>.md` | The Portfolio Manager's memo of the day (its last round) |
 | `pm_portfolios.csv` | The portfolios the Portfolio Manager built each day: the code's baseline and optimiser, the LLM's own, and the final blend (PM portfolios format) |
 | `recommendations.csv` | Every order the Portfolio Manager proposed, round by round, with its fill price and its reasons (Recommendations format, append-only) |
 | `risk_reports.csv` | The Risk Manager's report of each day, one row per metric (Risk report format) |

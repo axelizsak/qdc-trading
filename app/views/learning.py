@@ -14,9 +14,11 @@ summary = data.backtest_summary()
 if summary is not None:
     rows = summary.set_index("variant")
     first = rows.iloc[0]
-    ui.kpis([("Sharpe · the system", f"{first['sharpe']:.2f}", f"worst fall {first['max_drawdown']:.0%}"),
-             ("Sharpe · trend rule alone", f"{rows.loc['trend_only', 'sharpe']:.2f}" if "trend_only" in rows.index else "—",
-              "the system before the learning rule"),
+    ui.kpis([("Sharpe · the system", f"{first['sharpe']:.2f}",
+              f"3 signals, learned · worst fall {first['max_drawdown']:.0%}"),
+             ("Sharpe · trend rule only", f"{rows.loc['trend_only', 'sharpe']:.2f}" if "trend_only" in rows.index else "—",
+              "before 16 Nov · worst fall " + (f"{rows.loc['trend_only', 'max_drawdown']:.0%}"
+                                               if "trend_only" in rows.index else "—")),
              (f"Sharpe · {data.BENCHMARK_LABEL}", f"{first['bench_sharpe']:.2f}", f"worst fall {first['bench_max_drawdown']:.0%}"),
              ("Years tested", f"{first['years']:.1f}", "daily, since January 2022")])
 

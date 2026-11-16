@@ -81,39 +81,53 @@ def orders_table(orders: pd.DataFrame) -> None:
         "value": st.column_config.NumberColumn("Value", format="€%.0f")})
 
 
-if status == "not started":
-    st.info("The day has not run yet. Run it from the dashboard: it stops here for your first review.",
-            icon=":material/info:")
-    st.page_link("views/dashboard.py", label="Go to the dashboard", icon=":material/arrow_back:")
-    st.stop()
-
-if status == "done":
-    log = data.order_log(logs)
-    day_log = log[log["date"].astype(str) == as_of.isoformat()] if log is not None else pd.DataFrame()
-    if state.get("outcome") == "stopped":
-        last = state["reviews"][-1]
+def show_record(record: dict) -> None:
+    """A finished day as the logs hold it: the outcome, the orders against the AI's proposal, your answers."""
+    day_log, reviews = record["order_log"], record["reviews"]
+    outcome = data.day_outcome(record)
+    if outcome == "no trade today":
+        last = reviews.iloc[-1]
         ui.kpis([("Today", "No trade", None, "down"), ("Stopped at", pipeline.GATE_NAMES[last["gate"]]),
-                 ("Round", last["round"])])
-        st.info(f"Your reason: {last['feedback']}", icon=":material/block:")
+                 ("Round", int(last["round"]))])
+        st.info(f"The reason: {last['feedback']}", icon=":material/block:")
     else:
         executed = day_log[day_log["decision"] != "rejected"] if len(day_log) else day_log
         ui.kpis([("Today", "Approved", None, "up"), ("Orders to submit", len(executed)),
                  ("Changed by you", int((day_log["decision"] != "approved").sum()) if len(day_log) else 0),
-                 ("Rounds", state.get("round", 1))])
+                 ("Rounds", int(reviews["round"].max()) if len(reviews) else 1)])
         st.write("")
         left, right = st.columns([1, 1])
         left.download_button("Export for the Belfius form", belfius_export(day_log), f"orders_{as_of}.csv", "text/csv",
                              icon=":material/download:", type="primary", width="stretch")
-        right.download_button("The summary you signed", state.get("summary", ""), f"summary_{as_of}.md", "text/markdown",
+        right.download_button("The summary that was signed", record["summary"], f"summary_{as_of}.md", "text/markdown",
                               icon=":material/description:", width="stretch")
-        ui.label("Order log", "the AI's proposal next to your decision")
-        text = {"ai_side": "", "side": "", "reason": ""}  # empty, not "None", where the AI or you left nothing
+        ui.label("Order log", "the AI's proposal next to the human decision")
+        text = {"ai_side": "", "side": "", "reason": ""}  # empty, not "None", where the AI or the human left nothing
         st.dataframe(day_log.drop(columns="date").astype(dict.fromkeys(text, object)).fillna(text), hide_index=True,
                      width="stretch", column_config={
             "ticker": "ETF", "ai_side": "AI side", "ai_units": st.column_config.NumberColumn("AI units", format=UNIT_FORMAT),
-            "decision": "Your decision", "side": "Side", "units": st.column_config.NumberColumn("Units", format=UNIT_FORMAT),
+            "decision": "Decision", "side": "Side", "units": st.column_config.NumberColumn("Units", format=UNIT_FORMAT),
             "reason": st.column_config.TextColumn("Reason", width="large")})
-    your_reviews()
+    if len(reviews):
+        ui.label("The answers at each review")
+        st.dataframe(reviews.drop(columns="date").astype({"feedback": object}).fillna({"feedback": ""}), hide_index=True,
+                     width="stretch", column_config={
+            "round": "Round", "gate": "Review", "decision": "Answer",
+            "feedback": st.column_config.TextColumn("Feedback", width="large")})
+
+
+if ui.READ_ONLY or status == "done":
+    record = data.day_record(as_of, logs)
+    if data.day_outcome(record) in ("approved", "no trade today"):
+        show_record(record)
+    else:
+        st.info("This day's reviews are not in the logs.", icon=":material/info:")
+    st.stop()
+
+if status == "not started":
+    st.info("The day has not run yet. Run it from the dashboard: it stops here for your first review.",
+            icon=":material/info:")
+    st.page_link("views/dashboard.py", label="Go to the dashboard", icon=":material/arrow_back:")
     st.stop()
 
 # --- A review is waiting -----------------------------------------------------------------------

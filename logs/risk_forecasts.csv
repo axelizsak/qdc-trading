@@ -1,0 +1,11 @@
+date,kind,name,value
+2026-11-16,weight,BEL 20,0.15969978
+2026-11-16,weight,HEALTH CARE,0.1660994426
+2026-11-16,weight,IBEX 35,0.152999134
+2026-11-16,weight,STAPLES,0.2002997832
+2026-11-16,weight,EUROPE 600,0.17199971749999998
+2026-11-16,forecast,vol_raw,0.08828143330309962
+2026-11-16,forecast,horizon_days,28.0
+2026-11-16,forecast,prob_below_start,0.4115
+2026-11-16,forecast,prob_below_bench,0.511
+2026-11-16,forecast,p5_5d,-0.020051533934421606

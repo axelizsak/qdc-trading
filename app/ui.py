@@ -1,7 +1,10 @@
 """Shared look and context of the cockpit: light styling, header, key figures, step chips."""
+import os
 from datetime import date
 from html import escape
 from pathlib import Path
+
+import pandas as pd
 
 import streamlit as st
 
@@ -27,6 +30,8 @@ T = {
     "rule": "#9ca3af", "up": "#16a34a", "down": "#dc2626", "series": ["#2563eb", "#ea580c", "#16a34a"],
 }
 FONT = "Inter"
+# The cockpit on the web (Streamlit Community Cloud, no API key): it shows what the logs hold and runs nothing.
+READ_ONLY = os.getenv("QDC_READ_ONLY") == "1"
 
 CSS = f"""
 <style>
@@ -69,7 +74,14 @@ code, pre {{font-variant-ligatures: none;}}
 
 
 def default_day() -> date:
-    """Today: any day can be run, days before the trading window are practice."""
+    """Today: any day can be run, days before the trading window are practice. Read-only: the latest day logged."""
+    if READ_ONLY:
+        path = settings.LOGS_DIR / "signals.csv"
+        if path.exists():
+            days = pd.read_csv(path, usecols=["date"])["date"].astype(str).str[:10]
+            days = days[days <= date.today().isoformat()]
+            if len(days):
+                return date.fromisoformat(days.max())
     return date.today()
 
 
@@ -104,10 +116,16 @@ def header() -> None:
     parts = ["<span class='brand'>QDC Trading</span>", f"{day:%a %d %b %Y}"]
     if day not in settings.TRADING_DAYS:
         parts.append("practice day" if day < settings.TRADING_DAYS[0] else "not a trading day")
-    where = day_label(status, state, pending)
-    parts.append(f"<span class='wait'>waiting for you · {where}</span>" if status == "waiting for approval" else where)
+    if READ_ONLY:  # no saved graph state on the web: where the day ended, from its log files
+        from app import data
+        parts.append(data.day_outcome(data.day_record(day, pipeline_logs())))
+    else:
+        where = day_label(status, state, pending)
+        parts.append(f"<span class='wait'>waiting for you · {where}</span>" if status == "waiting for approval" else where)
     if any(settings.USE_MOCK.values()):
         parts.append("mock mode")
+    if READ_ONLY:
+        parts.append("read-only: what the logs hold")
     with left:
         html("<div class='qdc-bar'>" + " <span class='sep'>|</span> ".join(parts) + "</div>")
 
@@ -200,5 +218,9 @@ def review_steps(pending: dict, state: dict) -> None:
 
 
 def mock_note(is_mock: bool, what: str = "No real data yet") -> None:
+    """Say the page shows mock data. Read-only, there is never mock data: the page stops and says so."""
+    if is_mock and READ_ONLY:
+        st.info("Nothing logged for this day. Pick another date at the top right.", icon=":material/info:")
+        st.stop()
     if is_mock:
         html(f"<div class='qdc-note'><b>Mock data</b> · {escape(what)}</div>")

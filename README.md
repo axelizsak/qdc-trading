@@ -198,6 +198,18 @@ Open the cockpit: the Dashboard runs the day, the Today page takes your three re
 streamlit run app/streamlit_app.py
 ```
 
+**The cockpit on the web, read-only.** With `QDC_READ_ONLY=1` the cockpit runs nothing: no "Run the day", no review
+buttons. Every page shows what the committed logs hold, and the latest logged day opens first. To put it online with
+Streamlit Community Cloud (free; the GitHub repo can stay private):
+
+1. On [share.streamlit.io](https://share.streamlit.io), sign in with GitHub and create an app: repository
+   `axelizsak/qdc-trading`, branch `main`, main file `app/streamlit_app.py`, Python 3.12.
+2. In Advanced settings → Secrets, write `QDC_READ_ONLY = "1"`, and nothing else: no API key goes there.
+3. In the app's settings → Sharing, choose who sees it: public, or only the people you invite by email.
+
+The app redeploys at each push to `main`, so it shows the logs as they are after each merge. Prices are downloaded
+from Yahoo Finance when a page needs them; without the EODHD key, NASDAQ 3X has no price there.
+
 Each step uses its mock while its switch in `USE_MOCK` (`data/config.py`) is on. Runs on mocks write to `logs/mock/`, which is not committed.
 
 Data agent (prices of the 50 ETFs):

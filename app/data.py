@@ -1,6 +1,7 @@
 """Loaders for the cockpit. Each returns (data, is_mock): real logs first, mock data when there are none."""
 import re
-from datetime import date
+from datetime import date, timedelta
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -9,7 +10,7 @@ import pandas as pd
 from data import config as settings
 from data import mock
 from data.schemas import (
-    PRICES, SIGNALS, validate_etf_views, validate_evidence, validate_macro_views, validate_order_log, validate_prices,
+    ORDERS, PORTFOLIO, PRICES, RISK_REPORT, SIGNALS, validate_etf_views, validate_evidence, validate_macro_views, validate_order_log, validate_prices,
     validate_signals, validate_weights,
 )
 from graph import pipeline
@@ -33,9 +34,22 @@ def day_signals(as_of: date, logs: Path, state: dict) -> tuple[pd.DataFrame, boo
 
 
 def day_prices(as_of: date, state: dict) -> tuple[pd.DataFrame, bool]:
+    """The day's prices: those the day ran on, else real prices downloaded once (mock prices while the data step is
+    on its mock, or when the download fails)."""
     if state.get("prices"):
         return validate_prices(pd.DataFrame(state["prices"], columns=PRICES)), False
+    if not settings.USE_MOCK["data"]:
+        try:
+            return _downloaded(as_of), False
+        except Exception:  # no network: the page still renders, and says the data is mock
+            pass
     return mock.mock_prices(end=as_of.isoformat()), True
+
+
+@lru_cache(maxsize=8)
+def _downloaded(as_of: date) -> pd.DataFrame:
+    from data import data_agent
+    return validate_prices(data_agent.fetch_prices(as_of - timedelta(days=400), as_of))
 
 
 def order_log(logs: Path) -> pd.DataFrame | None:
@@ -150,7 +164,7 @@ def weights_on(logs: Path, day: date) -> dict[str, dict[str, float]]:
 
 
 BACKTEST = settings.ROOT / "backtest" / "results"
-CURVES = {"current": "The system", "trend_only": "Trend rule alone"}
+CURVES = {"current": "The system: 3 signals, learned", "trend_only": "Trend rule only (before 16 Nov)"}
 
 
 def backtest_curves() -> pd.DataFrame | None:
@@ -209,3 +223,45 @@ def memo_summary(memo: str) -> str:
         if text and not text.startswith(("#", "Recommendation ", "|")):
             return text
     return ""
+
+
+def _text(path: Path) -> str:
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def _rows(path: Path, as_of: date) -> pd.DataFrame:
+    return _on(pd.read_csv(path), as_of) if path.exists() else pd.DataFrame()
+
+
+def day_record(as_of: date, logs: Path) -> dict:
+    """What a day left in the logs, so a page can show it without the saved graph state (the web cockpit has none):
+    target (Portfolio format, the final blend), proposed (Orders format, the latest round), memo, risk_report
+    (Risk report format), risk_page (board and reading), summary, order_log, reviews (DataFrames, empty if none)."""
+    portfolios = _rows(logs / "pm_portfolios.csv", as_of)
+    final = portfolios[portfolios["source"] == "final"] if len(portfolios) else portfolios
+    target = pd.DataFrame({"ticker": final.get("ticker", []), "target_weight": final.get("weight", [])},
+                          columns=PORTFOLIO)
+    proposals = _rows(logs / "recommendations.csv", as_of)
+    if len(proposals):
+        proposals = proposals[proposals["created_at"] == proposals["created_at"].max()]
+        proposals = proposals[proposals["side"].isin(["BUY", "SELL"])]
+    proposed = pd.DataFrame({"date": as_of.isoformat(), "side": proposals.get("side", []),
+                             "ticker": proposals.get("ticker", []), "units": proposals.get("units", [])}, columns=ORDERS)
+    report = _rows(logs / "risk_reports.csv", as_of)
+    report = report.drop_duplicates("metric", keep="last")[RISK_REPORT] if len(report) else pd.DataFrame(columns=RISK_REPORT)
+    day = as_of.isoformat()
+    return {"target": target, "proposed": proposed, "memo": _text(logs / "memo" / f"{day}.md"), "risk_report": report,
+            "risk_page": _text(logs / "risk" / f"{day}.md"), "summary": _text(logs / "summary" / f"{day}.md"),
+            "order_log": _rows(logs / "orders.csv", as_of), "reviews": _rows(logs / "reviews.csv", as_of)}
+
+
+def day_outcome(record: dict) -> str:
+    """Where a logged day ended: approved, no trade today, waiting for its reviews, or not run."""
+    if len(record["reviews"]):
+        last = record["reviews"].iloc[-1]
+        if last["decision"] == "stopped":
+            return "no trade today"
+        if len(record["order_log"]):
+            return "approved"
+        return "waiting for its reviews"
+    return "waiting for its reviews" if len(record["proposed"]) or record["memo"] else "not run"
