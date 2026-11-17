@@ -1,0 +1,48 @@
+date,profile,ticker,target_weight,sleeve
+2026-11-17,first_step_starter,WORLD,0.42,core_equity
+2026-11-17,first_step_starter,EUROPE 600,0.09,core_equity
+2026-11-17,first_step_starter,EMMKT,0.09,core_equity
+2026-11-17,first_step_starter,GLOBAL AGG BOND,0.12,bonds
+2026-11-17,first_step_starter,EUR GOVT BOND,0.08,bonds
+2026-11-17,first_step_starter,GOLD,0.05,gold
+2026-11-17,first_step_starter,ROBOTICS,0.05,satellites
+2026-11-17,first_step_starter,CLEAN ENERGY,0.05,satellites
+2026-11-17,first_step_starter,OVERNIGHT CASH,0.05,cash
+2026-11-17,goal_builder,WORLD,0.315,core_equity
+2026-11-17,goal_builder,EUROPE 600,0.0675,core_equity
+2026-11-17,goal_builder,EMMKT,0.0675,core_equity
+2026-11-17,goal_builder,GLOBAL AGG BOND,0.12,bonds
+2026-11-17,goal_builder,EUR GOVT BOND,0.08,bonds
+2026-11-17,goal_builder,GOLD,0.1,gold
+2026-11-17,goal_builder,SEMIS,0.1,satellites
+2026-11-17,goal_builder,HEALTH CARE,0.1,satellites
+2026-11-17,goal_builder,OVERNIGHT CASH,0.05,cash
+2026-11-17,self_directed_trader,WORLD,0.385,core_equity
+2026-11-17,self_directed_trader,EUROPE 600,0.0825,core_equity
+2026-11-17,self_directed_trader,EMMKT,0.0825,core_equity
+2026-11-17,self_directed_trader,GLOBAL AGG BOND,0.06,bonds
+2026-11-17,self_directed_trader,EUR GOVT BOND,0.04,bonds
+2026-11-17,self_directed_trader,GOLD,0.05,gold
+2026-11-17,self_directed_trader,SEMIS,0.06,satellites
+2026-11-17,self_directed_trader,NASDAQ,0.06,satellites
+2026-11-17,self_directed_trader,BITCOIN,0.06,satellites
+2026-11-17,self_directed_trader,URANIUM,0.06,satellites
+2026-11-17,self_directed_trader,DEFENSE,0.06,satellites
+2026-11-17,cautious_saver,WORLD,0.21,core_equity
+2026-11-17,cautious_saver,EUROPE 600,0.045,core_equity
+2026-11-17,cautious_saver,EMMKT,0.045,core_equity
+2026-11-17,cautious_saver,GLOBAL AGG BOND,0.24,bonds
+2026-11-17,cautious_saver,EUR GOVT BOND,0.16,bonds
+2026-11-17,cautious_saver,GOLD,0.1,gold
+2026-11-17,cautious_saver,HEALTH CARE,0.05,satellites
+2026-11-17,cautious_saver,STAPLES,0.05,satellites
+2026-11-17,cautious_saver,OVERNIGHT CASH,0.1,cash
+2026-11-17,late_starter,WORLD,0.28,core_equity
+2026-11-17,late_starter,EUROPE 600,0.06,core_equity
+2026-11-17,late_starter,EMMKT,0.06,core_equity
+2026-11-17,late_starter,GLOBAL AGG BOND,0.18,bonds
+2026-11-17,late_starter,EUR GOVT BOND,0.12,bonds
+2026-11-17,late_starter,GOLD,0.1,gold
+2026-11-17,late_starter,DIVIDEND LEADERS,0.05,satellites
+2026-11-17,late_starter,HEALTH CARE,0.05,satellites
+2026-11-17,late_starter,OVERNIGHT CASH,0.1,cash

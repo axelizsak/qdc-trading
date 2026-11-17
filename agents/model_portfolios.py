@@ -3,7 +3,10 @@
 A profile gives a share to each sleeve (data/profiles.py). The core sleeves hold the same ETFs for everyone, the
 satellites hold the profile's own themes in equal parts. The code also measures what each portfolio has done in
 the past, so that the numbers can be challenged (backtest/README.md, section 7).
+
+Run:  python -m agents.model_portfolios            (the track record of each profile since December 2021)
 """
+import argparse
 from datetime import date
 
 import numpy as np
@@ -35,10 +38,10 @@ def build(as_of: date) -> pd.DataFrame:
     return validate_profile_portfolios(pd.DataFrame(rows, columns=PROFILE_PORTFOLIOS))
 
 
-def track_record(prices: pd.DataFrame, profile: str) -> dict:
-    """What the profile's model portfolio did over the price history given, put back to its weights each month:
-    yearly return, yearly volatility, worst fall from a peak, Sharpe ratio over cash. From adjusted closes.
-    An ETF that was not listed yet counts as cash at 0% until its first quote."""
+def curve(prices: pd.DataFrame, profile: str) -> pd.Series:
+    """The value of 1 invested in the profile's model portfolio at the start of the price history given, day by
+    day, put back to its weights at the start of each month. From adjusted closes. An ETF that was not listed yet
+    counts as cash at 0% until its first quote."""
     closes = prices.pivot(index="date", columns="ticker", values="adj_close_eur").sort_index().ffill()
     held = {ticker: weight for ticker, (_, weight) in weights(profile).items()}
     returns = closes.reindex(columns=list(held)).pct_change(fill_method=None).iloc[1:].fillna(0)
@@ -51,10 +54,30 @@ def track_record(prices: pd.DataFrame, profile: str) -> dict:
         value *= grown.sum()
         share = grown / grown.sum()
         path.append(value)
-    curve = pd.Series(path, index=returns.index)
-    daily = curve.pct_change().fillna(curve.iloc[0] - 1)
+    return pd.Series(path, index=returns.index)
+
+
+def track_record(prices: pd.DataFrame, profile: str) -> dict:
+    """What the profile's model portfolio did over the price history given: yearly return, yearly volatility,
+    worst fall from a peak, Sharpe ratio over cash."""
+    closes = prices.pivot(index="date", columns="ticker", values="adj_close_eur").sort_index().ffill()
+    path = curve(prices, profile)
+    daily = path.pct_change().fillna(path.iloc[0] - 1)
     cash = closes.reindex(columns=[CASH])[CASH].pct_change(fill_method=None).reindex(daily.index).fillna(0)
-    years = len(curve) / YEAR
-    return {"profile": profile, "years": round(years, 1), "return": curve.iloc[-1] ** (1 / years) - 1,
-            "volatility": daily.std() * np.sqrt(YEAR), "worst_fall": (curve / curve.cummax() - 1).min(),
+    years = len(path) / YEAR
+    return {"profile": profile, "years": round(years, 1), "return": path.iloc[-1] ** (1 / years) - 1,
+            "volatility": daily.std() * np.sqrt(YEAR), "worst_fall": (path / path.cummax() - 1).min(),
             "sharpe": (daily - cash).mean() / (daily - cash).std() * np.sqrt(YEAR)}
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="What each profile's model portfolio did over a price history.")
+    parser.add_argument("--since", type=date.fromisoformat, default=date(2021, 12, 1), help="YYYY-MM-DD")
+    args = parser.parse_args(argv)
+    from data import data_agent
+    prices = data_agent.fetch_prices(args.since, date.today())
+    print(pd.DataFrame([track_record(prices, profile) for profile in PROFILES]).round(3).to_string(index=False))
+
+
+if __name__ == "__main__":
+    main()

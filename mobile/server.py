@@ -128,7 +128,7 @@ def create_app(client=None, logs: Path | None = None, shared: Path | None = None
         people = [{"id": key, **{field: c[field] for field in ("first_name", "age", "city", "status")}}
                   for key, c in CUSTOMERS.items()]
         return JSONResponse({"customers": people, "profiles": PROFILES, "account_data": list(ACCOUNT.values()),
-                             "coach": profiler.COACH, "questions": len(profiler.ASKED) + 1, "sleeves": SLEEVES})
+                             "coach": profiler.COACH, "questions": profiler.MAX_QUESTIONS, "sleeves": SLEEVES})
 
     async def state(request):
         customer = request.query_params.get("customer")

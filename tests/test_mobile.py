@@ -93,7 +93,7 @@ def test_start_gives_the_phone_what_it_shows(tmp_path):
     start = app(tmp_path).get("/api/start").json()
     assert [c["id"] for c in start["customers"]] == list(CUSTOMERS) and "savings_eur" not in start["customers"][0]
     assert start["profiles"] == PROFILES and start["coach"] == "Lena" and start["account_data"] == list(ACCOUNT.values())
-    assert start["questions"] == len(profiler.ASKED) + 1 and start["sleeves"] == SLEEVES
+    assert start["questions"] == profiler.MAX_QUESTIONS == 7 and start["sleeves"] == SLEEVES
 
 
 def test_from_the_chat_to_the_approval(tmp_path):

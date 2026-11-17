@@ -53,15 +53,6 @@ KEYWORDS = re.compile(r"\b(cut|exclude|avoid|remove|veto|drop|without|no more|st
 
 # --- Combining the scores -----------------------------------------------------------------------
 
-def combine_scores(signals: pd.DataFrame, agent_weights: dict[str, float]) -> pd.Series:
-    """final_score per ticker. `agent_weights` must sum to 1."""
-    total = sum(agent_weights.values())
-    if abs(total - 1) > 1e-9:
-        raise ValueError(f"agent weights must sum to 1, got {total}")
-    w = signals["agent"].map(agent_weights).fillna(0.0)
-    return (w * signals["score"]).groupby(signals["ticker"]).sum().rename("final_score")
-
-
 def clean_signals(signals: pd.DataFrame) -> pd.DataFrame:
     """The latest score of each (ETF, agent), without the neutral rows of an agent that failed."""
     failed = signals["rationale"].astype(str).str.startswith(cfg.FAILED_MARKER)

@@ -15,7 +15,8 @@ from app import ui  # noqa: E402
 st.set_page_config(page_title="QDC Trading", page_icon=":material/candlestick_chart:", layout="wide")
 navigation = st.navigation({
     "Day": [st.Page("views/dashboard.py", title="Dashboard", icon=":material/space_dashboard:", default=True),
-            st.Page("views/today.py", title="Today", icon=":material/fact_check:")],
+            st.Page("views/today.py", title="Today", icon=":material/fact_check:"),
+            st.Page("views/profiles.py", title="Profiles", icon=":material/groups:")],
     "Agents": [st.Page("views/technical.py", title="Technical", icon=":material/show_chart:"),
                st.Page("views/macro.py", title="Macro / News", icon=":material/public:"),
                st.Page("views/portfolio.py", title="Portfolio Manager", icon=":material/pie_chart:"),
