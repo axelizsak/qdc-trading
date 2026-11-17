@@ -114,6 +114,9 @@ MACRO_FACTORS = [
 # Each model has its own quota, so two of them are used side by side: what takes time in a run is the 15 requests
 # a minute, not the searches (about 1.5 seconds each).
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# Optional: the free key of a second team member, from their own Google account. The requests then take turns
+# between the two keys. Each key keeps its own pace and its own daily quota.
+GEMINI_API_KEY_2 = os.getenv("GEMINI_API_KEY_2")
 LLM_FAST = os.getenv("LLM_MODEL_FAST", "gemini-3.5-flash-lite")  # the theme analysts
 # The customer app's small jobs (reading a typed answer, explaining a line of a sheet). They must be quick. If
 # customers ever use up this quota, the open model "gemma-4-26b-a4b-it" is free for 14,400 requests a day, but it
@@ -121,12 +124,17 @@ LLM_FAST = os.getenv("LLM_MODEL_FAST", "gemini-3.5-flash-lite")  # the theme ana
 LLM_APP = os.getenv("LLM_MODEL_APP", "gemini-3.1-flash-lite")
 LLM_SEARCH = os.getenv("LLM_MODEL_SEARCH", "gemini-3.1-flash-lite")  # the topic searches and the exploration
 LLM_REASONING = os.getenv("LLM_MODEL_REASONING", "gemini-4-hydrogen")  # the few judgement calls of a day
-LLM_REQUESTS_PER_MINUTE = 14  # pace of the requests to one model, just under its free limit
-LLM_REST_MINUTES = 15  # a model that did not answer is left alone this long
-# News search, free and without a key (agents/web_search.py): the publishers' RSS feeds and Google News' RSS search.
+LLM_REQUESTS_PER_MINUTE = 14  # pace of the requests to one model with one key, just under its free limit
+LLM_REST_MINUTES = 15  # a model that did not answer, or a key whose daily quota is used, is left alone this long
+# News search, free and without a key (agents/web_search.py): the publishers' RSS feeds and Bing News' RSS search,
+# with Google News' RSS search when those find little.
 WEB_SEARCH_RESULTS = 10  # results the model gets per search
 WEB_SEARCH_CHARS = 500  # characters kept of an article's summary
 WEB_SEARCH_DAYS = 14  # only articles of the last days: a news agent must not read last year's news
+# The main press: one of the two questions put to Bing News is limited to these sites, so that their articles come
+# first. Every one of them is in WEB_SEARCH_SITES.
+WEB_SEARCH_PRESS = ["reuters.com", "bloomberg.com", "ft.com", "wsj.com", "cnbc.com", "apnews.com", "bbc.com",
+                    "marketwatch.com", "economist.com", "euronews.com"]
 # Only these sites are kept. Left open, a news search returns many small sites that copy or invent news.
 WEB_SEARCH_SITES = [
     # news agencies and financial press

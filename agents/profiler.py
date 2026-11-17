@@ -13,8 +13,6 @@ import json
 import math
 import re
 
-from agents import llm, macro_llm
-from data import config as settings
 from data.profiles import PROFILES
 
 COACH = "Lena"  # the name the coach goes by in the app
@@ -324,6 +322,10 @@ def read(question: str, text: str, client=None) -> dict:
             "rules": "Several answers are allowed; none of them is also an answer."}[spec["kind"]]
     prompt = (f"Question: {wording(question, {}, False, {})[0]}\n{kind}\nAnswers offered:\n{options}\n\n"
               f"The customer wrote: {json.dumps(text)}")
+    # Imported here and not at the top: the rest of this file needs only the standard library, so the online demo
+    # runs it as it is in the browser, where there is no model (mobile/demo.py).
+    from agents import llm, macro_llm
+    from data import config as settings
     reply = macro_llm.extract_json(macro_llm.ask(
         client or llm.client(), macro_llm.Usage(), settings.LLM_APP, READ_SYSTEM, prompt,
         output_config={"effort": "low", "format": {"type": "json_schema", "schema": READ_SCHEMA}}))

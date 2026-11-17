@@ -118,7 +118,7 @@ SEARCH_SYSTEM = """You research news for a student team that trades 50 European-
 Search the web for facts published in the last 7 days on the topic you are given. Report facts with their numbers and dates, and analysts' views as attributed facts. Add no forecast of your own. {untrusted}
 Answer with only a JSON object in a ```json block:
 {{"facts": [{{"factor": "<one of: {factors}>", "date": "YYYY-MM-DD", "summary": "<one or two sentences>", "url": "<source URL>"}}]}}
-Give 2 to 6 facts, the most market-relevant first."""
+Give every distinct market-relevant fact the results hold, 8 at most, the most market-relevant first."""
 
 
 def search_topics() -> dict[str, tuple[str, str]]:
