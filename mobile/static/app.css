@@ -111,8 +111,6 @@ ol, ul { list-style: none; }
 .rows div { display: flex; justify-content: space-between; gap: 12px; }
 .rows .k { color: var(--muted); }
 .rows .v { text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
-.rows .v.is-empty { color: var(--surface-3); }
-.rows .is-new .v { color: var(--accent); font-weight: 600; }
 .quiet { color: var(--muted); font-size: 12.5px; }
 .odds { display: grid; gap: 6px; margin: 2px 0 8px; font-size: 12.5px; }
 .odd { display: grid; grid-template-columns: 128px 1fr 34px; align-items: center; gap: 8px; }

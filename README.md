@@ -62,7 +62,8 @@ To try something without touching the graded logs, point everything at a copy: `
 
 ## The cockpit
 
-Dashboard · **Today** (your three reviews) · one page per agent · **Learning** (the weights and the backtest) ·
+Dashboard · **Today** (your three reviews) · **Profiles** (the five model portfolios side by side, to choose the
+one the team trades) · one page per agent · **Learning** (the weights and the backtest) ·
 **How it works** (the diagram: click a box to see what it does and its code) · Logbook. A finished day is read from
 its files in `logs/`, so any past day can be opened.
 
@@ -72,9 +73,10 @@ its files in `logs/`, so any past day can be opened.
 
 - **Lena**, the coach, places the customer in one of five investor profiles (`data/profiles.py`) the way Akinator
   guesses a character: the code keeps a probability for each profile, asks next the question that separates them
-  best, and updates the probabilities with every answer. With the customer's consent, what Belfius already knows
+  best, and updates the probabilities with every answer. At most seven questions: five for everyone, one more only
+  while no profile stands out, and the customer's rules. With the customer's consent, what Belfius already knows
   sets the start and sharpens the questions (`agents/profiler.py`).
-- **The same answers** fill the suitability sheet (one of them a wealth range). The code flags answers that
+- **The same answers** fill the suitability sheet (a wealth range is asked when Belfius cannot show the savings). The code flags answers that
   contradict each other: an adviser then looks at the plan first. The last question asks for the customer's own
   rules (no weapons, no crypto...), and the plan leaves those ETFs out. The LLM only reads typed answers.
 - **One fixed model portfolio per profile** (`data/profiles.py`, `agents/model_portfolios.py`): a share per sleeve

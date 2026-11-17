@@ -12,7 +12,7 @@ from graph import pipeline
 
 APP = str(Path(__file__).resolve().parent.parent / "app" / "streamlit_app.py")
 DAY = date(2026, 12, 7)
-PAGES = ["dashboard", "today", "technical", "macro", "portfolio", "risk", "learning", "how_it_works", "logbook"]
+PAGES = ["dashboard", "today", "profiles", "technical", "macro", "portfolio", "risk", "learning", "how_it_works", "logbook"]
 
 
 @pytest.fixture

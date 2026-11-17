@@ -3,8 +3,9 @@
 It works like the game Akinator. The code keeps a probability for each profile, asks next the question that
 separates the remaining profiles best, and updates the probabilities with every answer (Bayes' rule). What Belfius
 already knows about the customer (age, savings, investments) sets the starting probabilities and sharpens the
-wording of the questions. The same questions fill the suitability sheet, on which the code looks for answers that
-contradict each other, and the last one asks for the customer's own rules: what they never want to invest in.
+wording of the questions. The chat is short: at most MAX_QUESTIONS questions. A few are asked to everyone (ALWAYS),
+the others only while no profile stands out, and the last one asks for the customer's own rules: what they never
+want to invest in. The answers fill the suitability sheet, on which the code looks for contradictions.
 
 The model has one small job: when the customer types instead of tapping an answer, it reads what they wrote.
 """
@@ -21,7 +22,11 @@ ORDER = list(PROFILES)  # the order of the five numbers in every table below
 # Share of new investors expected in each profile (the team's assumption): where the probabilities start.
 PRIOR = [0.25, 0.30, 0.10, 0.22, 0.13]
 NOISE = 0.10  # weight of "any answer could come from any profile", so one odd answer never rules a profile out
-CONFIDENT = 0.80  # the extra questions stop once one profile is this likely
+CONFIDENT = 0.80  # no further question is added once one profile is this likely
+MAX_QUESTIONS = 7  # the chat never asks more, the customer's rules included
+# Asked to every customer, the least a suitability check needs: the goal, the horizon, the amount, the reaction to
+# a loss and one knowledge question. The wealth range is asked too when Belfius does not show the savings.
+ALWAYS = ["goal", "horizon", "amount", "loss_reaction", "knowledge_1"]
 MESSAGE_CHARS = 400  # a typed reply is cut to this length
 # The contradictions the code looks for (ESMA suitability guidelines: consistency checks).
 HIGH_LOSS_PCT = 20  # accepting a one-year loss this large is a high-risk answer
@@ -92,12 +97,11 @@ QUESTIONS = {
         "funds": ("Funds or a pension fund", [.12, .40, .05, .22, .50]),
         "shares_etfs": ("Shares or ETFs", [.10, .20, .43, .02, .17]),
         "crypto_leverage": ("Crypto or leveraged products", [.08, .05, .50, .01, .03])}},
-    # Asked only while no profile is CONFIDENT once the questions above are answered.
-    "involvement": {"name": "Involvement", "kind": "choice", "extra": True, "answers": {
+    "involvement": {"name": "Involvement", "kind": "choice", "answers": {
         "leave": ("Set it up and leave it", [.40, .45, .03, .70, .55]),
         "check": ("Check in now and then", [.45, .45, .22, .27, .38]),
         "pick": ("Pick part of it myself", [.15, .10, .75, .03, .07])}},
-    "worry": {"name": "What held them back", "kind": "choice", "extra": True, "answers": {
+    "worry": {"name": "What held them back", "kind": "choice", "answers": {
         "know": ("I don't know enough", [.60, .20, .03, .25, .10]),
         "plan": ("I have no plan", [.20, .55, .07, .15, .15]),
         "cost": ("Banks are slow and costly", [.10, .10, .75, .03, .07]),
@@ -130,8 +134,7 @@ def _table(source: dict) -> dict[str, list[float]]:
 
 
 TABLES = {name: _table(source) for name, source in {**OBSERVED, **QUESTIONS}.items() if source.get("kind") != "rules"}
-ASKED = [q for q, spec in QUESTIONS.items() if not spec.get("extra") and spec["kind"] != "rules"]  # always asked
-EXTRA = [q for q, spec in QUESTIONS.items() if spec.get("extra")]
+OTHERS = [q for q in TABLES if q in QUESTIONS and q not in ALWAYS]  # asked only while no profile stands out
 
 
 def eur(amount: float) -> str:
@@ -200,16 +203,23 @@ def gain(question: str, now: list[float]) -> float:
     return _entropy(now) - after
 
 
+def required(seen: dict[str, str]) -> list[str]:
+    """The questions this customer is asked in any case: ALWAYS, and the wealth range when Belfius has no savings
+    to show for it."""
+    return ALWAYS + ([] if "savings" in seen else ["wealth"])
+
+
 def next_question(seen: dict[str, str], answers: dict) -> str | None:
-    """The question to ask next: among those always asked, the one that separates the profiles best; then the extra
-    ones while no profile is CONFIDENT; then the customer's rules. None when the chat is over."""
+    """The question to ask next: first the required ones, the one that separates the profiles best first; then,
+    while no profile is CONFIDENT and there is room under MAX_QUESTIONS, the best of the others; last, the
+    customer's rules. None when the chat is over."""
+    if "rules" in answers:
+        return None
     now = odds(seen, answers)
-    todo = [q for q in ASKED if q not in answers]
-    if not todo and max(now) < CONFIDENT:
-        todo = [q for q in EXTRA if q not in answers]
-    if todo:
-        return max(todo, key=lambda q: gain(q, now))
-    return None if "rules" in answers else "rules"
+    must = [q for q in required(seen) if q not in answers]
+    room = MAX_QUESTIONS - 1 - len(answers)  # one question is kept for the rules
+    todo = must or ([q for q in OTHERS if q not in answers] if max(now) < CONFIDENT else [])
+    return max(todo, key=lambda q: gain(q, now)) if todo and room > 0 else "rules"
 
 
 def wording(question: str, customer: dict, consent: bool, answers: dict) -> tuple[str, list[int]]:
@@ -261,12 +271,12 @@ def wording(question: str, customer: dict, consent: bool, answers: dict) -> tupl
 def checks(answers: dict) -> list[str]:
     """The answers that contradict each other, in words. Empty when they are consistent or not yet given."""
     flags = []
-    loss = int(answers.get("max_loss", 0))
-    wrong = [q for q in ("knowledge_1", "knowledge_2") if q in answers and answers[q] != QUESTIONS[q]["right"]]
-    if len(wrong) == 2 and (loss >= HIGH_LOSS_PCT or answers.get("loss_reaction") == "add"):
-        flags.append("Both knowledge answers are wrong, yet the risk answers are high")
-    if answers.get("horizon") == "under_5" and loss >= HIGH_LOSS_PCT:
-        flags.append(f"The money is needed within 5 years, yet a loss of {HIGH_LOSS_PCT}% or more is accepted")
+    high_risk = int(answers.get("max_loss", 0)) >= HIGH_LOSS_PCT or answers.get("loss_reaction") == "add"
+    knowledge = [q for q in ("knowledge_1", "knowledge_2") if q in answers]
+    if knowledge and all(answers[q] != QUESTIONS[q]["right"] for q in knowledge) and high_risk:
+        flags.append("No knowledge question answered right, yet the risk answers are high")
+    if answers.get("horizon") == "under_5" and high_risk:
+        flags.append("The money is needed within 5 years, yet the risk answers are high")
     if answers.get("buffer") == "under_3":
         flags.append("Thin buffer: less than 3 months of spending stays in savings")
     if answers.get("amount", 0) > WEALTH_CEILING.get(answers.get("wealth"), math.inf):
@@ -370,4 +380,4 @@ def step(customer: dict, consent: bool, answers: dict | None = None, reply: dict
             "sheet": [[QUESTIONS[q]["name"], shown(q, v)] for q, v in answers.items()],
             "seen": [[OBSERVED[name]["name"], OBSERVED[name]["answers"][answer][0]] for name, answer in seen.items()],
             "flags": checks(answers), "profile": profile, "why": reasons(seen, answers, profile) if profile else "",
-            "left": len([q for q in ASKED if q not in answers]) + ("rules" not in answers)}
+            "left": MAX_QUESTIONS - len(answers) if question else 0}

@@ -35,8 +35,16 @@ from agents.macro_sources import collect_all
 from data import config as settings
 from data.config import MACRO_FACTORS
 from data.schemas import (
-    ETF_VIEWS, EVIDENCE, LIST_SEP, MACRO_VIEWS, SIGNALS, SOURCE_REGISTRY, split_list, validate_evidence,
-    validate_macro_exposure, validate_macro_views, validate_signals, validate_source_registry,
+    ETF_VIEWS,
+    EVIDENCE,
+    LIST_SEP,
+    SIGNALS,
+    SOURCE_REGISTRY,
+    split_list,
+    validate_evidence,
+    validate_macro_exposure,
+    validate_signals,
+    validate_source_registry,
 )
 from data.universe import load_universe
 

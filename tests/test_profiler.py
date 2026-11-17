@@ -66,7 +66,8 @@ def test_every_table_is_a_set_of_probabilities():
         for i in range(len(profiler.ORDER)):
             assert sum(row[i] for row in table.values()) == pytest.approx(1), name  # what one profile answers
         assert min(min(row) for row in table.values()) > 0  # no answer rules a profile out for good
-    assert "rules" not in profiler.TABLES and profiler.ASKED[0] == "goal" and profiler.EXTRA == ["involvement", "worry"]
+    assert "rules" not in profiler.TABLES and profiler.ALWAYS[0] == "goal"
+    assert set(profiler.ALWAYS) | set(profiler.OTHERS) == set(profiler.TABLES) - set(profiler.OBSERVED)
 
 
 def test_belfius_data_sets_the_start():
@@ -91,27 +92,31 @@ def test_an_answer_moves_the_probabilities():
 def test_the_next_question_is_the_one_that_separates_best():
     seen = profiler.observed(THOMAS, True)
     now = profiler.odds(seen, {})
-    first = profiler.next_question(seen, {})
-    assert first == max(profiler.ASKED, key=lambda q: profiler.gain(q, now)) == "goal"
+    assert profiler.required(seen) == profiler.ALWAYS  # Belfius shows his savings: no wealth question
+    assert profiler.required(profiler.observed(THOMAS, False)) == [*profiler.ALWAYS, "wealth"]
+    assert profiler.next_question(seen, {}) == max(profiler.ALWAYS, key=lambda q: profiler.gain(q, now)) == "goal"
     assert profiler.gain("goal", now) > profiler.gain("knowledge_1", now) > 0
-    done = {q: v for q, v in SCRIPTS["thomas"][1].items() if q in profiler.ASKED}
-    assert profiler.next_question(seen, done) == "rules"  # sure enough: no extra question
+    done = {q: v for q, v in SCRIPTS["thomas"][1].items() if q in profiler.ALWAYS}
+    assert profiler.next_question(seen, done) == "rules"  # sure enough: nothing more is asked
     assert profiler.next_question(seen, {**done, "rules": []}) is None
-    torn = {"goal": "pension", "horizon": "5_15", "wealth": "over_250k", "buffer": "3_6", "loss_reaction": "wait", "max_loss": "5",
-            "knowledge_1": "fund", "knowledge_2": "shares", "experience": "crypto_leverage", "amount": 1000, "monthly": 0}
-    young = profiler.observed(CUSTOMERS["noah"], False)  # answers that point to several profiles at once
-    assert max(profiler.odds(young, torn)) < profiler.CONFIDENT and profiler.next_question(young, torn) == "worry"
-    assert profiler.next_question(young, {**torn, "worry": "tax", "involvement": "leave"}) == "rules"  # no extra one left
+    torn = {"goal": "pension", "horizon": "5_15", "amount": 1000, "loss_reaction": "wait", "knowledge_1": "fund"}
+    young = profiler.observed(CUSTOMERS["noah"], True)  # answers that point to several profiles at once
+    extra = profiler.next_question(young, torn)
+    assert max(profiler.odds(young, torn)) < profiler.CONFIDENT and extra in profiler.OTHERS  # one more, the best one
+    assert profiler.next_question(young, {**torn, extra: next(iter(profiler.QUESTIONS[extra]["answers"]))}) == "rules"  # no room left
 
 
 @pytest.mark.parametrize("customer", list(SCRIPTS))
 def test_each_demo_customer_lands_in_their_profile(customer):
     turn, asked = play(customer)
-    assert turn["profile"] == SCRIPTS[customer][0] and max(turn["odds"].values()) > 0.9
-    assert asked[-1] == "rules" and set(profiler.ASKED) <= set(asked) and len(asked) == len(set(asked))
+    assert turn["profile"] == SCRIPTS[customer][0] and max(turn["odds"].values()) > 0.8
+    assert asked[-1] == "rules" and set(profiler.ALWAYS) <= set(asked) and len(asked) == len(set(asked))
+    assert len(asked) <= profiler.MAX_QUESTIONS  # a short chat, whoever the customer is
     assert turn["why"].startswith("What points to it most: ") and turn["left"] == 0
     assert turn["said"][-1] == "That is all I need." and len(turn["sheet"]) == len(asked)
-    assert play(customer, consent=False)[0]["profile"] == SCRIPTS[customer][0]  # the answers alone are enough
+    alone, questions = play(customer, consent=False)
+    assert alone["profile"] == SCRIPTS[customer][0] and "wealth" in questions  # the answers alone are enough
+    assert len(questions) == profiler.MAX_QUESTIONS
 
 
 def test_the_order_of_the_questions_follows_the_customer():
@@ -140,8 +145,11 @@ def test_checks_find_the_contradictions():
     fine = SCRIPTS["thomas"][1]
     assert profiler.checks(fine) == [] and profiler.checks({}) == []
     assert "5 years" in profiler.checks({**fine, "max_loss": "20"})[0]
+    assert "5 years" in profiler.checks({"horizon": "under_5", "loss_reaction": "add"})[0]  # with the short chat's answers
     unaware = profiler.checks({**fine, "horizon": "5_15", "knowledge_1": "unsure", "loss_reaction": "add"})
     assert len(unaware) == 1 and "knowledge" in unaware[0]
+    assert profiler.checks({"knowledge_1": "company", "loss_reaction": "add"}) == unaware  # one knowledge question is enough
+    assert profiler.checks({"knowledge_1": "fund", "knowledge_2": "bonds", "loss_reaction": "add"}) == []
     assert "buffer" in profiler.checks({**fine, "buffer": "under_3"})[0]
     assert "wealth range" in profiler.checks({**fine, "amount": 60_000})[0]
     assert profiler.checks({**fine, "amount": 600_000, "wealth": "over_250k"}) == []
@@ -151,7 +159,7 @@ def test_a_turn_greets_then_takes_the_answer_tapped():
     opening = profiler.step(THOMAS, True)
     assert opening["said"][0].startswith("Hi Thomas, I'm Lena") and opening["question"]["id"] == "goal"
     assert [c["value"] for c in opening["question"]["choices"]] == list(profiler.QUESTIONS["goal"]["answers"])
-    assert opening["seen"][0] == ["Age", "25 to 34"] and opening["profile"] is None and opening["left"] == 12
+    assert opening["seen"][0] == ["Age", "25 to 34"] and opening["profile"] is None and opening["left"] == 7
     turn = profiler.step(THOMAS, True, {}, {"question": "goal", "value": "home"})
     assert turn["answers"] == {"goal": "home"} and turn["sheet"] == [["Goal", "Buy a home"]] and turn["said"] == []
     assert turn["odds"]["goal_builder"] > opening["odds"]["goal_builder"] and turn["question"]["id"] != "goal"
@@ -162,21 +170,21 @@ def test_a_turn_greets_then_takes_the_answer_tapped():
 
 
 def test_a_wrong_knowledge_answer_is_explained_and_a_contradiction_is_said():
-    answers = {q: v for q, v in SCRIPTS["thomas"][1].items() if q in profiler.ASKED and q != "knowledge_1"}
+    answers = {q: v for q, v in SCRIPTS["thomas"][1].items() if q in profiler.ALWAYS and q != "knowledge_1"}
     seen = profiler.observed(THOMAS, True)
     assert profiler.next_question(seen, answers) == "knowledge_1"
     turn = profiler.step(THOMAS, True, answers, {"question": "knowledge_1", "value": "company"})
     assert turn["said"] == [profiler.EXPLAIN["knowledge_1"]] and turn["sheet"][-1] == ["Knowledge: diversification", "wrong"]
     risky = {**answers, "loss_reaction": "add", "horizon": "5_15"}
     turn = profiler.step(THOMAS, True, risky, {"question": "knowledge_1", "value": "unsure"})
-    assert len(turn["said"]) == 2 and turn["said"][1].startswith("Noted. Both knowledge answers are wrong")
-    assert turn["flags"] == ["Both knowledge answers are wrong, yet the risk answers are high"]
+    assert len(turn["said"]) == 2 and turn["said"][1].startswith("Noted. No knowledge question answered right")
+    assert turn["flags"] == ["No knowledge question answered right, yet the risk answers are high"]
 
 
 def test_a_typed_amount_is_read_by_the_code():
     for text, amount in [("6000", 6000), ("€6.000", 6000), ("6 000 euros", 6000), ("6k", 6000), ("EUR 12,500", 12500)]:
         assert profiler.read("amount", text) == {"answers": [], "amount": amount, "say": ""}  # no model needed
-    answers = {"goal": "home", "experience": "funds", "horizon": "under_5"}
+    answers = {"goal": "home", "horizon": "under_5", "loss_reaction": "wait", "knowledge_1": "fund"}
     assert profiler.next_question(profiler.observed(THOMAS, True), answers) == "amount"
     turn = profiler.step(THOMAS, True, answers, {"question": "amount", "text": "6000"})
     assert turn["answers"]["amount"] == 6000 and turn["sheet"][-1] == ["To invest now", "EUR 6,000"]
@@ -201,9 +209,9 @@ def test_a_typed_reply_is_read_by_the_model():
 
 
 def test_the_customers_rules_are_the_last_answer():
-    answers = {q: v for q, v in SCRIPTS["thomas"][1].items() if q in profiler.ASKED}
+    answers = {q: v for q, v in SCRIPTS["thomas"][1].items() if q in profiler.ALWAYS}
     asked = profiler.step(THOMAS, True, answers)
-    assert asked["question"]["kind"] == "rules" and asked["left"] == 1 and "never want to invest in" in asked["question"]["text"]
+    assert asked["question"]["kind"] == "rules" and asked["left"] == 2 and "never want to invest in" in asked["question"]["text"]
     done = profiler.step(THOMAS, True, answers, {"question": "rules", "value": ["crypto", "weapons"]})
     assert done["answers"]["rules"] == ["weapons", "crypto"] and done["sheet"][-1] == ["Never invest in", "Weapons, Crypto"]
     assert done["question"] is None and done["profile"] == "goal_builder"

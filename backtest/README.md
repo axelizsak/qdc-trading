@@ -163,8 +163,8 @@ mean-reversion and momentum answers by what each earned since 2022, so this find
 
 The customer app gives each profile one fixed model portfolio (`data/profiles.py`): a share per sleeve, the same core
 ETFs for everyone, the profile's own themes. Nothing in it follows the market. This is what each would have done from
-December 2021 to 16 November 2026, put back to its weights at the start of each month (`track_record` in
-`agents/model_portfolios.py`):
+December 2021 to 16 November 2026, put back to its weights at the start of each month
+(`python -m agents.model_portfolios` prints the table again):
 
 | Profile | Risk level | Return a year | Volatility a year | Worst fall | Sharpe ratio |
 |---|---|---|---|---|---|

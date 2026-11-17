@@ -17,7 +17,7 @@ import pandas as pd
 from agents import etf_sheets, macro_news, model_portfolios
 from data import config as settings
 from data import data_agent
-from data.schemas import validate_etf_sheets, validate_macro_views, validate_profile_portfolios
+from data.schemas import MACRO_VIEWS, validate_etf_sheets, validate_macro_views, validate_profile_portfolios
 
 HISTORY_DAYS = 1150  # calendar days of prices: three years of sessions for the 3-year return
 PORTFOLIOS, SHEETS = "profile_portfolios.csv", "etf_sheets.csv"
@@ -27,7 +27,7 @@ def macro_views(logs: Path, as_of: date) -> pd.DataFrame:
     """The latest macro views up to `as_of` (one day of them), empty when there are none yet."""
     path = logs / "macro_views.csv"
     if not path.exists():
-        return pd.DataFrame(columns=validate_macro_views.__globals__["MACRO_VIEWS"])
+        return pd.DataFrame(columns=MACRO_VIEWS)
     views = validate_macro_views(pd.read_csv(path))
     views = views[views["date"].astype(str) <= as_of.isoformat()]
     return views[views["date"] == views["date"].max()] if len(views) else views
