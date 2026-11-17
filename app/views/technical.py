@@ -66,15 +66,15 @@ def report() -> str:
            f"leaning down. Scores run from -1 (avoid) to +1 (buy).", "", "## Weight of each answer", "",
            "| Answer | Weight |", "|---|---:|"]
     out += [f"| {a.replace('_', ' ')} | {w:.0%} |" for a, w in weights.items()]
-    out += ["", "## Every ETF", "", "| ETF | Theme | Rule score | Claude's score | Confirmations |", "|---|---|---:|---:|---:|"]
+    out += ["", "## Every ETF", "", "| ETF | Theme | Rule score | LLM's score | Confirmations |", "|---|---|---:|---:|---:|"]
     for r in table.itertuples():
-        claude = "n/a" if pd.isna(r.claude) else f"{r.claude:+.2f}"
-        out.append(f"| {r.ticker} | {cell(r.theme)} | {r.rule:+.2f} | {claude} | {r.confidence:.0%} |")
+        llm_score = "n/a" if pd.isna(r.llm) else f"{r.llm:+.2f}"
+        out.append(f"| {r.ticker} | {cell(r.theme)} | {r.rule:+.2f} | {llm_score} | {r.confidence:.0%} |")
     out += ["", "## Why, ETF by ETF", ""]
     for t in table["ticker"]:
         out += [f"### {t}", "", f"**Rule** · {cell(det.loc[t, 'rationale'])}"]
         if t in llm.index:
-            out += ["", f"**Claude** · {cell(llm.loc[t, 'rationale'])}"]
+            out += ["", f"**LLM** · {cell(llm.loc[t, 'rationale'])}"]
         out.append("")
     return "\n".join(out)
 
