@@ -6,9 +6,10 @@ const pct = (weight) => `${Math.round(weight * 100)}%`;
 const $ = (id) => document.getElementById(id);
 const sum = (items, value) => items.reduce((total, item) => total + value(item), 0);
 
-// Asset classes of the plan, in a fixed order: the colour follows the class, never its rank.
-const ASSETS = [["Shares", "--shares"], ["Bonds", "--bonds"], ["Gold", "--gold"], ["Cash", "--cash"], ["Crypto", "--crypto"]];
-const COLOR = Object.fromEntries(ASSETS);
+// The sleeves of a model portfolio: the colour follows the sleeve, never its rank.
+const COLOR = { core_equity: "--shares", bonds: "--bonds", gold: "--gold", satellites: "--crypto", cash: "--cash" };
+// What a state of an ETF sheet looks like: an arrow and a tone, so that it never rests on colour alone.
+const STATE = { up: ["↗", "good"], supportive: ["↗", "good"], neutral: ["→", "wait"], watch: ["!", "wait"], down: ["↘", "bad"], headwind: ["↘", "bad"] };
 
 const svg = (size, body, width = 2) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
@@ -17,6 +18,7 @@ const ICON = {
   up: svg(20, '<path d="M10 15.5v-11M5 9.5l5-5 5 5"/>', 2.4),
   check: svg(16, '<path d="M4 10.5l4 4 8-9"/>', 2.4),
   bigCheck: svg(46, '<path d="M4.5 10.5l3.6 3.8 7.4-8.6"/>', 2.2),
+  cross: svg(16, '<path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/>', 2.4),
   alert: svg(16, '<path d="M10 3 2.5 16h15L10 3zM10 8.5v3.5M10 14.4v.1"/>'),
   lock: svg(16, '<rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/>'),
   person: svg(16, '<circle cx="10" cy="7" r="3.2"/><path d="M3.5 17a6.5 6.5 0 0 1 13 0"/>'),
@@ -31,7 +33,7 @@ const HERO_ART = `<svg viewBox="0 0 390 190" preserveAspectRatio="none" fill="no
 
 const blank = () => ({ consent: true, answers: {}, question: null, picked: [], odds: null, seen: [], sheet: [], flags: [],
   left: null, profile: null, why: "", decision: null, decided_at: null, plan: null, busy: false });
-const state = { customers: [], profiles: {}, questions: 0, accountData: [], coach: "", id: null, known: {}, ...blank() };
+const state = { customers: [], profiles: {}, sleeves: {}, questions: 0, accountData: [], coach: "", id: null, known: {}, ...blank() };
 let run = 0; // grows when the customer changes, so a late answer for the previous one is dropped
 
 /** Builds an element. Text children are set as text, never as HTML: what Claude or the customer wrote stays text. */
@@ -225,8 +227,7 @@ function renderReveal() {
     h("div", { class: "scroll" },
       h("div", { class: `reveal-hero p-${state.profile}` },
         h("p", { class: "eyebrow" }, "Your investor profile"), h("h2", { class: "display" }, p.label), h("p", {}, p.tagline)),
-      h("div", { class: "tiles" }, tile("Horizon", p.horizon), tile("Core / themes", `${pct(p.core)} / ${pct(1 - p.core)}`),
-        tile("Style", p.risk, true)),
+      h("div", { class: "tiles" }, tile("Horizon", p.horizon), tile("Risk level", `${p.level} of 5`), tile("Style", p.risk, true)),
       section("Why this one", h("div", { class: "panel" }, h("p", {}, state.why))),
       state.flags.length ? section("Before you invest", flagsPanel()) : null,
       section("How your money is handled", h("div", { class: "panel" }, ticks(p.rules))),
@@ -243,10 +244,10 @@ async function openPlan() {
   go("plan");
 }
 
-/** One whole split into its asset classes: a 28px bar with the share printed in each block wide enough for it. */
+/** One whole split into its sleeves: a 28px bar with the share printed in each block wide enough for it. */
 function allocation(lines, amount) {
-  const groups = ASSETS.map(([name, color]) => ({ name, color, weight: sum(lines.filter((l) => l.asset === name), (l) => l.weight) }))
-    .filter((group) => group.weight > 0);
+  const groups = Object.entries(state.sleeves).map(([key, name]) => ({ key, name, color: COLOR[key],
+    weight: sum(lines.filter((l) => l.sleeve === key), (l) => l.weight) })).filter((group) => group.weight > 0);
   const tip = h("div", { class: "tip", hidden: true });
   const bar = h("div", { class: "bar", role: "img", "aria-label": groups.map((g) => `${g.name} ${pct(g.weight)}`).join(", ") });
   for (const group of groups) {
@@ -273,25 +274,71 @@ function initials(ticker) {
 }
 
 function lineRow(line) {
-  return h("button", { class: "line", type: "button", onclick: () => lineSheet(line) },
-    h("span", { class: "token" }, initials(line.ticker), h("i", { style: `background:var(${COLOR[line.asset]})` })),
+  return h("button", { class: "line", type: "button", onclick: () => openEtf(line) },
+    h("span", { class: "token" }, initials(line.ticker), h("i", { style: `background:var(${COLOR[line.sleeve]})` })),
     h("span", { class: "name" }, h("b", {}, line.ticker), h("small", {}, line.theme)),
     h("span", { class: "figures" }, h("b", {}, pct(line.weight)), h("small", {}, eur.format(line.eur))));
 }
 
-function lineSheet(line) {
-  const rows = [["Part of your plan", line.sleeve === "core" ? "Core" : "Themes"], ["Type", line.asset], ["Theme", line.theme],
-    ["ISIN", line.isin], ["Share of your plan", pct(line.weight)], ["Amount", eur.format(line.eur)]];
-  openSheet(h("h3", {}, line.ticker), h("p", {}, line.name),
-    h("div", { class: "rows" }, rows.map(([k, v]) => h("div", {}, h("span", { class: "k" }, k), h("span", { class: "v" }, v)))),
-    h("button", { class: "btn btn-ghost", type: "button", onclick: closeSheet }, "Close"));
+function sleeve(lines, key) {
+  const mine = lines.filter((line) => line.sleeve === key);
+  if (!mine.length) return null;
+  return h("div", { class: "section" },
+    h("div", { class: "sleeve-head" }, h("b", {}, `${state.sleeves[key]} · ${pct(sum(mine, (l) => l.weight))}`),
+      h("small", {}, mine.length > 1 ? `${mine.length} ETFs` : "1 ETF")),
+    h("div", { class: "lines" }, mine.map(lineRow)));
 }
 
-function sleeve(lines, key, title, caption) {
-  const mine = lines.filter((line) => line.sleeve === key);
-  return h("div", { class: "section" },
-    h("div", { class: "sleeve-head" }, h("b", {}, `${title} · ${pct(sum(mine, (l) => l.weight))}`), h("small", {}, caption)),
-    h("div", { class: "lines" }, mine.map(lineRow)));
+// ---- ETF sheet ----------------------------------------------------------------------------------------------
+const shownValue = (line) => (line.block === "returns" ? `${line.value >= 0 && line.name !== "volatility" ? "+" : ""}${(line.value * 100).toFixed(1)}%` : line.state);
+
+/** Opens the sheet of one ETF of the plan: what it did, where its trend stands, what macro means for it. */
+async function openEtf(line) {
+  let sheet = null;
+  try { sheet = await api(`/api/etf?ticker=${encodeURIComponent(line.ticker)}`); } catch (error) { sheet = { missing: error.message }; }
+  renderEtf(line, sheet);
+  go("etf");
+}
+
+function renderEtf(line, sheet) {
+  const detail = h("div", { class: "section", id: "tile-detail" });
+  const pick = (item) => {
+    const checks = item.detail.split("; ").filter(Boolean);
+    const answer = h("p", { class: "why", hidden: true });
+    const ask = h("button", { class: "btn btn-ghost", type: "button" }, `Ask ${state.coach} why`);
+    ask.addEventListener("click", async () => {
+      ask.disabled = true;
+      ask.textContent = `${state.coach} is reading the sheet...`;
+      try { answer.textContent = (await api("/api/why", { ticker: line.ticker, block: item.block, name: item.name })).answer; } catch (error) { answer.textContent = error.message; }
+      answer.hidden = false;
+      ask.remove();
+    });
+    detail.replaceChildren(h("p", { class: "eyebrow" }, `${item.block} · ${item.name}`),
+      h("div", { class: "panel" }, h("ul", { class: "ticks" }, (checks.length ? checks : [shownValue(item)]).map((text) =>
+        h("li", { class: text.includes(": no") ? "is-no" : "" }, h("span", { icon: text.includes(": no") ? ICON.cross : ICON.check }), text))), answer, ask));
+    detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+  const tiles = (block, title) => {
+    const items = (sheet.lines || []).filter((l) => l.block === block);
+    if (!items.length) return null;
+    return section(title, h("div", { class: "sheet-tiles" }, items.map((item) => {
+      const [arrow, tone] = STATE[item.state] || ["", "plain"];
+      return h(block === "returns" ? "div" : "button", { class: `sheet-tile is-${tone}`, type: block === "returns" ? null : "button", onclick: block === "returns" ? null : () => pick(item) },
+        h("small", {}, item.name), h("b", {}, arrow ? `${arrow} ${item.state}` : shownValue(item)));
+    })));
+  };
+  $("view-etf").replaceChildren(
+    h("div", { class: "topbar" },
+      h("button", { class: "icon-btn", type: "button", "aria-label": "Back to my plan", icon: ICON.back, onclick: () => go("plan") }),
+      h("b", {}, line.ticker), h("span", { style: "width:40px" })),
+    h("div", { class: "scroll" },
+      h("div", { class: "amount" }, h("span", { class: "badge profile" }, state.sleeves[line.sleeve]),
+        h("h2", { class: "display etf-name" }, line.name),
+        h("p", {}, `${pct(line.weight)} of your plan · ${eur.format(line.eur)} · ISIN ${line.isin}`)),
+      sheet.missing ? h("p", { class: "note" }, sheet.missing) : null,
+      tiles("returns", "Returns"), tiles("trend", "Trend · tap a tile"), tiles("macro", "Macro · tap a tile"), detail,
+      sheet.as_of ? h("p", { class: "quiet center" }, `Computed by the morning run of ${sheet.as_of}. Information, not advice.`) : null,
+      h("div", { style: "height:14px" })));
 }
 
 function planFooter() {
@@ -316,13 +363,11 @@ function renderPlan() {
       h("button", { class: "icon-btn", type: "button", "aria-label": "Back to my profile", icon: ICON.back, onclick: () => { renderReveal(); go("reveal"); } }),
       h("b", {}, "Your plan"), h("span", { style: "width:40px" })),
     h("div", { class: "scroll" },
-      h("div", { class: "amount" }, h("span", { class: "badge profile" }, profile().label),
+      h("div", { class: "amount" }, h("span", { class: "badge profile" }, `${profile().label} · risk level ${profile().level} of 5`),
         h("div", { class: "hero-number" }, eur.format(amount)),
         h("p", {}, monthly ? `to invest now · then ${eur.format(monthly)} a month` : "to invest now")),
-      state.plan.illustration ? h("p", { class: "note" }, "Illustration: example portfolios, until the engine builds one per profile.") : null,
       section("Where it goes", h("div", { class: "panel" }, allocation(lines, amount))),
-      sleeve(lines, "core", "Core", "broad, diversified ETFs"),
-      sleeve(lines, "satellite", "Themes", "a few convictions"),
+      ...Object.keys(state.sleeves).map((key) => sleeve(lines, key)),
       state.plan.left_out.length ? section("Your rules", h("div", { class: "panel" },
         ticks(state.plan.left_out.map((out) => `No ${out.rule.toLowerCase()}: ${out.ticker} is left out, its ${pct(out.weight)} goes to ${lines[0].ticker}`)))) : null,
       state.flags.length ? section("Before you invest", flagsPanel()) : null,
@@ -417,7 +462,7 @@ async function startOver() {
 async function boot() {
   const start = await api("/api/start");
   Object.assign(state, { customers: start.customers, profiles: start.profiles, questions: start.questions,
-    accountData: start.account_data, coach: start.coach });
+    accountData: start.account_data, coach: start.coach, sleeves: start.sleeves });
   let last = null;
   try { last = localStorage.getItem("rebel.customer"); } catch { /* private window */ }
   await selectCustomer(state.customers.some((c) => c.id === last) ? last : state.customers[0].id);

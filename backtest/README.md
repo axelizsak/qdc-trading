@@ -158,3 +158,29 @@ Their main finding: on 4 to 12 days, no technical rule predicts returns reliably
 is best used as a filter (avoid ETFs in a clear downtrend) and for timing (Connors RSI 2 rebounds were the most
 consistent signal). The ML models did no better, so they were not adopted. The learning rule now weighs the trend,
 mean-reversion and momentum answers by what each earned since 2022, so this finding is checked again every day.
+
+## 7. The model portfolio of each investor profile
+
+The customer app gives each profile one fixed model portfolio (`data/profiles.py`): a share per sleeve, the same core
+ETFs for everyone, the profile's own themes. Nothing in it follows the market. This is what each would have done from
+December 2021 to 16 November 2026, put back to its weights at the start of each month (`track_record` in
+`agents/model_portfolios.py`):
+
+| Profile | Risk level | Return a year | Volatility a year | Worst fall | Sharpe ratio |
+|---|---|---|---|---|---|
+| First-step starter | 3 | +7.1% | 9.8% | -15.1% | 0.66 |
+| Goal builder | 3 | +9.4% | 9.7% | -14.6% | 0.89 |
+| Self-directed trader | 5 | +10.4% | 12.0% | -18.2% | 0.82 |
+| Cautious saver | 2 | +4.7% | 5.8% | -10.2% | 0.68 |
+| Late starter | 2 | +6.5% | 6.7% | -10.0% | 0.85 |
+| MSCI World alone, for comparison | | +11.0% | 14.1% | -21.7% | 0.81 |
+
+How to read it:
+- **The risk levels come out in the right order:** the lower the level, the lower the volatility and the worst fall.
+- **Every profile fell less than the MSCI World, and earned less:** that is the price of bonds, gold and cash.
+- **Two simplifications move the numbers a little.** An ETF that was not listed yet counts as cash at 0% until its
+  first quote (EUROPE 600 from 2024, OVERNIGHT CASH and BITCOIN from 2025, URANIUM and DEFENSE from 2023). The
+  Sharpe ratio is over cash, and cash earns 0% here before 2025, so it is a little too high.
+- **The weights are the team's proposal, not a result.** The sleeves and the themes were written from the archetypes
+  document; this table is here so that they can be challenged.
+

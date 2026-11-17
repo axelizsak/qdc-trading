@@ -28,7 +28,9 @@ Everything here is committed, because it is graded evidence of the AI suggestion
 | `lessons.md` | Lessons journal, written by the learning step (newest review first): the weights and the record behind them, which agent was right on which kind of call, the largest misses, the weakest sources. The agents read it before each decision |
 | `logbook.csv` | The audit trail: one row per event (signals, recommendations, risk flags, human decisions, computed fills, valuations), append-only, each row hashed with the one before it (Logbook format, `agents/logbook.py`) |
 | `logbook/<date>.md` | The day told in order, built from `logbook.csv` |
-| `customer_log.csv` | What happened to each customer of the app: the profile the coach placed them in, with the reason, their suitability answers and the contradictions the code found, then their decision on the plan (Customer log format, append-only). Written to `mock/` while the plans of the app are examples |
+| `profile_portfolios.csv` | The model portfolio of each investor profile, every day of a morning run: fixed rules, one row per ETF with its sleeve (Profile portfolios format) |
+| `etf_sheets.csv` | The sheet of each ETF as the customer app shows it, every day of a morning run: returns, the three trends with their checks, what the day's macro views mean for it (ETF sheets format) |
+| `customer_log.csv` | What happened to each customer of the app: the profile the coach placed them in, with the reason, their suitability answers and the contradictions the code found, then their decision on the plan (Customer log format, append-only). Always written to `mock/`: the app's customers are synthetic demo customers |
 | `logbook/INDEX.md` | One line per day: orders kept, changed, rejected and added by the human, risk warnings, portfolio value and return against the benchmark, and whether the hash chain is intact |
 
 Not committed: `checkpoints.sqlite` (the saved graph state, used to resume a day between reviews) and `mock/` (runs while any step is on a mock).

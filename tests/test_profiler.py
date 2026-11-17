@@ -187,7 +187,7 @@ def test_a_typed_reply_is_read_by_the_model():
     turn = profiler.step(THOMAS, True, {}, {"question": "goal", "text": "  I want a flat   in Brussels " + "x" * 900}, model)
     assert turn["answers"] == {"goal": "home"}
     request = model.calls[0]
-    assert request["model"] == settings.LLM_FAST and request["output_config"]["format"]["schema"] is profiler.READ_SCHEMA
+    assert request["model"] == settings.LLM_APP and request["output_config"]["format"]["schema"] is profiler.READ_SCHEMA
     prompt = request["messages"][0]["content"]
     assert "- home: Buy a home" in prompt and '"I want a flat in Brussels' in prompt and len(prompt) < 1200
     unclear = FakeModel({"answers": [], "amount": None, "say": "A bond is a loan to a state or a company."})

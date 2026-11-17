@@ -124,6 +124,20 @@ def test_the_fast_model_answers_when_the_scarce_one_cannot(network, capsys):
     assert ask(SCARCE).model == FAST and len(network.sent) == 3  # the scarce model is left alone for a while
 
 
+def test_the_models_reasoning_is_not_part_of_its_answer(network):
+    parts = [{"text": "Let me think about the sheet...", "thought": True}, {"text": "The price is under its average."}]
+    network.replies.append(reply(candidates=[{"content": {"role": "model", "parts": parts}, "finishReason": "STOP"}]))
+    assert ask().content[0].text == "The price is under its average."
+
+
+def test_the_open_model_gets_no_thinking_level(network):
+    network.replies += [answer("ok"), answer("ok")]
+    ask("gemma-4-26b-a4b-it", output_config={"effort": "low"})
+    ask(FAST, output_config={"effort": "low"})
+    assert "thinkingConfig" not in network.sent[0][1]["generationConfig"]
+    assert network.sent[1][1]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "low"}
+
+
 def test_each_model_is_paced_on_its_own(network, monkeypatch):
     clock = iter([100.0, 100.0, 100.0, 100.0])
     monkeypatch.setattr(llm.time, "monotonic", lambda: next(clock))

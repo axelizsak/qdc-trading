@@ -78,8 +78,13 @@ LOGBOOK = ["seq", "date", "kind", "actor", "ticker", "round", "gate", "title", "
            "recorded_at", "prev_hash", "hash"]
 
 # The portfolio the engine holds for each investor profile (data/profiles.py): what the customer app shows a customer
-# of that profile. sleeve: core (broad, diversified ETFs) or satellite (a few themes). One portfolio per date and profile.
+# of that profile. sleeve: one of data/profiles.py SLEEVES (core equity, bonds, gold, satellites, cash). One portfolio
+# per date and profile, built by agents/model_portfolios.py.
 PROFILE_PORTFOLIOS = ["date", "profile", "ticker", "target_weight", "sleeve"]
+# logs/etf_sheets.csv: the sheet of each ETF as the customer app shows it, one row per line of a sheet, written by the
+# morning run (graph/morning.py). block: returns, trend or macro. state: up, neutral or down for a trend; supportive,
+# watch or headwind for a macro factor; empty for a return. detail: the checks or the view behind the line.
+ETF_SHEETS = ["date", "ticker", "block", "name", "value", "state", "detail"]
 # logs/customer_log.csv: what happened to each customer of the app, append-only. event: profiled (the coach placed
 # them in a profile), approved or declined (their decision on the plan), reset (they start over). `sheet` holds the
 # suitability answers as a JSON object, `flags` the contradictions the code found, joined with LIST_SEP.
@@ -99,6 +104,7 @@ REVIEW_DECISIONS = {"approved", "revised", "stopped"}  # revised: back to the Po
 PM_SOURCES = {"baseline", "optimizer", "llm", "final"}
 RISK_FORECAST_KINDS = {"weight", "forecast"}
 CUSTOMER_EVENTS = {"profiled", "approved", "declined", "reset"}
+SHEET_STATES = {"returns": {""}, "trend": {"up", "neutral", "down"}, "macro": {"supportive", "watch", "headwind"}}
 LIST_SEP = ";"
 
 # Proposed starting set of features, to validate with the data agent's owner. Not enforced.
@@ -478,4 +484,17 @@ def validate_customer_log(df: pd.DataFrame) -> pd.DataFrame:
             ok = False
         if not ok:
             raise ValueError("customer_log: sheet must be a JSON object")
+    return df
+
+
+def validate_etf_sheets(df: pd.DataFrame) -> pd.DataFrame:
+    """ETF sheets: a known block, a state that block allows, a finite value, one row per (date, ticker, block, name)."""
+    _require_columns(df, ETF_SHEETS, "etf_sheets")
+    _require_in(df, "block", set(SHEET_STATES), "etf_sheets")
+    states = df["state"].fillna("")
+    if not all(state in SHEET_STATES[block] for block, state in zip(df["block"], states)):
+        raise ValueError("etf_sheets: a state its block does not allow")
+    if not np.isfinite(pd.to_numeric(df["value"], errors="coerce")).all():
+        raise ValueError("etf_sheets: value must be a finite number")
+    _require_unique(df, ["date", "ticker", "block", "name"], "etf_sheets")
     return df
