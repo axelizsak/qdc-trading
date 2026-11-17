@@ -29,7 +29,8 @@ table = pd.DataFrame([{
 } for key, spec in PROFILES.items()])
 
 ui.label("The five profiles", f"shares per sleeve, and what each did over the last {sessions} sessions")
-share = {name: st.column_config.ProgressColumn(name, min_value=0, max_value=1, format="percent") for name in SLEEVES.values()}
+share = {name: st.column_config.ProgressColumn(name, min_value=0, max_value=1, format="percent", width="small")
+         for name in SLEEVES.values()}  # narrow, so that the three results on the right stay in view
 st.dataframe(table, hide_index=True, width="stretch", column_config={
     **share, "Risk level": st.column_config.NumberColumn("Risk level", format="%d of 5"),
     "Return": st.column_config.NumberColumn("Return", format="percent"),
@@ -39,7 +40,8 @@ st.dataframe(table, hide_index=True, width="stretch", column_config={
 ui.label("Value over time", f"€{start:,.0f} in each model portfolio, put back to its weights each month")
 history = pd.concat([pd.DataFrame({"date": pd.to_datetime(curve.index), "value_eur": curve.values * start,
                                    "series": PROFILES[key]["label"]}) for key, curve in curves.items()])
-st.altair_chart(charts.lines(history, "date", "value_eur", "series", "€", ",.0f", x_format="%b %y"), width="stretch")
+st.altair_chart(charts.lines(history, "date", "value_eur", "series", "€", ",.0f", x_format="%b %y", height=420),
+                width="stretch")
 
 ui.label("Inside one profile", "its ETFs and their share of the portfolio")
 pick = st.selectbox("Profile", list(PROFILES), format_func=lambda key: PROFILES[key]["label"], label_visibility="collapsed")
