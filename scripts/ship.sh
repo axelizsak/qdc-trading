@@ -18,8 +18,8 @@ message="${1:-}"
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
 cd "$root"
 
-# 1. Turn on the git hook that refuses pushes to main (.githooks/pre-push).
-git config core.hooksPath .githooks
+# 1. Turn on the git hook that refuses pushes to main (scripts/hooks/pre-push).
+git config core.hooksPath scripts/hooks
 
 branch="$(git symbolic-ref --short -q HEAD)" || die "detached HEAD: switch to a branch first"
 

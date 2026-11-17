@@ -1,6 +1,6 @@
 #!/bin/sh
 # Refuse any push to main. Work goes through a branch and a pull request.
-# Activated by scripts/ship.sh (git config core.hooksPath .githooks).
+# Activated by scripts/ship.sh (git config core.hooksPath scripts/hooks).
 
 while read -r local_ref local_sha remote_ref remote_sha; do
     if [ "$remote_ref" = "refs/heads/main" ]; then

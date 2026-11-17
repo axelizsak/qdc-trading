@@ -6,8 +6,8 @@ client for Gemini. The free tier is small, so it also:
 
 - paces the requests to each model across threads (settings.LLM_REQUESTS_PER_MINUTE): every model has its own
   free quota;
-- shares the requests between the team's keys when there are two (each member's own free key): the key that is
-  free first takes the next request, and a key whose daily quota for a model is used is left alone for a while;
+- shares the requests between the team's keys when there are several (each member's own free key): the key that
+  is free first takes the next request, and a key whose daily quota for a model is used is left alone for a while;
 - waits and tries again when the service is busy or the minute's quota is used;
 - lets the small model answer when the better one cannot (its free quota is 20 requests a day), then leaves the
   better one alone for a while (settings.LLM_REST_MINUTES);
@@ -56,7 +56,7 @@ class Unavailable(RuntimeError):
 
 def keys() -> list[str]:
     """The team's keys, one per member who gave one."""
-    return [key for key in (settings.GEMINI_API_KEY, settings.GEMINI_API_KEY_2) if key]
+    return [key for key in (settings.GEMINI_API_KEY, settings.GEMINI_API_KEY_2, settings.GEMINI_API_KEY_3) if key]
 
 
 def client() -> "Gemini":
