@@ -1,22 +1,24 @@
 """The customer app: what the coach may know, the plan of a profile, and the routes the phone calls."""
 import re
-from datetime import date
+from types import SimpleNamespace
 
+import pandas as pd
 import pytest
 from starlette.testclient import TestClient
 
 from agents import profiler
 from data import config as settings
-from data.profiles import PROFILES
+from data import mock
+from data.profiles import PROFILES, SLEEVES
+from graph import morning
 from mobile import server
 from mobile.customers import ACCOUNT, BASICS, CUSTOMERS, known
 from tests.test_profiler import SCRIPTS, FakeModel
 
-DAY = date(2026, 12, 7)
 
 
 def app(tmp_path, *replies):
-    return TestClient(server.create_app(client=FakeModel(*replies), logs=tmp_path))
+    return TestClient(server.create_app(client=FakeModel(*replies), logs=tmp_path, shared=tmp_path))
 
 
 def chat(phone, customer: str, answers: dict, reply: dict | None = None) -> dict:
@@ -34,36 +36,64 @@ def test_the_coach_knows_only_what_the_customer_shares():
 
 @pytest.mark.parametrize("profile", list(PROFILES))
 def test_a_plan_splits_the_whole_amount(profile):
-    plan = server.plan(profile, 10_000, DAY)
+    plan = server.plan(profile, 10_000)
     lines = plan["lines"]
-    assert sum(line["eur"] for line in lines) == pytest.approx(10_000) and plan["illustration"] is server.ILLUSTRATION
-    core = sum(line["weight"] for line in lines if line["sleeve"] == "core")
-    assert core == pytest.approx(PROFILES[profile]["core"]) and plan["left_out"] == []
-    assert [line["sleeve"] for line in lines] == sorted(line["sleeve"] for line in lines)  # the core first
-    assert {line["asset"] for line in lines} <= {"Shares", *server.ASSETS.values()}
+    assert sum(line["eur"] for line in lines) == pytest.approx(10_000) and plan["left_out"] == []
+    order = [list(SLEEVES).index(line["sleeve"]) for line in lines]
+    assert order == sorted(order) and lines[0]["ticker"] == "WORLD"  # sleeve by sleeve, the largest core ETF first
+    for sleeve, share in PROFILES[profile]["sleeves"].items():
+        assert sum(line["weight"] for line in lines if line["sleeve"] == sleeve) == pytest.approx(share)
     assert all(line["name"] and line["isin"] and "(" not in line["theme"] for line in lines)
 
 
 def test_the_customers_rules_leave_etfs_out_of_the_plan():
     assert set(server.RULED_OUT) == set(profiler.QUESTIONS["rules"]["answers"])
-    free, ruled = server.plan("self_directed_trader", 10_000, DAY), server.plan("self_directed_trader", 10_000, DAY, ["weapons", "crypto"])
+    free, ruled = server.plan("self_directed_trader", 10_000), server.plan("self_directed_trader", 10_000, ["weapons", "crypto"])
     assert {"BITCOIN", "DEFENSE"} <= {line["ticker"] for line in free["lines"]}
     assert not {"BITCOIN", "DEFENSE"} & {line["ticker"] for line in ruled["lines"]}
     assert sorted((out["ticker"], out["rule"]) for out in ruled["left_out"]) == [("BITCOIN", "Crypto"), ("DEFENSE", "Weapons")]
     assert sum(line["eur"] for line in ruled["lines"]) == pytest.approx(10_000)  # their share went to the largest core ETF
-    assert ruled["lines"][0]["weight"] == pytest.approx(free["lines"][0]["weight"] + 0.10)
-    assert server.plan("goal_builder", 10_000, DAY, ["leverage"])["left_out"] == []  # nothing of the kind in this plan
+    assert ruled["lines"][0]["weight"] == pytest.approx(free["lines"][0]["weight"] + 0.12)
+    assert server.plan("goal_builder", 10_000, ["leverage"])["left_out"] == []  # nothing of the kind in this plan
 
 
-def test_example_plans_stay_out_of_the_committed_logs():
-    assert server.ILLUSTRATION and server.default_logs_dir() == settings.LOGS_DIR / "mock"
+def test_demo_customers_stay_out_of_the_committed_logs():
+    assert server.customer_logs_dir() == settings.LOGS_DIR / "mock"
+
+
+def test_an_etf_sheet_comes_from_the_morning_run(tmp_path):
+    phone = app(tmp_path, "unused")
+    missing = phone.get("/api/etf", params={"ticker": "WORLD"})
+    assert missing.status_code == 404 and "morning run" in missing.json()["error"]
+    pd.concat([mock.mock_etf_sheets("2026-12-04"), mock.mock_etf_sheets("2026-12-07")]).to_csv(tmp_path / morning.SHEETS, index=False)
+    sheet = phone.get("/api/etf", params={"ticker": "WORLD"}).json()
+    assert sheet["as_of"] == "2026-12-07" and sheet["name"].startswith("iShares Core MSCI World") and "rows" not in sheet
+    assert [line["block"] for line in sheet["lines"]].count("trend") == 3 and sheet["lines"][0] == {
+        "block": "returns", "name": "1 month", "value": 0.012, "state": "", "detail": ""}
+    assert phone.get("/api/etf", params={"ticker": "NOT AN ETF"}).status_code == 404
+    assert phone.post("/api/why", json={"ticker": "WORLD", "block": "trend", "name": "sideways"}).status_code == 404
+
+
+def test_why_asks_the_model_about_one_line(tmp_path):
+    mock.mock_etf_sheets().to_csv(tmp_path / morning.SHEETS, index=False)
+    model = FakeModel()
+    model.messages.create = lambda **request: (model.calls.append(request), SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="It is just under its average.")], stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=200, output_tokens=20, server_tool_use=None)))[1]
+    phone = TestClient(server.create_app(client=model, logs=tmp_path, shared=tmp_path))
+    reply = phone.post("/api/why", json={"ticker": "WORLD", "block": "trend", "name": "short"})
+    assert reply.json() == {"answer": "It is just under its average."}
+    assert "line 'short' of this sheet read neutral" in model.calls[0]["messages"][0]["content"]
+    down = TestClient(server.create_app(client=FakeModel(), logs=tmp_path, shared=tmp_path))  # a model with no reply
+    failed = down.post("/api/why", json={"ticker": "WORLD", "block": "trend", "name": "short"})
+    assert failed.status_code == 502 and failed.json()["error"] == "Lena cannot explain right now."
 
 
 def test_start_gives_the_phone_what_it_shows(tmp_path):
     start = app(tmp_path).get("/api/start").json()
     assert [c["id"] for c in start["customers"]] == list(CUSTOMERS) and "savings_eur" not in start["customers"][0]
     assert start["profiles"] == PROFILES and start["coach"] == "Lena" and start["account_data"] == list(ACCOUNT.values())
-    assert start["questions"] == len(profiler.ASKED) + 1
+    assert start["questions"] == len(profiler.ASKED) + 1 and start["sleeves"] == SLEEVES
 
 
 def test_from_the_chat_to_the_approval(tmp_path):

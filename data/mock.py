@@ -8,6 +8,7 @@ import pandas as pd
 from data.config import DATA_DIR, MACRO_FACTORS, SIGNAL_AGENTS, TECHNICAL_SIGNALS
 from data.schemas import (
     CUSTOMER_LOG,
+    ETF_SHEETS,
     EX_DIVIDENDS,
     LIST_SEP,
     MACRO_EXPOSURE,
@@ -25,6 +26,7 @@ from data.schemas import (
     WEIGHTS,
     validate_etf_views,
     validate_customer_log,
+    validate_etf_sheets,
     validate_evidence,
     validate_ex_dividends,
     validate_features,
@@ -342,32 +344,29 @@ def mock_ex_dividends(as_of: str = "2026-12-07") -> pd.DataFrame:
     return validate_ex_dividends(pd.DataFrame(rows, columns=EX_DIVIDENDS))
 
 
-# An illustration of one portfolio per investor profile, until the engine builds them: broad ETFs in the core,
-# a few themes in the satellite share. The satellite share of each is 1 - core in data/profiles.py.
-PROFILE_MIXES = {
-    "first_step_starter": {"core": {"WORLD": 0.55, "EUROPE 600": 0.10, "EMMKT": 0.05, "GLOBAL AGG BOND": 0.20},
-                           "satellite": {"ROBOTICS": 0.05, "CLEAN ENERGY": 0.05}},
-    "goal_builder": {"core": {"WORLD": 0.35, "WORLD MIN VOL": 0.10, "GLOBAL AGG BOND": 0.20, "EUR GOVT BOND": 0.10,
-                              "OVERNIGHT CASH": 0.05},
-                     "satellite": {"SEMIS": 0.07, "HEALTH CARE": 0.07, "GOLD": 0.06}},
-    "self_directed_trader": {"core": {"WORLD": 0.40, "S&P 500": 0.15, "EMMKT": 0.10, "WORLD SMALL CAP": 0.05},
-                             "satellite": {"SEMIS": 0.10, "BITCOIN": 0.05, "URANIUM": 0.05, "DEFENSE": 0.05,
-                                           "GOLD": 0.05}},
-    "cautious_saver": {"core": {"GLOBAL AGG BOND": 0.30, "WORLD": 0.20, "EUR GOVT BOND": 0.15, "WORLD MIN VOL": 0.15,
-                                "OVERNIGHT CASH": 0.10},
-                       "satellite": {"GOLD": 0.05, "HEALTH CARE": 0.05}},
-    "late_starter": {"core": {"WORLD": 0.25, "GLOBAL AGG BOND": 0.25, "EUR GOVT BOND": 0.15, "DIVIDEND LEADERS": 0.10,
-                              "WORLD MIN VOL": 0.10, "OVERNIGHT CASH": 0.05},
-                     "satellite": {"GOLD": 0.05, "STAPLES": 0.05}},
-}
-
-
 def mock_profile_portfolios(as_of: str = "2026-12-07") -> pd.DataFrame:
-    """One illustrative portfolio per investor profile. Format: Profile portfolios."""
+    """Two small model portfolios, a few ETFs each. Format: Profile portfolios."""
     day = pd.Timestamp(as_of).date()
-    rows = [(day, profile, ticker, weight, sleeve) for profile, mix in PROFILE_MIXES.items()
-            for sleeve, weights in mix.items() for ticker, weight in weights.items()]
+    mixes = {"goal_builder": [("WORLD", 0.50, "core_equity"), ("GLOBAL AGG BOND", 0.25, "bonds"), ("GOLD", 0.10, "gold"),
+                              ("SEMIS", 0.10, "satellites"), ("OVERNIGHT CASH", 0.05, "cash")],
+             "cautious_saver": [("WORLD", 0.30, "core_equity"), ("EUR GOVT BOND", 0.50, "bonds"),
+                                ("OVERNIGHT CASH", 0.20, "cash")]}
+    rows = [(day, profile, ticker, weight, sleeve) for profile, mix in mixes.items() for ticker, weight, sleeve in mix]
     return validate_profile_portfolios(pd.DataFrame(rows, columns=PROFILE_PORTFOLIOS))
+
+
+def mock_etf_sheets(as_of: str = "2026-12-07") -> pd.DataFrame:
+    """The sheet of two ETFs: returns, the three trends and two macro lines each. Format: ETF sheets."""
+    day = pd.Timestamp(as_of).date()
+    lines = [("returns", "1 month", 0.012, "", ""), ("returns", "1 year", 0.094, "", ""),
+             ("returns", "volatility", 0.14, "", "over one year, yearly"),
+             ("trend", "short", -0.004, "neutral", "Price above its 20-day average: no (-0.4%); 1-month return positive: yes (+1.2%)"),
+             ("trend", "medium", 0.021, "up", "Price above its 50-day average: yes (+2.1%); 3-month return positive: yes (+3.0%)"),
+             ("trend", "long", 0.060, "up", "Price above its 200-day average: yes (+6.0%); 12-month return positive: yes (+8.1%)"),
+             ("macro", "growth recession", 0.30, "supportive", "Today's view: +0.5 (+1 means growth stronger). Orders rose."),
+             ("macro", "fed us rates", -0.12, "headwind", "Today's view: +0.4 (+1 means Fed more hawkish). Inflation beat.")]
+    rows = [(day, ticker, *line) for ticker in ("WORLD", "GOLD") for line in lines]
+    return validate_etf_sheets(pd.DataFrame(rows, columns=ETF_SHEETS))
 
 
 def mock_customer_log() -> pd.DataFrame:
@@ -411,6 +410,7 @@ MOCKS = {
     "ex_dividends": mock_ex_dividends,
     "logbook": mock_logbook,
     "profile_portfolios": mock_profile_portfolios,
+    "etf_sheets": mock_etf_sheets,
     "customer_log": mock_customer_log,
 }
 

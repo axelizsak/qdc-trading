@@ -50,7 +50,10 @@ cp .env.example .env                                                  # GEMINI_A
 streamlit run app/streamlit_app.py                                    # the cockpit
 ```
 
-**Every weekday morning:** open the cockpit and click **Run the day** (about 10 minutes at the free tier's pace; nothing is paid for). The
+**Every weekday morning:** run `python -m graph.morning` first. It computes once what every customer shares: the
+prices, the day's Macro/News (the slow part, about 10 minutes at the free tier's pace), the five model portfolios and
+the sheet of each ETF. The customer app only reads the result, so a customer never waits. Then open the cockpit and
+click **Run the day**: it reads the morning's Macro/News back instead of running it again. The
 scores and portfolios are logged before your first review, which is all the learning needs. Doing the three reviews
 on practice days adds evidence of human judgement. Then commit `logs/` with `scripts/ship.sh "Add the days of …"`.
 
@@ -74,9 +77,14 @@ its files in `logs/`, so any past day can be opened.
 - **The same answers** fill the suitability sheet (one of them a wealth range). The code flags answers that
   contradict each other: an adviser then looks at the plan first. The last question asks for the customer's own
   rules (no weapons, no crypto...), and the plan leaves those ETFs out. The LLM only reads typed answers.
-- **One approval.** The customer sees the plan of their profile and approves it before anything is invested. The
-  plans are still examples (`data/mock.py`), so the app writes to `logs/mock/`: one portfolio per profile, built by
-  the engine, is the next step.
+- **One fixed model portfolio per profile** (`data/profiles.py`, `agents/model_portfolios.py`): a share per sleeve
+  (core equity, bonds, gold, themes, cash), the same core ETFs for everyone, the profile's own themes. Nothing in it
+  follows the market. What each would have done since 2022 is in `backtest/README.md`, section 7.
+- **ETF sheets** (`agents/etf_sheets.py`): tap an ETF of the plan to see its returns, its three trends (the
+  technical agent's rule, with the two checks behind each) and what today's macro views mean for it. Lena explains
+  any line in plain words, from the sheet's own numbers only. Information, not advice.
+- **One approval.** The customer approves the plan before anything is invested. The demo customers are synthetic,
+  so what they do is written to `logs/mock/`, not to the committed logs.
 
 ## Change the model
 
@@ -90,7 +98,8 @@ Every setting is one line. Test a change on the past first: add a line to `VARIA
 | The technical rules and the score of each answer | `agents/strategy_config.py` |
 | How the portfolio is built, its hard limits, the LLM's starting share | `agents/portfolio_config.py` |
 | The risk reference levels | `agents/risk_config.py` |
-| The five investor profiles, the coach's questions and what each answer says about a profile | `data/profiles.py`, `agents/profiler.py` |
+| The five investor profiles, their model portfolios (sleeves, core ETFs, themes) | `data/profiles.py` |
+| The coach's questions and what each answer says about a profile | `agents/profiler.py` |
 | The macro factors and each ETF's exposure to them | `data/config.py`, `data/macro_exposure.csv` |
 | The models, the pace of the calls, the trusted sites and the news feeds | `data/config.py` |
 | What the LLM is asked | the prompts in `agents/macro_analysts.py`, `agents/macro_llm.py`, `agents/technical_llm.py`, `agents/portfolio_llm.py`, `agents/profiler.py` |
@@ -100,7 +109,7 @@ Every setting is one line. Test a change on the past first: add a line to `VARIA
 ```
 data/       prices, indicators, the 50 ETFs, the 5 investor profiles, settings, every shared table (schemas.py) and its mock (mock.py)
 agents/     technical, macro/news, portfolio manager, risk manager, logbook, the learning rule, and the customer's coach
-graph/      pipeline.py (one day, step by step) and review_loop.py (the learning step)
+graph/      morning.py (what every customer shares, once a day), pipeline.py (one day, step by step), review_loop.py (the learning step)
 app/        the Streamlit cockpit
 mobile/     the customer app: server.py and the phone screens (static/)
 backtest/   the system replayed since 2022 (results in backtest/results/)

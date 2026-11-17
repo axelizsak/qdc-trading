@@ -114,7 +114,11 @@ MACRO_FACTORS = [
 # Each model has its own quota, so two of them are used side by side: what takes time in a run is the 15 requests
 # a minute, not the searches (about 1.5 seconds each).
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-LLM_FAST = os.getenv("LLM_MODEL_FAST", "gemini-3.5-flash-lite")  # the theme analysts, the customer's coach
+LLM_FAST = os.getenv("LLM_MODEL_FAST", "gemini-3.5-flash-lite")  # the theme analysts
+# The customer app's small jobs (reading a typed answer, explaining a line of a sheet). They must be quick. If
+# customers ever use up this quota, the open model "gemma-4-26b-a4b-it" is free for 14,400 requests a day, but it
+# takes 10 to 35 seconds to answer where this one takes 2.
+LLM_APP = os.getenv("LLM_MODEL_APP", "gemini-3.1-flash-lite")
 LLM_SEARCH = os.getenv("LLM_MODEL_SEARCH", "gemini-3.1-flash-lite")  # the topic searches and the exploration
 LLM_REASONING = os.getenv("LLM_MODEL_REASONING", "gemini-4-hydrogen")  # the few judgement calls of a day
 LLM_REQUESTS_PER_MINUTE = 14  # pace of the requests to one model, just under its free limit

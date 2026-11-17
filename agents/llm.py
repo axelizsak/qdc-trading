@@ -69,6 +69,8 @@ def _send(model: str, body: dict, tries: int = TRIES) -> dict:
     """One request to one model. Tries again on "busy" and on the minute's quota; raises Unavailable when the model
     still does not answer or its daily quota is used, RuntimeError when the request itself is refused."""
     error = ""
+    if model.startswith("gemma"):  # the open models take no thinking level
+        body = {**body, "generationConfig": {k: v for k, v in body["generationConfig"].items() if k != "thinkingConfig"}}
     for attempt in range(tries):
         _wait_for_a_turn(model)
         try:
@@ -178,6 +180,7 @@ class Gemini:
         blocked = reason in REFUSALS or bool(data.get("promptFeedback", {}).get("blockReason"))
         usage = SimpleNamespace(input_tokens=tokens_in, output_tokens=tokens_out, requests=requests_sent,
                                 server_tool_use=SimpleNamespace(web_search_requests=searches))
-        return SimpleNamespace(content=[SimpleNamespace(type="text", text="".join(p.get("text", "") for p in parts))],
+        text = "".join(p.get("text", "") for p in parts if not p.get("thought"))  # its reasoning is not its answer
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)],
                                stop_reason="refusal" if blocked else "max_tokens" if reason == "MAX_TOKENS" else "end_turn",
                                usage=usage, model=model, search_urls=urls)

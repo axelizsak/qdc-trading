@@ -315,7 +315,7 @@ def read(question: str, text: str, client=None) -> dict:
     prompt = (f"Question: {wording(question, {}, False, {})[0]}\n{kind}\nAnswers offered:\n{options}\n\n"
               f"The customer wrote: {json.dumps(text)}")
     reply = macro_llm.extract_json(macro_llm.ask(
-        client or llm.client(), macro_llm.Usage(), settings.LLM_FAST, READ_SYSTEM, prompt,
+        client or llm.client(), macro_llm.Usage(), settings.LLM_APP, READ_SYSTEM, prompt,
         output_config={"effort": "low", "format": {"type": "json_schema", "schema": READ_SCHEMA}}))
     amount = reply.get("amount")
     return {"answers": [key for key in reply.get("answers") or [] if key in spec["answers"]],
