@@ -70,5 +70,4 @@ links = [s for s in split_list(view["sources"]) if s.startswith("http")] or [
 if links:
     st.markdown("**Sources** · " + " · ".join(f"[{i + 1}]({u})" for i, u in enumerate(dict.fromkeys(links[:6]))))
 if report:
-    st.download_button("The full report of the run", report, f"macro_{day}.md", "text/markdown",
-                       icon=":material/description:")
+    ui.document_download("The full report of the run", report, f"macro_{day}")

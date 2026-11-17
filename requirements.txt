@@ -9,3 +9,6 @@ langgraph-checkpoint-sqlite
 streamlit
 python-dotenv
 pytest
+fpdf2
+scipy
+python-pptx
