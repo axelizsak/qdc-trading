@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from data.config import MACRO_FACTORS, MAX_ORDERS_PER_DAY, SIGNAL_AGENTS, TECHNICAL_SIGNALS
+from data.profiles import PROFILES, SLEEVES
 
 # Real daily prices (not adjusted for dividends), in EUR, on the Belfius exchange.
 # One row per day the ETF was quoted: a day without a quote is absent, never filled.
@@ -76,6 +77,14 @@ RISK_CALIBRATION = ["date", "vol_scale", "days_graded", "mean_ratio", "floor_bre
 LOGBOOK = ["seq", "date", "kind", "actor", "ticker", "round", "gate", "title", "detail", "data", "source", "event_id",
            "recorded_at", "prev_hash", "hash"]
 
+# The portfolio the engine holds for each investor profile (data/profiles.py): what the customer app shows a customer
+# of that profile. sleeve: core (broad, diversified ETFs) or satellite (a few themes). One portfolio per date and profile.
+PROFILE_PORTFOLIOS = ["date", "profile", "ticker", "target_weight", "sleeve"]
+# logs/customer_log.csv: what happened to each customer of the app, append-only. event: profiled (the coach placed
+# them in a profile), approved or declined (their decision on the plan), reset (they start over). `sheet` holds the
+# suitability answers as a JSON object, `flags` the contradictions the code found, joined with LIST_SEP.
+CUSTOMER_LOG = ["time", "customer", "event", "profile", "why", "sheet", "flags"]
+
 SIDES = {"BUY", "SELL"}
 LOGBOOK_KINDS = {"signals", "macro_report", "agent_weights", "recommendation", "risk_report", "risk_flag",
                  "human_review", "order_decision", "fill", "valuation", "summary", "incident", "superseded",
@@ -89,6 +98,7 @@ REVIEW_GATES = ["orders", "risk", "summary"]  # in the order the human meets the
 REVIEW_DECISIONS = {"approved", "revised", "stopped"}  # revised: back to the Portfolio Manager; stopped: no trade
 PM_SOURCES = {"baseline", "optimizer", "llm", "final"}
 RISK_FORECAST_KINDS = {"weight", "forecast"}
+CUSTOMER_EVENTS = {"profiled", "approved", "declined", "reset"}
 LIST_SEP = ";"
 
 # Proposed starting set of features, to validate with the data agent's owner. Not enforced.
@@ -441,3 +451,31 @@ def validate_ex_dividends(df: pd.DataFrame) -> pd.DataFrame:
     _require_unique(df, ["ticker", "ex_date"], "ex_dividends")
     return df
 
+
+def validate_profile_portfolios(df: pd.DataFrame) -> pd.DataFrame:
+    """Profile portfolios: known profiles and sleeves, weights in [0, 1] that add up to at most 100% per portfolio."""
+    _require_columns(df, PROFILE_PORTFOLIOS, "profile_portfolios")
+    _require_in(df, "profile", set(PROFILES), "profile_portfolios")
+    _require_in(df, "sleeve", set(SLEEVES), "profile_portfolios")
+    _require_between(df, "target_weight", 0, 1, "profile_portfolios")
+    _require_unique(df, ["date", "profile", "ticker"], "profile_portfolios")
+    if (df.groupby([df["date"].astype(str), "profile"])["target_weight"].sum() > 1 + 1e-6).any():
+        raise ValueError("profile_portfolios: the weights of a portfolio must add up to at most 1")
+    return df
+
+
+def validate_customer_log(df: pd.DataFrame) -> pd.DataFrame:
+    """Customer log: a customer and a known event on every row, a known profile unless the event is a reset, and
+    the suitability answers as a JSON object."""
+    _require_columns(df, CUSTOMER_LOG, "customer_log")
+    _require_text(df, "customer", "customer_log")
+    _require_in(df, "event", CUSTOMER_EVENTS, "customer_log")
+    _require_in(df[df["event"] != "reset"], "profile", set(PROFILES), "customer_log")
+    for sheet in df["sheet"]:
+        try:
+            ok = isinstance(json.loads(sheet), dict)
+        except (TypeError, ValueError):
+            ok = False
+        if not ok:
+            raise ValueError("customer_log: sheet must be a JSON object")
+    return df

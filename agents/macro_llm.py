@@ -66,9 +66,10 @@ def _create(client, model: str, **kwargs):
     return client.messages.create(model=model, **kwargs)
 
 
-def ask(client, usage: Usage, model: str, system: str, prompt: str, **kwargs) -> str:
-    """One request, resumed while the server pauses a long tool turn. Returns all text written."""
-    messages = [{"role": "user", "content": prompt}]
+def ask(client, usage: Usage, model: str, system: str, prompt: str | list[dict], **kwargs) -> str:
+    """One request, resumed while the server pauses a long tool turn. Returns all text written.
+    `prompt` is one user message, or a whole conversation as a list of messages."""
+    messages = list(prompt) if isinstance(prompt, list) else [{"role": "user", "content": prompt}]
     texts = []
     for _ in range(MAX_CONTINUATIONS + 1):
         response = _create(client, model, system=system, messages=messages, max_tokens=MAX_TOKENS, **kwargs)

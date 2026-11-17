@@ -7,5 +7,7 @@ httpx
 langgraph
 langgraph-checkpoint-sqlite
 streamlit
+starlette
+uvicorn
 python-dotenv
 pytest
