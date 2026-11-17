@@ -28,22 +28,22 @@ def error(status, name, message="", **detail):
 
 @pytest.fixture
 def network(monkeypatch):
-    """Replies to send back in order, and the requests received: (model, body)."""
-    replies, sent, waits = [], [], []
+    """Replies to send back in order, the requests received, (model, body), and the key each one used."""
+    replies, sent, waits, keys = [], [], [], []
 
     def post(url, json, timeout, headers):
-        assert headers == {"x-goog-api-key": "key"}
+        keys.append(headers["x-goog-api-key"])
         sent.append((url.split("/models/")[1].split(":")[0], json))
         return replies.pop(0)
 
     monkeypatch.setattr(llm.requests, "post", post)
     monkeypatch.setattr(llm.time, "sleep", waits.append)
-    monkeypatch.setattr(llm, "_resting", {})
-    monkeypatch.setattr(llm, "_next_start", {})
+    for memory in ("_resting", "_next_start", "_spent"):
+        monkeypatch.setattr(llm, memory, {})
     monkeypatch.setattr(settings, "LLM_REASONING", SCARCE)
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "key")
     monkeypatch.setattr(settings, "LLM_FAST", FAST)
-    return SimpleNamespace(replies=replies, sent=sent, waits=waits)
+    return SimpleNamespace(replies=replies, sent=sent, waits=waits, keys=keys)
 
 
 def ask(model=FAST, **extra):
@@ -147,6 +147,30 @@ def test_each_model_is_paced_on_its_own(network, monkeypatch):
     assert network.waits == pytest.approx([0, step, 0, 2 * step])  # the other model does not wait for the first
 
 
+def test_two_keys_take_turns_each_at_its_own_pace(network, monkeypatch):
+    monkeypatch.setattr(settings, "GEMINI_API_KEY_2", "key-2")
+    monkeypatch.setattr(llm.time, "monotonic", lambda: 100.0)
+    network.replies += [answer("ok")] * 3
+    for _ in range(3):
+        ask()
+    assert network.keys == ["key", "key-2", "key"]
+    assert network.waits == pytest.approx([0, 0, 60 / settings.LLM_REQUESTS_PER_MINUTE])  # the second key does not wait
+
+
+def test_a_key_whose_day_is_used_leaves_the_work_to_the_other(network, monkeypatch, capsys):
+    monkeypatch.setattr(settings, "GEMINI_API_KEY_2", "key-2")
+    day = error(429, "RESOURCE_EXHAUSTED", quotaId="GenerateRequestsPerDayPerProjectPerModel-FreeTier")
+    network.replies += [day, answer("from the second key"), answer("again"), answer("other model")]
+    out = ask(SCARCE)  # one try only for the scarce model: a used-up key does not count as that try
+    assert out.model == SCARCE and out.content[0].text == "from the second key" and capsys.readouterr().out == ""
+    assert ask(SCARCE).model == SCARCE and network.keys == ["key", "key-2", "key-2"]  # the first key is left alone
+    ask(FAST)
+    assert network.keys[-1] == "key"  # for that model only: its quota for another model is untouched
+    network.replies += [day, answer("fast")]
+    assert ask(SCARCE).model == FAST and len(network.keys) == 6  # both keys used up for it: the fast model answers
+    assert "answers instead" in capsys.readouterr().out
+
+
 def test_another_model_than_the_scarce_one_gets_every_try(network):
     network.replies += [error(503, "UNAVAILABLE"), error(503, "UNAVAILABLE"), answer("ok")]
     assert ask("search-model").model == "search-model" and len(network.sent) == 3
@@ -163,11 +187,20 @@ def test_when_nothing_answers_the_caller_is_told(network):
 
 
 FEED = """<rss><channel>
-<item><title>ECB holds rates as inflation cools</title><link>https://www.cnbc.com/ecb-holds</link><pubDate>{now}</pubDate>
+<item><title>ECB decision: rates on hold as inflation cools</title><link>https://www.cnbc.com/ecb-holds</link><pubDate>{now}</pubDate>
   <description>&lt;p&gt;The ECB kept its  deposit rate at 2%.&lt;/p&gt;</description></item>
 <item><title>ECB rates: what happened</title><link>https://www.cnbc.com/old</link><pubDate>Mon, 01 Jan 2024 10:00:00 GMT</pubDate>
   <description>A story on ECB rates from long ago.</description></item>
 <item><title>Football results</title><link>https://www.cnbc.com/football</link><pubDate>{now}</pubDate><description>Not markets.</description></item>
+</channel></rss>"""
+BING = """<rss><channel>
+<item><title>ECB set to raise rates in December</title>
+  <link>http://www.bing.com/news/apiclick.aspx?ref=FexRss&amp;url=https%3a%2f%2fwww.reuters.com%2fmarkets%2fecb-december&amp;c=1</link>
+  <pubDate>{now}</pubDate><description>Policymakers signalled a rise of 25 basis points.</description></item>
+<item><title>ECB rates: my hot take</title><link>http://www.bing.com/news/apiclick.aspx?url=https%3a%2f%2fsomeblog.example%2ftake</link>
+  <pubDate>{now}</pubDate><description>A blog.</description></item>
+<item><title>Lagarde on the rates path</title><link>http://www.bing.com/news/apiclick.aspx?url=https%3a%2f%2fwww.ft.com%2flagarde</link>
+  <pubDate>{now}</pubDate><description>The ECB president spoke in Frankfurt.</description></item>
 </channel></rss>"""
 GOOGLE = """<rss><channel>
 <item><title>ECB rate decision due Thursday - Reuters</title><link>https://news.google.com/rss/articles/abc</link>
@@ -177,26 +210,44 @@ GOOGLE = """<rss><channel>
 </channel></rss>"""
 
 
-def test_a_search_reads_free_feeds_and_keeps_trusted_recent_articles(monkeypatch):
+@pytest.fixture
+def web(monkeypatch):
+    """A fake web: one publisher's feed, one feed that is down, Bing News and Google News. `down` takes a site down."""
     now = format_datetime(datetime.now(timezone.utc))
-    asked = []
+    asked, down = [], ["broken"]
 
     def get(url, headers, timeout):
         asked.append(url)
-        if "broken" in url:
+        if any(name in url for name in down):
             raise web_search.requests.ConnectionError("down")
-        xml = GOOGLE if url.startswith("https://news.google.com") else FEED
+        xml = BING if "bing.com" in url else GOOGLE if "news.google.com" in url else FEED
         return SimpleNamespace(content=xml.format(now=now).encode(), raise_for_status=lambda: None)
 
     monkeypatch.setattr(web_search.requests, "get", get)
     monkeypatch.setattr(settings, "NEWS_FEEDS", ["https://feed.example/markets", "https://feed.example/broken"])
-    web_search.feed_articles.cache_clear()
+    web_search.feeds.cache_clear()
+    yield SimpleNamespace(asked=asked, down=down)
+    web_search.feeds.cache_clear()
+
+
+def test_a_search_gives_trusted_recent_articles_with_their_own_link(web):
     found = web_search.search("  ECB   rates decision ")
-    web_search.feed_articles.cache_clear()
-    assert [r["url"] for r in found] == ["https://www.cnbc.com/ecb-holds", "https://news.google.com/rss/articles/abc"]
-    assert found[0]["text"] == "The ECB kept its deposit rate at 2%." and found[0]["date"] == datetime.now(timezone.utc).date().isoformat()
-    assert found[1]["text"] == found[1]["title"] == "ECB rate decision due Thursday - Reuters"  # a headline has no summary
+    # Bing among the main press, the feeds and Bing openly take turns; the blog, the old story and the football are out
+    assert [r["url"] for r in found] == ["https://www.reuters.com/markets/ecb-december", "https://www.cnbc.com/ecb-holds",
+                                         "https://www.ft.com/lagarde"]
+    assert found[0]["text"] == "Policymakers signalled a rise of 25 basis points."
+    assert found[1]["text"] == "The ECB kept its deposit rate at 2%." and found[1]["date"] == datetime.now(timezone.utc).date().isoformat()
     assert set(found[0]) == {"title", "url", "date", "text"}
-    google = next(url for url in asked if url.startswith("https://news.google.com"))
-    assert "q=ECB+rates+decision+when:14d" in google  # the old story, the football and the unknown blog are left out
+    press, openly = [url for url in web.asked if "bing.com" in url]
+    assert "q=ECB+rates+decision+%28site%3Areuters.com+OR+site%3A" in press and "q=ECB+rates+decision&" in openly
+    assert not any("news.google.com" in url for url in web.asked)  # enough was found: Google News is not asked
+    assert set(settings.WEB_SEARCH_PRESS) <= set(settings.WEB_SEARCH_SITES)
     assert len(settings.WEB_SEARCH_SITES) == len(set(settings.WEB_SEARCH_SITES)) and len(settings.NEWS_FEEDS) > 0
+
+
+def test_google_news_headlines_fill_in_when_little_is_found(web):
+    web.down.append("bing.com")
+    found = web_search.search("ECB rates decision")
+    assert [r["url"] for r in found] == ["https://www.cnbc.com/ecb-holds", "https://news.google.com/rss/articles/abc"]
+    assert found[1]["text"] == found[1]["title"] == "ECB rate decision due Thursday - Reuters"  # a headline has no summary
+    assert "q=ECB+rates+decision+when:14d" in next(url for url in web.asked if "news.google.com" in url)

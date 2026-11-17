@@ -34,8 +34,10 @@ then the weights are rescaled to sum to 1 and kept between 5% and 80%. It weighs
 **Free tools only.** The challenge allows nothing that costs money. The LLM is Gemini on Google AI Studio's free
 tier, behind one file (`agents/llm.py`): two small models side by side for the many calls (each has its own quota of
 15 requests a minute), `gemini-4-hydrogen` for the few judgement calls when it answers (20 requests a day), a small
-model otherwise. The news search needs no key and costs nothing (`agents/web_search.py`): the publishers' RSS feeds
-and Google News' RSS search, trusted sites only, last 14 days only. A source the model cites must be an article a
+model otherwise. A second team member can add their own free key (`GEMINI_API_KEY_2`): the requests then take turns
+between the two keys. The news search needs no key and costs nothing (`agents/web_search.py`): the publishers' RSS
+feeds and Bing News' RSS search, which give each article's own link and a summary, with Google News' headlines only
+when those find little. Trusted sites only, last 14 days only. A source the model cites must be an article a
 search returned: anything else is refused. The models, the pace, the sites and the feeds are in `data/config.py`.
 
 **Two principles.** Code calculates, the LLM judges: no LLM produces a number code could compute. Nothing is traded
@@ -45,7 +47,7 @@ without the three human reviews, and the trading rules are checked in code on ev
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python 3.11+
-cp .env.example .env                                                  # GEMINI_API_KEY, EODHD_API_KEY; never commit it
+cp .env.example .env                                                  # GEMINI_API_KEY (and a teammate's as GEMINI_API_KEY_2), EODHD_API_KEY; never commit it
 .venv/bin/python -m pytest                                            # no test calls the network or the model
 streamlit run app/streamlit_app.py                                    # the cockpit
 ```
@@ -69,6 +71,8 @@ its files in `logs/`, so any past day can be opened.
 
 ## The customer app
 
+<img src="docs/app_chat.jpg" alt="Lena asks a question; beside the phone, the probability of each profile and the suitability sheet" width="64%"> <img src="docs/app_plan.jpg" alt="The plan of a profile, sleeve by sleeve, with the approval button" width="33%">
+
 `python -m mobile.server`, then http://localhost:8600: a phone-sized app for the customer (light, ReBel style).
 
 - **Lena**, the coach, places the customer in one of five investor profiles (`data/profiles.py`) the way Akinator
@@ -87,6 +91,12 @@ its files in `logs/`, so any past day can be opened.
   any line in plain words, from the sheet's own numbers only. Information, not advice.
 - **One approval.** The customer approves the plan before anything is invested. The demo customers are synthetic,
   so what they do is written to `logs/mock/`, not to the committed logs.
+
+**Online demo: https://axelizsak.github.io/qdc-trading/** The same screens with no server, on GitHub Pages, rebuilt
+at every merge into `main` (`.github/workflows/pages.yml`). The page runs `agents/profiler.py` itself in the browser
+(Pyodide), so Lena's logic exists once; the plans and the ETF sheets of the latest morning run are prepared as data
+(`mobile/demo.py`, `mobile/static/demo.js`). It holds no key and calls no model: a typed answer other than an amount,
+and "Ask Lena why", say so. Nothing a visitor enters leaves their browser.
 
 ## Change the model
 
@@ -113,7 +123,7 @@ data/       prices, indicators, the 50 ETFs, the 5 investor profiles, settings, 
 agents/     technical, macro/news, portfolio manager, risk manager, logbook, the learning rule, and the customer's coach
 graph/      morning.py (what every customer shares, once a day), pipeline.py (one day, step by step), review_loop.py (the learning step)
 app/        the Streamlit cockpit
-mobile/     the customer app: server.py and the phone screens (static/)
+mobile/     the customer app: server.py, the phone screens (static/) and demo.py (the online demo, a static copy)
 backtest/   the system replayed since 2022 (results in backtest/results/)
 logs/       everything the agents said and the humans decided: graded evidence (logs/README.md)
 tests/      one file per module

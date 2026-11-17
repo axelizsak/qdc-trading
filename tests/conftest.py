@@ -15,13 +15,15 @@ import pytest
 from agents import portfolio_config
 from data import config as settings
 
-os.environ.pop("GEMINI_API_KEY", None)
-settings.GEMINI_API_KEY = ""
+for name in ("GEMINI_API_KEY", "GEMINI_API_KEY_2"):
+    os.environ.pop(name, None)
+    setattr(settings, name, "")
 
 
 @pytest.fixture(autouse=True)
 def all_mocks(monkeypatch):
     monkeypatch.setattr(settings, "USE_MOCK", {step: True for step in settings.USE_MOCK})
     monkeypatch.setattr(portfolio_config, "IDLE_TO_BENCHMARK", 0.0)
-    monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    for name in ("GEMINI_API_KEY", "GEMINI_API_KEY_2"):
+        monkeypatch.setattr(settings, name, "")
+        monkeypatch.delenv(name, raising=False)

@@ -114,6 +114,14 @@ def etf_sheet(shared: Path, ticker: str) -> dict | None:
                                       for r in sheets.itertuples()]}
 
 
+def start() -> dict:
+    """What the phone needs before the first screen: the demo customers, the profiles and the coach's name."""
+    people = [{"id": key, **{field: c[field] for field in ("first_name", "age", "city", "status")}}
+              for key, c in CUSTOMERS.items()]
+    return {"customers": people, "profiles": PROFILES, "account_data": list(ACCOUNT.values()),
+            "coach": profiler.COACH, "questions": profiler.MAX_QUESTIONS, "sleeves": SLEEVES}
+
+
 def create_app(client=None, logs: Path | None = None, shared: Path | None = None) -> Starlette:
     """The web app. `client` replaces the model's client, `logs` the folder of the customer log and `shared` the
     folder the morning run writes to (tests)."""
@@ -124,11 +132,8 @@ def create_app(client=None, logs: Path | None = None, shared: Path | None = None
     def error(message: str, status: int) -> JSONResponse:
         return JSONResponse({"error": message}, status_code=status)
 
-    async def start(request):
-        people = [{"id": key, **{field: c[field] for field in ("first_name", "age", "city", "status")}}
-                  for key, c in CUSTOMERS.items()]
-        return JSONResponse({"customers": people, "profiles": PROFILES, "account_data": list(ACCOUNT.values()),
-                             "coach": profiler.COACH, "questions": profiler.MAX_QUESTIONS, "sleeves": SLEEVES})
+    async def at_start(request):
+        return JSONResponse(start())
 
     async def state(request):
         customer = request.query_params.get("customer")
@@ -197,7 +202,7 @@ def create_app(client=None, logs: Path | None = None, shared: Path | None = None
         return JSONResponse({"state": None})
 
     return Starlette(routes=[
-        Route("/api/start", start), Route("/api/state", state), Route("/api/plan", customer_plan), Route("/api/etf", etf),
+        Route("/api/start", at_start), Route("/api/state", state), Route("/api/plan", customer_plan), Route("/api/etf", etf),
         Route("/api/chat", chat, methods=["POST"]), Route("/api/why", why, methods=["POST"]),
         Route("/api/decision", decision, methods=["POST"]), Route("/api/reset", reset, methods=["POST"]),
         Mount("/", StaticFiles(directory=STATIC, html=True)),

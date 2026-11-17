@@ -32,6 +32,8 @@ Work in your own modules. To build against someone else's, use the mocks in `dat
 
 - Never read, print or commit `.env` or an API key. Keys live only in your local `.env`; `.env.example` lists the key names without values.
 - Never commit the Belfius or QuantumBlack documents: they are confidential.
+- This repository is public (since 17 November 2026, for the online demo on GitHub Pages): anyone can read what
+  is committed, on every branch, and it stays in the history.
 
 ## Code rules
 
@@ -51,5 +53,6 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python >=
 streamlit run app/streamlit_app.py                                    # the cockpit
 .venv/bin/python -m graph.morning                                     # what every customer shares, once a day
 .venv/bin/python -m mobile.server                                     # the customer app, on http://localhost:8600
+.venv/bin/python -m mobile.demo _site                                 # the online demo, as GitHub builds it at every merge
 scripts/ship.sh "what you changed"                                    # or /ship in Claude Code
 ```
