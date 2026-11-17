@@ -22,7 +22,7 @@ Everything here is committed, because it is graded evidence of the AI suggestion
 | `source_registry.csv` | Every source the Macro/News agent used: status (active, testing, dropped) and hit rate |
 | `source_changes.csv` | When each Macro/News source was added or removed, to compare results before and after |
 | `incidents.csv` | Every pipeline step that failed and was replaced by its fallback |
-| `weights.csv` | Every weight of the system, every session: the technical agent's three answers (since 2022), the four agents, Claude's portfolio against the code's. Each row is the weight an expert had for a session and what following it earned in that session (Weights format): the evidence of model re-assessment |
+| `weights.csv` | Every weight of the system, every session: the technical agent's three answers (since 2022), the four agents, the LLM's portfolio against the code's. Each row is the weight an expert had for a session and what following it earned in that session (Weights format): the evidence of model re-assessment |
 | `technical_answers.csv` | What the technical rules answered for each ETF on the morning of every session since 2022, and what the ETF then did: what the technical weights are learned from (Technical answers format) |
 | `agent_weights.csv` | The agent weights of the first learning rule, until 16 November 2026. No longer written: `weights.csv` replaced it |
 | `lessons.md` | Lessons journal, written by the learning step (newest review first): the weights and the record behind them, which agent was right on which kind of call, the largest misses, the weakest sources. The agents read it before each decision |

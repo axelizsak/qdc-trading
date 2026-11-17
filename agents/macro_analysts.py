@@ -1,4 +1,4 @@
-"""ETF analysts of the Macro/News agent: one Sonnet "hedge-fund quant" per theme of the universe.
+"""ETF analysts of the Macro/News agent: one "hedge-fund quant" per theme of the universe.
 
 Each analyst searches the news for its ETFs and gives every ETF a direction in [-1, 1], a confidence,
 a rationale, a counter-argument and its sources. Before it judges, it reads what the code calculated for
@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from agents import macro_tape
-from agents.macro_llm import UNTRUSTED, Usage, ask, extract_json
+from agents.macro_llm import UNTRUSTED, Usage, ask, extract_json, page
 from data import config as settings
 from data.schemas import ETF_VIEWS, LIST_SEP, SIGNALS, validate_etf_views, validate_signals
 from data.universe import load_universe
@@ -136,12 +136,12 @@ def analyse_theme(client, usage: Usage, as_of: date, theme: str, etfs: pd.DataFr
     """
     rows, remaining, dropped = [], etfs, {}
     for _ in range(attempts):
-        text = ask(client, usage, settings.LLM_REASONING, system_prompt(theme, as_of),
-                   f"Your ETFs:\n{_etf_lines(remaining, notes)}" + (f"\n\n{record}" if record else ""),
-                   tools=[{"type": settings.WEB_SEARCH_TOOL_REASONING, "name": "web_search",
-                           "max_uses": settings.MACRO_ANALYST_SEARCHES}],
+        found = set()
+        text = ask(client, usage, settings.LLM_FAST, system_prompt(theme, as_of),
+                   f"Your ETFs:\n{_etf_lines(remaining, notes)}" + (f"\n\n{record}" if record else ""), found,
+                   tools=[{"name": "web_search", "max_uses": settings.MACRO_ANALYST_SEARCHES}],
                    output_config={"effort": "medium"})
-        new, dropped = _parse(text, as_of, set(remaining["ticker"]))
+        new, dropped = _parse(text, as_of, set(remaining["ticker"]), found)
         rows += new
         remaining = remaining[remaining["ticker"].isin(dropped)]
         if remaining.empty:
@@ -174,8 +174,9 @@ def _catalyst(answer, as_of: date) -> tuple[str | None, str | None]:
     return day.isoformat(), " ".join(answer["event"].split())[:160]
 
 
-def _parse(text: str, as_of: date, expected: set[str]) -> tuple[list[dict], dict[str, str]]:
-    """Usable views in an answer, and why each expected ETF without one was dropped."""
+def _parse(text: str, as_of: date, expected: set[str], found: set[str]) -> tuple[list[dict], dict[str, str]]:
+    """Usable views in an answer, and why each expected ETF without one was dropped. A view needs at least one
+    source among `found`, the pages the analyst's searches returned: a source it made up does not count."""
     try:
         answer = extract_json(text)
     except ValueError:
@@ -185,9 +186,9 @@ def _parse(text: str, as_of: date, expected: set[str]) -> tuple[list[dict], dict
         ticker = _match(view.get("ticker"), expected)
         if ticker is None or ticker in {r["ticker"] for r in rows}:
             continue
-        urls = _urls(view.get("sources"))
+        urls = [url for url in _urls(view.get("sources")) if page(url) in found]
         if not urls:
-            dropped[ticker] = "no source URL"
+            dropped[ticker] = "no source among the pages its searches returned"
             continue
         catalyst_date, catalyst = _catalyst(view.get("next_catalyst"), as_of)
         rows.append({"date": as_of.isoformat(), "ticker": ticker,

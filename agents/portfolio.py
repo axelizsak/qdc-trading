@@ -42,7 +42,7 @@ import numpy as np
 import pandas as pd
 
 from agents import learning as agent_learning
-from agents import macro_llm, portfolio_learning, portfolio_llm, portfolio_log
+from agents import llm, macro_llm, portfolio_learning, portfolio_llm, portfolio_log
 from agents import portfolio_config as cfg
 from data import config as settings
 from data.schemas import ORDERS, PORTFOLIO, validate_orders, validate_portfolio
@@ -689,8 +689,8 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
     An agent without a weight does not count; the weights are rescaled over the agents that scored each ETF.
     Optional, keyword-only: `macro_summary` (the Macro/News report, read by the LLM); `logs_dir` (today's portfolios
     and recommendations are logged there; without it nothing is written); `trust` (how much the LLM's portfolio
-    counts, default TRUST_START); `learning` (the learning scoreboard, shown in the memo); `client` (a Claude client,
-    default: the real one when ANTHROPIC_API_KEY is set); `use_llm=False` (the code's portfolio alone).
+    counts, default TRUST_START); `learning` (the learning scoreboard, shown in the memo); `client` (a the LLM client,
+    default: the real one when GEMINI_API_KEY is set); `use_llm=False` (the code's portfolio alone).
     """
     universe = load_universe().set_index("ticker")
     tickers = universe.index.tolist()
@@ -741,11 +741,7 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
     judgement, usage, llm_note = dict(portfolio_llm.EMPTY), macro_llm.Usage(), ""
     if use_llm:
         try:
-            if client is None:
-                if not settings.ANTHROPIC_API_KEY:
-                    raise RuntimeError("no ANTHROPIC_API_KEY")
-                import anthropic
-                client = anthropic.Anthropic()
+            client = client or llm.client()
             context = briefing(as_of, status, nav, cash_eur, weights_now, stats, learned, table, signals, universe,
                                drafts, trust, track, macro_summary, lessons, feedback)
             judgement = portfolio_llm.judge(client, usage, context, tickers)

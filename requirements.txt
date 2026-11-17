@@ -2,7 +2,6 @@ pandas
 numpy
 yfinance
 requests
-anthropic
 httpx
 langgraph
 langgraph-checkpoint-sqlite

@@ -19,31 +19,38 @@ The agents propose, a human approves every order.
 |---|---|---|
 | Data | Prices of the 50 ETFs, 37 indicators, ex-dividend dates | `data/` |
 | Learning | Re-weights everything from what each expert earned (below), writes the lessons | `graph/review_loop.py`, `agents/learning.py` |
-| Technical | Two scores: three rule answers weighted by what they earned since 2022, and Claude's reading of them | `agents/technical*.py` |
+| Technical | Two scores: three rule answers weighted by what they earned since 2022, and the LLM's reading of them | `agents/technical*.py` |
 | Macro / News | Two scores: 15 macro views, and 20 theme analysts reading the news | `agents/macro_*.py` |
-| Portfolio Manager | Combines the four scores, blends the code's portfolio with Claude's, picks at most 5 orders | `agents/portfolio*.py` |
+| Portfolio Manager | Combines the four scores, blends the code's portfolio with the LLM's, picks at most 5 orders | `agents/portfolio*.py` |
 | You | Review the orders | cockpit, Today page |
-| Risk Manager | Measures the portfolio after your orders on 22 metrics; Claude writes an independent reading | `agents/risk*.py` |
+| Risk Manager | Measures the portfolio after your orders on 22 metrics; the LLM writes an independent reading | `agents/risk*.py` |
 | You | Review the risk, then sign off the summary; each review can send the day back or stop it | cockpit, Today page |
 | Logbook | Writes the orders and an audit trail of the day, hash-chained | `agents/logbook.py` |
 
 **One rule for every weight.** After each session, a weight is multiplied by e^(2 × what following that expert earned),
 then the weights are rescaled to sum to 1 and kept between 5% and 80%. It weighs the technical agent's three answers
-(since 2022), the four agents (since their first score), and Claude's portfolio against the code's.
+(since 2022), the four agents (since their first score), and the LLM's portfolio against the code's.
 
-**Two principles.** Code calculates, Claude judges: no LLM produces a number code could compute. Nothing is traded
+**Free tools only.** The challenge allows nothing that costs money. The LLM is Gemini on Google AI Studio's free
+tier, behind one file (`agents/llm.py`): two small models side by side for the many calls (each has its own quota of
+15 requests a minute), `gemini-4-hydrogen` for the few judgement calls when it answers (20 requests a day), a small
+model otherwise. The news search needs no key and costs nothing (`agents/web_search.py`): the publishers' RSS feeds
+and Google News' RSS search, trusted sites only, last 14 days only. A source the model cites must be an article a
+search returned: anything else is refused. The models, the pace, the sites and the feeds are in `data/config.py`.
+
+**Two principles.** Code calculates, the LLM judges: no LLM produces a number code could compute. Nothing is traded
 without the three human reviews, and the trading rules are checked in code on every proposal and every approval.
 
 ## Get started
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python 3.11+
-cp .env.example .env                                                  # ANTHROPIC_API_KEY, EODHD_API_KEY; never commit it
-.venv/bin/python -m pytest                                            # no test calls the network or Claude
+cp .env.example .env                                                  # GEMINI_API_KEY, EODHD_API_KEY; never commit it
+.venv/bin/python -m pytest                                            # no test calls the network or the model
 streamlit run app/streamlit_app.py                                    # the cockpit
 ```
 
-**Every weekday morning:** open the cockpit and click **Run the day** (about $4.30 of Claude, mostly Macro/News). The
+**Every weekday morning:** open the cockpit and click **Run the day** (about 10 minutes at the free tier's pace; nothing is paid for). The
 scores and portfolios are logged before your first review, which is all the learning needs. Doing the three reviews
 on practice days adds evidence of human judgement. Then commit `logs/` with `scripts/ship.sh "Add the days of …"`.
 
@@ -60,11 +67,13 @@ its files in `logs/`, so any past day can be opened.
 
 `python -m mobile.server`, then http://localhost:8600: a phone-sized app for the customer (light, ReBel style).
 
-- **Bel**, an AI coach on Claude Sonnet, chats with the customer and places them in one of five investor profiles
-  (`data/profiles.py`). With their consent it reads what Belfius already knows, to ask fewer and sharper questions,
-  and it asks smoothly for what is missing.
-- **The code** keeps the suitability sheet (12 answers, one of them a wealth range), decides when it is complete and
-  flags answers that contradict each other: an adviser then looks at the plan first (`agents/profiler.py`).
+- **Lena**, the coach, places the customer in one of five investor profiles (`data/profiles.py`) the way Akinator
+  guesses a character: the code keeps a probability for each profile, asks next the question that separates them
+  best, and updates the probabilities with every answer. With the customer's consent, what Belfius already knows
+  sets the start and sharpens the questions (`agents/profiler.py`).
+- **The same answers** fill the suitability sheet (one of them a wealth range). The code flags answers that
+  contradict each other: an adviser then looks at the plan first. The last question asks for the customer's own
+  rules (no weapons, no crypto...), and the plan leaves those ETFs out. The LLM only reads typed answers.
 - **One approval.** The customer sees the plan of their profile and approves it before anything is invested. The
   plans are still examples (`data/mock.py`), so the app writes to `logs/mock/`: one portfolio per profile, built by
   the engine, is the next step.
@@ -79,11 +88,12 @@ Every setting is one line. Test a change on the past first: add a line to `VARIA
 |---|---|
 | Competition rules, fill price, units, the learning speed and bounds, the agents' starting weights | `data/config.py` |
 | The technical rules and the score of each answer | `agents/strategy_config.py` |
-| How the portfolio is built, its hard limits, Claude's starting share | `agents/portfolio_config.py` |
+| How the portfolio is built, its hard limits, the LLM's starting share | `agents/portfolio_config.py` |
 | The risk reference levels | `agents/risk_config.py` |
-| The five investor profiles, the suitability sheet and its checks | `data/profiles.py`, `agents/profiler.py` |
+| The five investor profiles, the coach's questions and what each answer says about a profile | `data/profiles.py`, `agents/profiler.py` |
 | The macro factors and each ETF's exposure to them | `data/config.py`, `data/macro_exposure.csv` |
-| What Claude is asked | the prompts in `agents/macro_analysts.py`, `agents/macro_llm.py`, `agents/technical_llm.py`, `agents/portfolio_llm.py`, `agents/profiler.py` |
+| The models, the pace of the calls, the trusted sites and the news feeds | `data/config.py` |
+| What the LLM is asked | the prompts in `agents/macro_analysts.py`, `agents/macro_llm.py`, `agents/technical_llm.py`, `agents/portfolio_llm.py`, `agents/profiler.py` |
 
 ## Repository
 

@@ -31,7 +31,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from agents import macro_llm, portfolio_learning, risk_llm, risk_review, risk_stats
+from agents import llm, macro_llm, portfolio_learning, risk_llm, risk_review, risk_stats
 from agents import risk_config as cfg
 from agents.portfolio_config import MARKET_TICKER, VALUATION_END
 from data import config as settings
@@ -484,11 +484,7 @@ def assess(report: pd.DataFrame, orders: pd.DataFrame, holdings: pd.DataFrame, c
     if not use_llm:
         return out | {"note": "switched off."}
     try:
-        if client is None:
-            if not settings.ANTHROPIC_API_KEY:
-                raise RuntimeError("no ANTHROPIC_API_KEY")
-            import anthropic
-            client = anthropic.Anthropic()
+        client = client or llm.client()
         weights, cash_share, _, _, _, total = portfolio_after(orders, holdings, cash_eur, prices, as_of)
         exposure = load_exposure()
         sensitivity = risk_stats.factor_exposures(weights, exposure, MACRO_FACTORS) if exposure is not None else None

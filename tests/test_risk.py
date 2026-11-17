@@ -279,8 +279,8 @@ def test_the_reading_fails_quietly(prices, monkeypatch):
                            messages=SimpleNamespace(create=boom))
     _, result = assessed(prices, down)
     assert "API down" in result["note"] and result["contradictions"] == [] and result["events"] == []
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", None)
-    assert "no ANTHROPIC_API_KEY" in assessed(prices)[1]["note"]  # no key and no client: nothing is called
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", None)
+    assert "no GEMINI_API_KEY" in assessed(prices)[1]["note"]  # no key and no client: nothing is called
     assert assessed(prices, use_llm=False)[1]["note"] == "switched off."
 
 

@@ -2,12 +2,12 @@
 
 The code collects and calculates, the LLM judges:
 1. Collectors (agents/macro_sources/) bring numbers, each set against its own history.
-2. Haiku runs targeted web searches: news per factor, asset-manager notes, central-bank tone, calendar.
-3. Sonnet explores freely for signals from new sources; those enter the registry "on trial".
-4. Sonnet reads all evidence and logs/lessons.md and gives one view per factor (agents/macro_llm.py).
+2. The fast model runs targeted web searches: news per factor, asset-manager notes, central-bank tone, calendar.
+3. It also explores freely for signals from new sources; those enter the registry "on trial".
+4. The reasoning model reads all evidence and logs/lessons.md and gives one view per factor (agents/macro_llm.py).
 5. Code turns the views into one score per ETF with data/macro_exposure.csv: the macro_market score.
    No LLM in this step.
-6. In parallel, 20 ETF analysts (one Sonnet "hedge-fund quant" per theme, agents/macro_analysts.py)
+6. In parallel, 20 ETF analysts (one "hedge-fund quant" per theme, agents/macro_analysts.py)
    search the news and score their ETFs: the macro_etf score. Before judging, each one reads what the
    code calculated from prices (agents/macro_tape.py): what the ETF already did, and how the analysts'
    own past calls on it turned out.
@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from agents import macro_analysts, macro_llm, macro_tape
+from agents import llm, macro_analysts, macro_llm, macro_tape
 from agents.macro_sources import collect_all
 from data import config as settings
 from data.config import MACRO_FACTORS
@@ -53,9 +53,7 @@ def run(as_of: date, lessons: str = "", logs_dir: Path | None = None, client=Non
     graded calls. Without prices they judge from the news alone.
     """
     logs = Path(logs_dir) if logs_dir else settings.LOGS_DIR
-    if client is None:
-        import anthropic
-        client = anthropic.Anthropic()
+    client = client or llm.client()
     usage = macro_llm.Usage()
     registry = load_registry(logs)
     on_trial = set(registry.loc[registry["status"] == "testing", "source"])

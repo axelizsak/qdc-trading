@@ -70,7 +70,7 @@ HORIZON_SESSIONS = 3
 # After each session, every weight is multiplied by e^(LEARNING_SPEED x what following it earned in that session),
 # then the weights are scaled to sum to 1, each between WEIGHT_MIN and WEIGHT_MAX. Three sets of weights follow it:
 # the technical agent's three answers (replayed from LEARNING_START), the four agents (from their first score), and
-# Claude's portfolio against the code's (from the first one logged). Speed 2: a weight doubles against another once
+# the LLM's portfolio against the code's (from the first one logged). Speed 2: a weight doubles against another once
 # its calls have beaten the other's by about 35% in total.
 LEARNING_SPEED = 2.0
 WEIGHT_MIN = 0.05
@@ -108,9 +108,66 @@ MACRO_FACTORS = [
 ]
 
 # --- LLM ---------------------------------------------------------------------
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-LLM_FAST = os.getenv("CLAUDE_MODEL_FAST", "claude-haiku-5-5")  # summaries
-LLM_REASONING = os.getenv("CLAUDE_MODEL_REASONING", "claude-sonnet-5-5")  # reasoning
+# The challenge allows free tiers only. The model is Gemini on Google AI Studio (agents/llm.py). Its free limits,
+# read on 17 November 2026: LLM_FAST and LLM_SEARCH 15 requests a minute and 500 a day each; LLM_REASONING 5 a
+# minute and 20 a day, and it often does not answer. When a model does not answer, LLM_FAST answers in its place.
+# Each model has its own quota, so two of them are used side by side: what takes time in a run is the 15 requests
+# a minute, not the searches (about 1.5 seconds each).
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+LLM_FAST = os.getenv("LLM_MODEL_FAST", "gemini-3.5-flash-lite")  # the theme analysts, the customer's coach
+LLM_SEARCH = os.getenv("LLM_MODEL_SEARCH", "gemini-3.1-flash-lite")  # the topic searches and the exploration
+LLM_REASONING = os.getenv("LLM_MODEL_REASONING", "gemini-4-hydrogen")  # the few judgement calls of a day
+LLM_REQUESTS_PER_MINUTE = 14  # pace of the requests to one model, just under its free limit
+LLM_REST_MINUTES = 15  # a model that did not answer is left alone this long
+# News search, free and without a key (agents/web_search.py): the publishers' RSS feeds and Google News' RSS search.
+WEB_SEARCH_RESULTS = 10  # results the model gets per search
+WEB_SEARCH_CHARS = 500  # characters kept of an article's summary
+WEB_SEARCH_DAYS = 14  # only articles of the last days: a news agent must not read last year's news
+# Only these sites are kept. Left open, a news search returns many small sites that copy or invent news.
+WEB_SEARCH_SITES = [
+    # news agencies and financial press
+    "reuters.com", "afp.com", "bloomberg.com", "ft.com", "wsj.com", "cnbc.com", "apnews.com", "bbc.com", "economist.com",
+    "marketwatch.com", "barrons.com", "finance.yahoo.com", "investing.com", "nasdaq.com", "morningstar.com",
+    "theguardian.com", "euronews.com", "politico.eu", "lecho.be", "tijd.be", "handelsblatt.com", "asia.nikkei.com",
+    "scmp.com", "koreaherald.com", "businesskorea.co.kr", "economictimes.indiatimes.com", "tradingeconomics.com",
+    "marketscreener.com", "spglobal.com", "seekingalpha.com", "etf.com", "justetf.com",
+    # central banks, statistics and official data
+    "ecb.europa.eu", "federalreserve.gov", "atlantafed.org", "newyorkfed.org", "bis.org", "imf.org", "oecd.org",
+    "ec.europa.eu", "bls.gov", "bea.gov", "treasury.gov", "cftc.gov", "sec.gov", "fda.gov",
+    # energy, metals, shipping
+    "eia.gov", "iea.org", "opec.org", "oilprice.com", "agsi.gie.eu", "gie.eu", "kitco.com", "gold.org", "mining.com",
+    "lme.com", "world-nuclear-news.org", "sprott.com", "drewry.co.uk", "freightos.com", "hellenicshippingnews.com",
+    # technology, health, defence, crypto
+    "tsmc.com", "digitimes.com", "eetimes.com", "theregister.com", "fiercebiotech.com", "biopharmadive.com",
+    "statnews.com", "defensenews.com", "breakingdefense.com", "coindesk.com", "theblock.co", "farside.co.uk",
+    "defillama.com",
+]
+# The publishers' own feeds, read once per run: recent articles with a summary.
+NEWS_FEEDS = [
+    "https://www.cnbc.com/id/100003114/device/rss/rss.html",  # CNBC top news
+    "https://www.cnbc.com/id/20910258/device/rss/rss.html",  # CNBC economy
+    "https://www.cnbc.com/id/19836768/device/rss/rss.html",  # CNBC energy
+    "https://www.cnbc.com/id/15839069/device/rss/rss.html",  # CNBC investing
+    "https://feeds.content.dowjones.io/public/rss/mw_topstories",  # MarketWatch
+    "https://www.investing.com/rss/news_14.rss",  # Investing.com economy
+    "https://www.investing.com/rss/news_11.rss",  # Investing.com commodities
+    "https://www.investing.com/rss/news_25.rss",  # Investing.com stock markets
+    "https://www.investing.com/rss/news_301.rss",  # Investing.com crypto
+    "https://www.ecb.europa.eu/rss/press.html",
+    "https://www.federalreserve.gov/feeds/press_all.xml",
+    "https://www.federalreserve.gov/feeds/speeches.xml",
+    "https://oilprice.com/rss/main",
+    "https://www.mining.com/feed/",
+    "https://www.coindesk.com/arc/outboundfeeds/rss/",
+    "https://www.theblock.co/rss.xml",
+    "https://www.world-nuclear-news.org/rss",
+    "https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml",
+    "https://feeds.bbci.co.uk/news/business/rss.xml",
+    "https://www.theguardian.com/uk/business/rss",
+    "https://www.euronews.com/rss?level=vertical&name=business",
+    "https://www.ft.com/rss/home",
+    "https://www.economist.com/finance-and-economics/rss.xml",
+]
 
 # --- Macro / News agent ---------------------------------------------------------
 # What +1 means for each factor. A macro view's direction in [-1, 1] follows this sign.
@@ -133,15 +190,11 @@ MACRO_FACTOR_MEANING = {
 }
 MACRO_EXPOSURE_CSV = DATA_DIR / "macro_exposure.csv"
 
-# Web tools. Haiku 5.5 takes the basic web search; dynamic filtering (_20260209) needs Sonnet/Opus.
-WEB_SEARCH_TOOL_FAST = "web_search_20250305"
-WEB_SEARCH_TOOL_REASONING = "web_search_20260209"
-WEB_FETCH_TOOL_REASONING = "web_fetch_20260209"
-MACRO_SEARCHES_PER_TOPIC = 3  # web searches per Haiku call (one call per topic)
-MACRO_EXPLORE_SEARCHES = 6  # exploration budget (Sonnet)
-MACRO_EXPLORE_FETCHES = 4
-# ETF analysts: one Sonnet "hedge-fund quant" per theme of the universe, who searches and scores its ETFs.
-MACRO_ANALYST_SEARCHES = 6  # web searches per theme
+# News searches of one run. They cost nothing, and a model asks for all of its searches in one request.
+MACRO_SEARCHES_PER_TOPIC = 3  # searches per topic (one call per topic)
+MACRO_EXPLORE_SEARCHES = 4  # exploration budget
+# ETF analysts: one "hedge-fund quant" per theme of the universe, who searches and scores its ETFs.
+MACRO_ANALYST_SEARCHES = 4  # searches per theme
 MACRO_SCORECARD_CALLS = 5  # past calls per ETF an analyst sees with what happened next
 
 # Source registry: a source needs this many graded uses before its status can change.
@@ -149,10 +202,3 @@ SOURCE_MIN_USES = 3
 SOURCE_PROMOTE_HIT_RATE = 0.6  # testing source at or above: proposed to Axel as regular
 SOURCE_DROP_HIT_RATE = 0.4  # any source below: dropped
 
-# USD per million tokens (prompts up to 100K tokens) and per web search, for the cost of a run.
-# Check https://platform.claude.com/docs/en/about-claude/pricing before relying on them.
-LLM_PRICES_USD = {
-    "claude-haiku-5-5": {"input": 0.10, "output": 0.50},
-    "claude-sonnet-5-5": {"input": 2.00, "output": 10.00},
-}
-WEB_SEARCH_USD = 0.01

@@ -21,15 +21,19 @@ DAY = date(2026, 12, 7)
 
 # --- Fakes -----------------------------------------------------------------------------------
 
+FOUND = [f"https://example.com/{name}" for name in ("etf", "bdi", "oil", "gold", "miners")]  # what the searches returned
+
+
 def _response(text, stop="end_turn", searches=1):
     usage = SimpleNamespace(input_tokens=1000, output_tokens=200, cache_creation_input_tokens=0,
                             cache_read_input_tokens=0,
                             server_tool_use=SimpleNamespace(web_search_requests=searches, web_fetch_requests=0))
-    return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)], stop_reason=stop, usage=usage)
+    return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)], stop_reason=stop, usage=usage,
+                           search_urls=FOUND)
 
 
-class FakeClaude:
-    """Answers like Claude would: facts for searches, findings for exploration, views for reasoning."""
+class FakeModel:
+    """Answers like the model would: facts for searches, findings for exploration, views for reasoning."""
 
     def __init__(self, direction=0.5):
         self.calls = []
@@ -39,7 +43,6 @@ class FakeClaude:
 
     def _create(self, **request):
         self.calls.append(request)
-        tool_types = {t["type"] for t in request.get("tools", [])}
         if "quant researcher" in request.get("system", ""):
             tickers = re.findall(r'^- "(.+?)":', request["messages"][0]["content"], flags=re.M)
             etfs = [{"ticker": t, "direction": self.direction, "confidence": 0.5, "rationale": f"{t} news",
@@ -50,7 +53,7 @@ class FakeClaude:
             views = [{"factor": f, "direction": self.direction, "confidence": 0.6, "rationale": "r",
                       "counter_argument": "c", "sources": ["web_news", "not_a_source"]} for f in MACRO_FACTORS]
             return _response(json.dumps({"views": views}), searches=0)
-        if settings.WEB_FETCH_TOOL_REASONING in tool_types:
+        if "scout for new information sources" in request.get("system", ""):
             finding = {"name": "Baltic Dry Index", "what": "shipping rates", "url": "https://example.com/bdi",
                        "fact": "up 12% this week", "value": 12.0, "why": "global trade", "factor": "growth_recession"}
             return _response("Found one.\n```json\n" + json.dumps({"findings": [finding]}) + "\n```")
@@ -73,7 +76,7 @@ def _http(handler) -> httpx.Client:
 # --- End to end ------------------------------------------------------------------------------
 
 def test_run_gives_two_scores_per_etf_logs_and_a_report(tmp_path):
-    client = FakeClaude()
+    client = FakeModel()
     summary, signals = macro_news.run(DAY, "lesson: be careful", tmp_path, client,
                                       {"stress": _number_collector, "broken": _broken_collector})
 
@@ -91,20 +94,21 @@ def test_run_gives_two_scores_per_etf_logs_and_a_report(tmp_path):
     assert len(views) == 15 and not views["sources"].str.contains("not_a_source").any()
     assert len(pd.read_csv(tmp_path / "evidence.csv")) > 3
 
-    searches = [c for c in client.calls if c["model"] == settings.LLM_FAST]
+    searches = [c for c in client.calls if c["system"].startswith("You research news")]
     assert len(searches) == len(macro_llm.search_topics())
-    assert all(c["tools"][0]["type"] == "web_search_20250305" for c in searches)
-    sonnet = [c for c in client.calls if c["model"] == settings.LLM_REASONING]
-    assert all(c["fallbacks"] == "default" for c in sonnet)
+    assert all(c["model"] == settings.LLM_SEARCH and c["tools"][0]["name"] == "web_search"
+               and c["tools"][0]["max_uses"] == settings.MACRO_SEARCHES_PER_TOPIC for c in searches)
+    reasoning = [c for c in client.calls if c["model"] == settings.LLM_REASONING]
+    assert len(reasoning) == 1 and "format" in reasoning[0]["output_config"]  # the only call on the scarce model
 
 
 def test_on_trial_sources_are_flagged_and_dropped_ones_ignored(tmp_path):
-    macro_news.run(DAY, "", tmp_path, FakeClaude(), {"stress": _number_collector})
+    macro_news.run(DAY, "", tmp_path, FakeModel(), {"stress": _number_collector})
     registry = pd.read_csv(tmp_path / "source_registry.csv")
     registry.loc[registry["source"] == "market_stress", "status"] = "dropped"
     registry.to_csv(tmp_path / "source_registry.csv", index=False)
 
-    client = FakeClaude()
+    client = FakeModel()
     macro_news.run(date(2026, 12, 8), "", tmp_path, client, {"stress": _number_collector})
 
     prompt = next(c for c in client.calls if "format" in c.get("output_config", {}))["messages"][0]["content"]
@@ -120,14 +124,31 @@ def test_daily_cli_reads_back_a_date_already_done(tmp_path, monkeypatch, capsys)
     assert "already done" in capsys.readouterr().out
 
 
-def test_pause_turn_is_resumed():
-    replies = iter([_response("searching...", stop="pause_turn"), _response('```json\n{"facts": []}\n```')])
-    client = SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: next(replies)))
+def test_a_source_the_searches_did_not_return_is_refused():
+    facts = [{"factor": "oil", "date": "2026-12-05", "summary": "Brent up 3%.", "url": "http://www.example.com/oil/?utm=x"},
+             {"factor": "oil", "date": "2026-12-05", "summary": "OPEC cut output.", "url": "https://reuters.example/opec-made-up"}]
+    client = SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: _response(json.dumps({"facts": facts}))))
+    rows = macro_llm.news_search(client, macro_llm.Usage(), DAY, "web_news", "oil")
+    assert [r["summary"] for r in rows] == ["[2026-12-05] Brent up 3%."]  # the same page, spelled differently, counts
+    view = {"ticker": "GOLD", "direction": 0.4, "confidence": 0.5, "rationale": "r", "counter_argument": "c"}
+    answer = json.dumps({"etfs": [{**view, "sources": ["https://made-up.example/gold", "https://example.com/gold"]},
+                                  {**view, "ticker": "GOLD MINERS", "sources": ["https://made-up.example/miners"]}]})
+    rows, dropped = macro_analysts._parse(answer, DAY, {"GOLD", "GOLD MINERS"}, {macro_llm.page(u) for u in FOUND})
+    assert [(r["ticker"], r["sources"]) for r in rows] == [("GOLD", "https://example.com/gold")]
+    assert "its searches returned" in dropped["GOLD MINERS"]
+
+
+def test_a_call_is_counted_with_its_searches():
+    client = SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: _response('```json\n{"facts": []}\n```', searches=2)))
     usage = macro_llm.Usage()
     text = macro_llm.ask(client, usage, settings.LLM_FAST, "system", "prompt")
     assert macro_llm.extract_json(text) == {"facts": []}
-    assert usage.calls == 2 and usage.web_searches == 2
-    assert usage.cost_usd == pytest.approx(2 * (1000 * 0.10 + 200 * 0.50) / 1e6 + 2 * settings.WEB_SEARCH_USD)
+    assert usage.calls == 1 and usage.requests == 1 and usage.web_searches == 2 and usage.input_tokens == 1000
+    assert usage.line().startswith("$0 (1 model calls in 1 requests")  # the model and the searches are free
+    for stop in ("refusal", "max_tokens"):
+        refused = SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: _response("", stop=stop)))
+        with pytest.raises(RuntimeError):
+            macro_llm.ask(refused, usage, settings.LLM_FAST, "system", "prompt")
 
 
 # --- Scores ----------------------------------------------------------------------------------
@@ -254,23 +275,15 @@ def test_funding_rates_are_annualised():
     assert len(rows) == 2 and rows[0]["value"] == pytest.approx(0.0001 * 3 * 365)
 
 
-def test_x_posts_are_searched_on_x_only(tmp_path):
-    client = FakeClaude()
-    macro_news.run(DAY, "", tmp_path, client, {"stress": _number_collector})
-    restricted = [c for c in client.calls if c.get("tools") and c["tools"][0].get("allowed_domains")]
-    assert len(restricted) == 1 and restricted[0]["tools"][0]["allowed_domains"] == ["x.com"]
-    assert "posts" in restricted[0]["messages"][0]["content"]
-
-
 # --- ETF analysts ----------------------------------------------------------------------------
 
 def test_run_scores_the_theme_analysts_separately(tmp_path):
-    client = FakeClaude(direction=0.5)
+    client = FakeModel(direction=0.5)
     summary, signals = macro_news.run(DAY, "", tmp_path, client, {"stress": _number_collector})
 
     analyst_calls = [c for c in client.calls if "quant researcher" in c.get("system", "")]
     assert len(analyst_calls) == 20  # one per theme of the universe
-    assert all(c["tools"][0]["type"] == settings.WEB_SEARCH_TOOL_REASONING and c["fallbacks"] == "default"
+    assert all(c["model"] == settings.LLM_FAST and c["tools"][0]["max_uses"] == settings.MACRO_ANALYST_SEARCHES
                for c in analyst_calls)
     assert any("judge the copper price itself" in c["messages"][0]["content"] for c in analyst_calls)
     assert not any("NASDAQ 3X" in c["messages"][0]["content"] for c in analyst_calls)  # reuses NASDAQ's view
@@ -290,7 +303,7 @@ def test_run_scores_the_theme_analysts_separately(tmp_path):
 
 
 def test_report_opens_with_a_brief_the_portfolio_manager_can_read_in_full(tmp_path):
-    summary, _ = macro_news.run(DAY, "", tmp_path, FakeClaude(direction=0.5), {"stress": _number_collector})
+    summary, _ = macro_news.run(DAY, "", tmp_path, FakeModel(direction=0.5), {"stress": _number_collector})
     start, end = summary.index("## Brief for the Portfolio Manager"), summary.index("## Views")
     assert summary.index("Cost of this run") < start < end < 4000  # the Portfolio Manager reads 4,000 characters
     brief = summary[start:end]
@@ -367,7 +380,7 @@ def test_analysts_read_the_tape_and_their_record(tmp_path):
     pd.DataFrame({"date": "2026-12-03", "ticker": ["WORLD", "GOLD"], "direction": [0.4, 0.4], "confidence": 0.5,
                   "rationale": "r", "counter_argument": "c", "sources": "https://example.com"}
                  ).to_csv(tmp_path / "etf_views.csv", index=False)
-    client = FakeClaude()
+    client = FakeModel()
     summary, _ = macro_news.run(DAY, "", tmp_path, client, {"stress": _number_collector}, prices=prices)
 
     asked = {c["system"].split(", covering ")[1].split(" ETFs")[0]: c["messages"][0]["content"]
@@ -384,7 +397,7 @@ def test_analysts_read_the_tape_and_their_record(tmp_path):
 
 
 def test_a_failing_analyst_is_reported_and_the_run_goes_on(tmp_path):
-    client = FakeClaude()
+    client = FakeModel()
     original = client._create
 
     def flaky(**request):
@@ -402,7 +415,7 @@ def test_an_empty_analyst_answer_is_asked_again():
     replies = iter([_response('```json\n{"etfs": []}\n```'), _response(
         '```json\n{"etfs": [{"ticker": "GOLD", "direction": 0.3, "confidence": 0.5, "rationale": "r", '
         '"counter_argument": "c", "sources": [{"url": "https://example.com/gold"}]}]}\n```')])
-    client = SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: next(replies))))
+    client = SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: next(replies)))
     universe = load_universe()
     rows, missing = macro_analysts.analyse_theme(client, macro_llm.Usage(), DAY, "Precious metals",
                                                  universe[universe["ticker"] == "GOLD"])
@@ -428,7 +441,7 @@ def test_etfs_missing_from_an_answer_are_asked_again_and_reported():
         prompts.append(request["messages"][0]["content"])
         return _response("```json\n" + json.dumps(next(replies)) + "\n```")
 
-    client = SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(create=create)))
+    client = SimpleNamespace(messages=SimpleNamespace(create=create))
     etfs = load_universe().query("theme == 'Precious metals'")
     rows, missing = macro_analysts.analyse_theme(client, macro_llm.Usage(), DAY, "Precious metals", etfs)
 
@@ -438,7 +451,7 @@ def test_etfs_missing_from_an_answer_are_asked_again_and_reported():
 
 
 def test_an_answer_without_json_is_reported():
-    rows, dropped = macro_analysts._parse("Sorry, I found nothing.", DAY, {"GOLD"})
+    rows, dropped = macro_analysts._parse("Sorry, I found nothing.", DAY, {"GOLD"}, set())
     assert rows == [] and dropped == {"GOLD": "no JSON in the answer"}
 
 

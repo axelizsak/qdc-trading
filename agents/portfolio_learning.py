@@ -5,7 +5,7 @@
     nothing leaks from the future.
   - load_history: every real signal logged so far.
   - record_portfolios / load_records: the portfolios the Portfolio Manager built each day (logs/pm_portfolios.csv).
-How much each agent counts, and how much Claude's portfolio counts against the code's, is learned from these by
+How much each agent counts, and how much the LLM's portfolio counts against the code's, is learned from these by
 the system's one learning rule (agents/learning.py), every morning in graph/review_loop.py.
 """
 from pathlib import Path

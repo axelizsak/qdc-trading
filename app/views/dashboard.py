@@ -42,7 +42,7 @@ go, again, _ = st.columns([2, 1, 2])
 if status == "not started":
     if go.button("Run the day", type="primary", icon=":material/play_arrow:", width="stretch",
                  help="Runs every agent, then pauses for your first review on the Today page"):
-        with st.spinner("The agents are running (about a minute)..."):
+        with st.spinner("The agents are running (10 to 15 minutes at the free tier's pace)..."):
             pipeline.run_day(as_of, logs)
         st.rerun()
 else:
@@ -55,7 +55,7 @@ else:
     else:
         go.page_link("views/today.py", label="Approved: export the orders", icon=":material/task_alt:")
     if again.button("Run again", icon=":material/replay:",
-                    help="Starts the day again. Scores already logged are read back: no new Claude calls"):
+                    help="Starts the day again. Scores already logged are read back: no new the LLM calls"):
         with st.spinner("Running again from the logs..."):
             pipeline.run_day(as_of, logs, rerun=True)
         st.rerun()

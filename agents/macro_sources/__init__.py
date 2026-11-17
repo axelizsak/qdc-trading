@@ -1,7 +1,7 @@
 """Collectors for the Macro/News agent: one module per source, each returns Evidence rows.
 
 Only free sources that need no key live here; data that would need a key (FRED, AGSI, ...) is
-looked up by Claude's web search instead (agents/macro_llm.py). The code collects and puts numbers
+looked up by the LLM's web search instead (agents/macro_llm.py). The code collects and puts numbers
 in context; the LLM only interprets them. A collector that fails is skipped and its failure is
 reported. The agent never writes a new collector itself: new sources found by exploration are
 proposed, and a person decides.

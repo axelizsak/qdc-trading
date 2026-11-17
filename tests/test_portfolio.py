@@ -297,9 +297,9 @@ def test_an_llm_without_weights_leaves_the_baseline(prices, signals):
 
 
 def test_without_a_key_and_no_client_nothing_is_called(prices, signals, monkeypatch):
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", None)
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", None)
     _, orders, memo = propose(prices, signals, use_llm=True)
-    assert len(orders) > 0 and "no ANTHROPIC_API_KEY" in memo
+    assert len(orders) > 0 and "no GEMINI_API_KEY" in memo
 
 
 # --- Trust in the LLM: how much its portfolio counts ------------------------------------------------------------------
@@ -505,7 +505,7 @@ def test_the_memo_states_its_assumptions_and_the_remaining_gap(prices, signals):
 
 def test_the_pipeline_accepts_the_real_portfolio_manager(tmp_path, monkeypatch):
     monkeypatch.setitem(settings.USE_MOCK, "portfolio", False)
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", None)
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", None)
     pending = pipeline.run_day(DAY, tmp_path / "logs")
     assert pending["gate"] == "orders" and pending["incidents"] == []
     orders = pd.DataFrame(pending["proposed_orders"])

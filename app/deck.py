@@ -445,7 +445,7 @@ def _portfolios_slide(deck: _Deck, doc: _Doc) -> None:
         text(s, 8.8, 3.35, 3.9, 0.35, "= Final portfolio, then hard limits", 14, True)
     facts = [("Baseline", "a simple rule: sets the invested share and is the fallback."),
              ("Optimizer", "trades expected return against the risk of the whole portfolio."),
-             ("LLM", "Claude's own proposal, free within Belfius's hard rules."),
+             ("LLM", "The LLM's own proposal, free within Belfius's hard rules."),
              ("Hard limits", f"no ETF above {pm_cfg.MAX_POSITION:.0%}; at most {pm_cfg.MAX_LEVERAGED_SHARE:.0%} in "
                              "leveraged and inverse ETFs.")]
     for i, (head, body) in enumerate(facts):
@@ -646,11 +646,11 @@ def _assumptions_slide(deck: _Deck, doc: _Doc) -> None:
     text(s, 8.95, 3.0, 3.45, 1.8, "The human reviews every order before it is submitted. Only a breach of a hard rule stops an "
                                   "order; warnings are information.", 13, color=_rgb("D1D5DB"))
     if doc.costs:
-        calls = sum(int(m.group(1)) for c in doc.costs if (m := re.search(r"(\d+) Claude call", c)))
+        calls = sum(int(m.group(1)) for c in doc.costs if (m := re.search(r"(\d+) (?:model|Claude) call", c)))  # Claude: the days before 17 November
         dollars = sum(float(m.group(1)) for c in doc.costs if (m := re.match(r"LLM cost: \$([\d.]+)", c)))
         box(s, 8.7, 5.05, 3.95, 1.8)
         text(s, 8.95, 5.25, 3.45, 0.35, "Cost of this run", 16, True, ACCENT)
-        text(s, 8.95, 5.8, 3.45, 0.9, f"{calls} Claude calls, about ${dollars:.2f} in total.", 14, color=BODY)
+        text(s, 8.95, 5.8, 3.45, 0.9, f"{calls} model calls, about ${dollars:.2f} in total.", 14, color=BODY)
 
 
 def to_pptx(markdown: str) -> bytes:

@@ -7,7 +7,7 @@ and keeps an overview of the whole competition in <logs>/logbook/INDEX.md.
 Events of a day, in the order the page tells them
   signals            one row per signal agent: how many ETFs, the strongest and weakest scores              (signals.csv)
   macro_report       the Macro/News report of the day, with the cost line and a fingerprint                 (macro/<date>.md)
-  agent_weights      the agent weights for the day, and Claude's share against the code's portfolio        (weights.csv)
+  agent_weights      the agent weights for the day, and the LLM's share against the code's portfolio        (weights.csv)
   target_allocation  the Portfolio Manager's target weights and memo, one per round                         (record_round)
   recommendation     every order the Portfolio Manager proposed, round by round, with its reasons           (recommendations.csv)
   risk_report        the Risk Manager's count of ok, warning and breach, and one risk_flag per warning;
@@ -156,7 +156,7 @@ def weight_events(logs: Path, day: str) -> list[dict]:
     parts = [f"{r.name} {r.weight:.0%}" for r in rows[rows["level"] == "agents"].itertuples()]
     llm = rows[(rows["level"] == "portfolio") & (rows["name"] == "llm")]
     if len(llm):
-        parts.append(f"Claude's portfolio counts for {float(llm['weight'].iloc[0]):.0%} of the final blend")
+        parts.append(f"The LLM's portfolio counts for {float(llm['weight'].iloc[0]):.0%} of the final blend")
     return [_event(day, "agent_weights", "learning", "Weights for the day", "; ".join(parts), "weights.csv")]
 
 

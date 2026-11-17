@@ -539,7 +539,7 @@ def signals_from_sheet(sheet: pd.DataFrame, weights: dict[str, float] | None = N
 def run(prices: pd.DataFrame, features: pd.DataFrame, as_of: date, lessons: str = "", client=None,
         use_llm: bool = True, weights: dict[str, float] | None = None) -> pd.DataFrame:
     """Signals format: one technical_det row per scored ETF, and its technical_llm row when the LLM layer
-    answered (it needs ANTHROPIC_API_KEY; without it, or with use_llm=False, only technical_det).
+    answered (it needs GEMINI_API_KEY; without it, or with use_llm=False, only technical_det).
     `weights`: today's weights of the three answers (graph/review_loop.py), else their starting weights."""
     sheet = build_sheet(prices, features, as_of)
     det = signals_from_sheet(sheet, weights) if len(sheet) else pd.DataFrame(columns=SIGNALS)

@@ -113,6 +113,15 @@ ol, ul { list-style: none; }
 .rows .v { text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
 .rows .v.is-empty { color: var(--surface-3); }
 .rows .is-new .v { color: var(--accent); font-weight: 600; }
+.quiet { color: var(--muted); font-size: 12.5px; }
+.odds { display: grid; gap: 6px; margin: 2px 0 8px; font-size: 12.5px; }
+.odd { display: grid; grid-template-columns: 128px 1fr 34px; align-items: center; gap: 8px; }
+.odd .k { color: var(--text-2); }
+.odd .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.odd .track { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.odd .track i { display: block; height: 100%; border-radius: 4px; background: var(--surface-3); transition: width 0.5s var(--ease); }
+.odd.is-top .k, .odd.is-top .v { color: var(--text); font-weight: 600; }
+.odd.is-top .track i { background: var(--accent); }
 .flag { display: flex; gap: 8px; align-items: flex-start; color: var(--text); font-size: 12.5px; }
 .flag + .flag { margin-top: 6px; }
 .flag svg { flex: none; margin-top: 1px; color: var(--warn); }
@@ -224,7 +233,7 @@ ol, ul { list-style: none; }
 .chat-error button { font-weight: 600; color: var(--warn); white-space: nowrap; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 16px 2px; justify-content: flex-end; }
 .chip { padding: 9px 15px; border-radius: 999px; border: 1px solid rgba(217, 19, 95, 0.45); background: var(--surface); color: var(--accent); font-weight: 600; font-size: 14.5px; transition: background 0.2s, color 0.2s; }
-.chip:hover { background: var(--accent); color: var(--on-accent); }
+.chip:hover, .chip.is-on { background: var(--accent); color: var(--on-accent); }
 .composer { display: flex; gap: 8px; align-items: center; padding: 10px 16px 6px; }
 .composer input { flex: 1; min-width: 0; height: 46px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-size: 15.5px; }
 .composer input::placeholder { color: var(--muted); }
