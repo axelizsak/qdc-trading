@@ -90,7 +90,7 @@ function renderWelcome() {
       h("h2", { class: "display welcome-title" },
         ...(back ? ["Welcome back, ", h("em", {}, `${c.first_name}.`)] : ["Investing that fits ", h("em", {}, "you.")])),
       h("p", { class: "welcome-sub" }, back ? `Your ${profile().label} plan ${status}.`
-        : `Three minutes with ${state.coach}, your AI coach. A plan built for your life. One tap to approve it.`)),
+        : `Three minutes with ${state.coach}. A plan built for your life. One tap to approve it.`)),
     h("div", { class: "hero-art", icon: HERO_ART }),
     h("div", { class: "grow" }),
     h("div", { class: "welcome-bottom" },
@@ -120,7 +120,7 @@ function renderConsent() {
 function renderChat() {
   $("view-chat").replaceChildren(
     h("div", { class: "chat-head" }, h("div", { class: "orb" }),
-      h("div", { class: "grow" }, h("b", {}, state.coach), h("small", {}, "AI coach · ReBel")),
+      h("div", { class: "grow" }, h("b", {}, state.coach), h("small", {}, "AI · ReBel")),
       h("button", { class: "pill", type: "button", onclick: adviserSheet }, "Adviser")),
     h("div", { class: "progress" }, h("i", { id: "progress" })),
     h("div", { class: "messages", id: "messages", "aria-live": "polite" }),
