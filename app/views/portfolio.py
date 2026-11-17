@@ -52,4 +52,4 @@ flags = data.section(memo, "### To consider")
 if flags:
     ui.label("To consider", "what the LLM flags")
     st.markdown(flags)
-st.download_button("The full memo", memo, f"memo_{as_of}.md", "text/markdown", icon=":material/description:")
+ui.document_download("The full memo", memo, f"memo_{as_of}")
