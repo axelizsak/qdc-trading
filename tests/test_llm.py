@@ -147,14 +147,15 @@ def test_each_model_is_paced_on_its_own(network, monkeypatch):
     assert network.waits == pytest.approx([0, step, 0, 2 * step])  # the other model does not wait for the first
 
 
-def test_two_keys_take_turns_each_at_its_own_pace(network, monkeypatch):
+def test_the_teams_keys_take_turns_each_at_its_own_pace(network, monkeypatch):
     monkeypatch.setattr(settings, "GEMINI_API_KEY_2", "key-2")
+    monkeypatch.setattr(settings, "GEMINI_API_KEY_3", "key-3")
     monkeypatch.setattr(llm.time, "monotonic", lambda: 100.0)
-    network.replies += [answer("ok")] * 3
-    for _ in range(3):
+    network.replies += [answer("ok")] * 4
+    for _ in range(4):
         ask()
-    assert network.keys == ["key", "key-2", "key"]
-    assert network.waits == pytest.approx([0, 0, 60 / settings.LLM_REQUESTS_PER_MINUTE])  # the second key does not wait
+    assert network.keys == ["key", "key-2", "key-3", "key"]
+    assert network.waits == pytest.approx([0, 0, 0, 60 / settings.LLM_REQUESTS_PER_MINUTE])  # only the first key waits
 
 
 def test_a_key_whose_day_is_used_leaves_the_work_to_the_other(network, monkeypatch, capsys):

@@ -1,6 +1,6 @@
 """The day as a diagram: every step with its place, what it does, its files and the code behind it.
 
-The same flow as the team's diagram (README): data, learning, the two agents, the Portfolio Manager, then the
+The flow of one trading day: data, learning, the two agents, the Portfolio Manager, then the
 three human reviews around the Risk Manager and the executive summary, and the logbook. A review can send the day
 back to the Portfolio Manager; the next morning, the learning step reads what the day wrote.
 """

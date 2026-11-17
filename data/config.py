@@ -113,10 +113,11 @@ MACRO_FACTORS = [
 # minute and 20 a day, and it often does not answer. When a model does not answer, LLM_FAST answers in its place.
 # Each model has its own quota, so two of them are used side by side: what takes time in a run is the 15 requests
 # a minute, not the searches (about 1.5 seconds each).
+# One free key per team member, each from their own Google account. The first is enough; with several, the
+# requests take turns between the keys. Each key keeps its own pace and its own daily quota.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-# Optional: the free key of a second team member, from their own Google account. The requests then take turns
-# between the two keys. Each key keeps its own pace and its own daily quota.
 GEMINI_API_KEY_2 = os.getenv("GEMINI_API_KEY_2")
+GEMINI_API_KEY_3 = os.getenv("GEMINI_API_KEY_3")
 LLM_FAST = os.getenv("LLM_MODEL_FAST", "gemini-3.5-flash-lite")  # the theme analysts
 # The customer app's small jobs (reading a typed answer, explaining a line of a sheet). They must be quick. If
 # customers ever use up this quota, the open model "gemma-4-26b-a4b-it" is free for 14,400 requests a day, but it
