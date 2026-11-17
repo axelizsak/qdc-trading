@@ -1,4 +1,4 @@
-"""Bel, the coach of the customer app: a few questions that place a customer in one of the five investor profiles.
+"""Lena, the coach of the customer app: a few questions that place a customer in one of the five investor profiles.
 
 It works like the game Akinator. The code keeps a probability for each profile, asks next the question that
 separates the remaining profiles best, and updates the probabilities with every answer (Bayes' rule). What Belfius
@@ -16,7 +16,7 @@ from agents import llm, macro_llm
 from data import config as settings
 from data.profiles import PROFILES
 
-COACH = "Bel"  # the name the coach goes by in the app
+COACH = "Lena"  # the name the coach goes by in the app
 ORDER = list(PROFILES)  # the order of the five numbers in every table below
 # Share of new investors expected in each profile (the team's assumption): where the probabilities start.
 PRIOR = [0.25, 0.30, 0.10, 0.22, 0.13]

@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from agents import macro_tape
-from agents.macro_llm import UNTRUSTED, Usage, ask, extract_json, page, search_tool
+from agents.macro_llm import UNTRUSTED, Usage, ask, extract_json, page
 from data import config as settings
 from data.schemas import ETF_VIEWS, LIST_SEP, SIGNALS, validate_etf_views, validate_signals
 from data.universe import load_universe
@@ -139,7 +139,7 @@ def analyse_theme(client, usage: Usage, as_of: date, theme: str, etfs: pd.DataFr
         found = set()
         text = ask(client, usage, settings.LLM_FAST, system_prompt(theme, as_of),
                    f"Your ETFs:\n{_etf_lines(remaining, notes)}" + (f"\n\n{record}" if record else ""), found,
-                   tools=[search_tool(as_of, settings.MACRO_ANALYST_SEARCHES)],
+                   tools=[{"name": "web_search", "max_uses": settings.MACRO_ANALYST_SEARCHES}],
                    output_config={"effort": "medium"})
         new, dropped = _parse(text, as_of, set(remaining["ticker"]), found)
         rows += new

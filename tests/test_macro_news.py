@@ -98,7 +98,6 @@ def test_run_gives_two_scores_per_etf_logs_and_a_report(tmp_path):
     assert len(searches) == len(macro_llm.search_topics())
     assert all(c["model"] == settings.LLM_SEARCH and c["tools"][0]["name"] == "web_search"
                and c["tools"][0]["max_uses"] == settings.MACRO_SEARCHES_PER_TOPIC for c in searches)
-    assert searches[0]["tools"][0]["since"] == "2026-11-23"  # only pages of the last 14 days before 7 December
     reasoning = [c for c in client.calls if c["model"] == settings.LLM_REASONING]
     assert len(reasoning) == 1 and "format" in reasoning[0]["output_config"]  # the only call on the scarce model
 
@@ -145,7 +144,7 @@ def test_a_call_is_counted_with_its_searches():
     text = macro_llm.ask(client, usage, settings.LLM_FAST, "system", "prompt")
     assert macro_llm.extract_json(text) == {"facts": []}
     assert usage.calls == 1 and usage.requests == 1 and usage.web_searches == 2 and usage.input_tokens == 1000
-    assert usage.cost_usd == pytest.approx(2 * settings.WEB_SEARCH_USD)  # the model is free, a search is not
+    assert usage.line().startswith("$0 (1 model calls in 1 requests")  # the model and the searches are free
     for stop in ("refusal", "max_tokens"):
         refused = SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: _response("", stop=stop)))
         with pytest.raises(RuntimeError):

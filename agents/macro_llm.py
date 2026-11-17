@@ -10,7 +10,7 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date
 
 import numpy as np
 import pandas as pd
@@ -27,14 +27,13 @@ FACTOR_LIST = "\n".join(f"- {f}: +1 means {m}" for f, m in MACRO_FACTOR_MEANING.
 
 @dataclass
 class Usage:
-    """Tokens, web searches and cost (USD) across every call of one run. The model is free; a search is not.
-    A call that searches takes several requests: the free tier counts requests."""
+    """Tokens and news searches across every call of one run. Nothing is paid for: the model and the searches
+    are free. A call that searches takes several requests, and the free tier counts requests."""
     calls: int = 0
     requests: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
     web_searches: int = 0
-    cost_usd: float = 0.0
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def add(self, usage) -> None:
@@ -46,10 +45,9 @@ class Usage:
             self.input_tokens += usage.input_tokens
             self.output_tokens += usage.output_tokens
             self.web_searches += searches
-            self.cost_usd += searches * settings.WEB_SEARCH_USD
 
     def line(self) -> str:
-        return (f"${self.cost_usd:.3f} ({self.calls} model calls in {self.requests} requests, {self.input_tokens:,} input and "
+        return (f"$0 ({self.calls} model calls in {self.requests} requests, {self.input_tokens:,} input and "
                 f"{self.output_tokens:,} output tokens, {self.web_searches} web searches)")
 
 
@@ -73,13 +71,6 @@ def ask(client, usage: Usage, model: str, system: str, prompt: str | list[dict],
     if response.stop_reason == "max_tokens":
         raise RuntimeError(f"{model} hit max_tokens before finishing")
     return "\n".join(block.text for block in response.content if block.type == "text")
-
-
-def search_tool(as_of: date, searches: int) -> dict:
-    """The web search the model may use in one call: how many searches, and only pages of the last
-    WEB_SEARCH_DAYS days."""
-    return {"name": "web_search", "max_uses": searches,
-            "since": (as_of - timedelta(days=settings.WEB_SEARCH_DAYS)).isoformat()}
 
 
 def extract_json(text: str) -> dict:
@@ -140,13 +131,17 @@ def search_topics() -> dict[str, tuple[str, str]]:
 
 def news_search(client, usage: Usage, as_of: date, source: str, topic: str) -> list[dict]:
     system = SEARCH_SYSTEM.format(today=as_of.isoformat(), untrusted=UNTRUSTED, factors=", ".join(MACRO_FACTORS))
-    tool = search_tool(as_of, settings.MACRO_SEARCHES_PER_TOPIC)
+    tool = {"name": "web_search", "max_uses": settings.MACRO_SEARCHES_PER_TOPIC}
     found = set()
     text = ask(client, usage, settings.LLM_SEARCH, system, f"Topic: {topic}", found, tools=[tool],
                output_config={"effort": "medium"})
+    try:
+        facts = extract_json(text).get("facts", [])
+    except ValueError:  # the model wrote that it found nothing, in words
+        facts = []
     return [evidence(as_of, f["factor"], source, "text", f"[{f.get('date', 'undated')}] {f['summary']}",
                      url=f.get("url", ""))
-            for f in extract_json(text).get("facts", [])
+            for f in facts
             if f.get("factor") in MACRO_FACTORS and f.get("summary") and page(f.get("url", "")) in found]
 
 
@@ -190,7 +185,7 @@ def explore(client, usage: Usage, as_of: date, registry_sources: list[str], etfs
     found = set()
     text = ask(client, usage, settings.LLM_SEARCH,
                EXPLORE_SYSTEM.format(today=as_of.isoformat(), untrusted=UNTRUSTED), prompt, found,
-               tools=[search_tool(as_of, settings.MACRO_EXPLORE_SEARCHES)],
+               tools=[{"name": "web_search", "max_uses": settings.MACRO_EXPLORE_SEARCHES}],
                output_config={"effort": "medium"})
     rows = []
     for f in extract_json(text).get("findings", [])[:5]:

@@ -62,7 +62,7 @@ def test_example_plans_stay_out_of_the_committed_logs():
 def test_start_gives_the_phone_what_it_shows(tmp_path):
     start = app(tmp_path).get("/api/start").json()
     assert [c["id"] for c in start["customers"]] == list(CUSTOMERS) and "savings_eur" not in start["customers"][0]
-    assert start["profiles"] == PROFILES and start["coach"] == "Bel" and start["account_data"] == list(ACCOUNT.values())
+    assert start["profiles"] == PROFILES and start["coach"] == "Lena" and start["account_data"] == list(ACCOUNT.values())
     assert start["questions"] == len(profiler.ASKED) + 1
 
 
@@ -102,7 +102,7 @@ def test_a_typed_answer_goes_through_the_model(tmp_path):
 def test_what_goes_wrong_is_said(tmp_path):
     phone = app(tmp_path)  # a model with no reply left: reading a typed answer fails
     failed = phone.post("/api/chat", json={"customer": "thomas", "answers": {}, "reply": {"question": "goal", "text": "a home"}})
-    assert failed.status_code == 502 and failed.json()["error"].startswith("Bel cannot read typed answers")
+    assert failed.status_code == 502 and failed.json()["error"].startswith("Lena cannot read typed answers")
     assert phone.post("/api/chat", json={"customer": "nobody", "answers": {}}).status_code == 404
     assert phone.get("/api/state", params={"customer": "nobody"}).status_code == 404
     assert phone.post("/api/decision", json={"customer": "thomas", "decision": "approved"}).status_code == 400

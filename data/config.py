@@ -119,17 +119,14 @@ LLM_SEARCH = os.getenv("LLM_MODEL_SEARCH", "gemini-3.1-flash-lite")  # the topic
 LLM_REASONING = os.getenv("LLM_MODEL_REASONING", "gemini-4-hydrogen")  # the few judgement calls of a day
 LLM_REQUESTS_PER_MINUTE = 14  # pace of the requests to one model, just under its free limit
 LLM_REST_MINUTES = 15  # a model that did not answer is left alone this long
-# Web search: Linkup, paid from its free credit (USD 20, about 4,000 searches). agents/web_search.py.
-LINKUP_API_KEY = os.getenv("LINKUP_API_KEY")
-WEB_SEARCH_USD = 0.005  # per search
-WEB_SEARCH_RESULTS = 6  # results the model gets per search
-WEB_SEARCH_CHARS = 1200  # characters kept of each result
-WEB_SEARCH_DAYS = 14  # only pages published in the last days: a news agent must not read last year's news
-# Only these sites are searched. Left open, the search returns mostly small sites that copy or invent news;
-# with this list it returns the agencies, the financial press and the primary sources. Linkup takes at most 100.
+# News search, free and without a key (agents/web_search.py): the publishers' RSS feeds and Google News' RSS search.
+WEB_SEARCH_RESULTS = 10  # results the model gets per search
+WEB_SEARCH_CHARS = 500  # characters kept of an article's summary
+WEB_SEARCH_DAYS = 14  # only articles of the last days: a news agent must not read last year's news
+# Only these sites are kept. Left open, a news search returns many small sites that copy or invent news.
 WEB_SEARCH_SITES = [
     # news agencies and financial press
-    "reuters.com", "bloomberg.com", "ft.com", "wsj.com", "cnbc.com", "apnews.com", "bbc.com", "economist.com",
+    "reuters.com", "afp.com", "bloomberg.com", "ft.com", "wsj.com", "cnbc.com", "apnews.com", "bbc.com", "economist.com",
     "marketwatch.com", "barrons.com", "finance.yahoo.com", "investing.com", "nasdaq.com", "morningstar.com",
     "theguardian.com", "euronews.com", "politico.eu", "lecho.be", "tijd.be", "handelsblatt.com", "asia.nikkei.com",
     "scmp.com", "koreaherald.com", "businesskorea.co.kr", "economictimes.indiatimes.com", "tradingeconomics.com",
@@ -144,6 +141,32 @@ WEB_SEARCH_SITES = [
     "tsmc.com", "digitimes.com", "eetimes.com", "theregister.com", "fiercebiotech.com", "biopharmadive.com",
     "statnews.com", "defensenews.com", "breakingdefense.com", "coindesk.com", "theblock.co", "farside.co.uk",
     "defillama.com",
+]
+# The publishers' own feeds, read once per run: recent articles with a summary.
+NEWS_FEEDS = [
+    "https://www.cnbc.com/id/100003114/device/rss/rss.html",  # CNBC top news
+    "https://www.cnbc.com/id/20910258/device/rss/rss.html",  # CNBC economy
+    "https://www.cnbc.com/id/19836768/device/rss/rss.html",  # CNBC energy
+    "https://www.cnbc.com/id/15839069/device/rss/rss.html",  # CNBC investing
+    "https://feeds.content.dowjones.io/public/rss/mw_topstories",  # MarketWatch
+    "https://www.investing.com/rss/news_14.rss",  # Investing.com economy
+    "https://www.investing.com/rss/news_11.rss",  # Investing.com commodities
+    "https://www.investing.com/rss/news_25.rss",  # Investing.com stock markets
+    "https://www.investing.com/rss/news_301.rss",  # Investing.com crypto
+    "https://www.ecb.europa.eu/rss/press.html",
+    "https://www.federalreserve.gov/feeds/press_all.xml",
+    "https://www.federalreserve.gov/feeds/speeches.xml",
+    "https://oilprice.com/rss/main",
+    "https://www.mining.com/feed/",
+    "https://www.coindesk.com/arc/outboundfeeds/rss/",
+    "https://www.theblock.co/rss.xml",
+    "https://www.world-nuclear-news.org/rss",
+    "https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml",
+    "https://feeds.bbci.co.uk/news/business/rss.xml",
+    "https://www.theguardian.com/uk/business/rss",
+    "https://www.euronews.com/rss?level=vertical&name=business",
+    "https://www.ft.com/rss/home",
+    "https://www.economist.com/finance-and-economics/rss.xml",
 ]
 
 # --- Macro / News agent ---------------------------------------------------------
@@ -167,12 +190,11 @@ MACRO_FACTOR_MEANING = {
 }
 MACRO_EXPOSURE_CSV = DATA_DIR / "macro_exposure.csv"
 
-# Web searches of one run: 26 topics x 2 + 3 + 20 themes x 3 = 115, a few more when an analyst is asked again
-# (about 130 measured, USD 0.65), so that the free search credit lasts until the last trading day.
-MACRO_SEARCHES_PER_TOPIC = 2  # web searches per topic (one call per topic)
-MACRO_EXPLORE_SEARCHES = 3  # exploration budget
+# News searches of one run. They cost nothing, and a model asks for all of its searches in one request.
+MACRO_SEARCHES_PER_TOPIC = 3  # searches per topic (one call per topic)
+MACRO_EXPLORE_SEARCHES = 4  # exploration budget
 # ETF analysts: one "hedge-fund quant" per theme of the universe, who searches and scores its ETFs.
-MACRO_ANALYST_SEARCHES = 3  # web searches per theme
+MACRO_ANALYST_SEARCHES = 4  # searches per theme
 MACRO_SCORECARD_CALLS = 5  # past calls per ETF an analyst sees with what happened next
 
 # Source registry: a source needs this many graded uses before its status can change.

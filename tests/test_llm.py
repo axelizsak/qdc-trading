@@ -1,4 +1,6 @@
-"""The door to the model (agents/llm.py) and the web search behind it, with a fake network."""
+"""The door to the model (agents/llm.py) and the news search behind it, with a fake network."""
+from datetime import datetime, timezone
+from email.utils import format_datetime
 from types import SimpleNamespace
 
 import pytest
@@ -78,10 +80,10 @@ def test_a_cut_or_refused_answer_is_told_apart(network, given, expected):
 
 def test_the_models_searches_are_run_by_the_code(network, monkeypatch):
     searched = []
-    monkeypatch.setattr(web_search, "search", lambda query, since=None: searched.append((query, since)) or [{"url": f"https://a.example/{query[:3]}"}])
+    monkeypatch.setattr(web_search, "search", lambda query: searched.append(query) or [{"url": f"https://a.example/{query[:3]}"}])
     network.replies += [answer(calls=["ecb rate", " ", "fed rate", "boj rate"]), answer("Rates are on hold.")]
-    out = ask(tools=[{"name": "web_search", "max_uses": 2, "since": "2026-11-23"}])
-    assert searched == [("ecb rate", "2026-11-23"), ("fed rate", "2026-11-23")]  # the empty one is skipped, the last is over the limit
+    out = ask(tools=[{"name": "web_search", "max_uses": 2}])
+    assert searched == ["ecb rate", "fed rate"]  # the empty one is skipped, the last is over the limit
     first, second = network.sent[0][1], network.sent[1][1]
     assert first["tools"] == [llm.SEARCH_TOOL] and "at most 2 searches" in first["systemInstruction"]["parts"][0]["text"]
     assert second["contents"][3]["parts"][0]["thoughtSignature"] == "sig"  # the model's turn goes back as it came
@@ -96,7 +98,7 @@ def test_the_models_searches_are_run_by_the_code(network, monkeypatch):
 
 
 def test_a_failed_search_does_not_stop_the_answer(network, monkeypatch):
-    def broken(query, since=None):
+    def broken(query):
         raise RuntimeError("no credit")
     monkeypatch.setattr(web_search, "search", broken)
     network.replies += [answer(calls=["ecb"]), answer("No fresh news.")]
@@ -146,30 +148,41 @@ def test_when_nothing_answers_the_caller_is_told(network):
     assert len(network.sent) == llm.TRIES + 1  # a request the service rejects is not sent again
 
 
-def test_a_search_returns_a_few_clean_results(monkeypatch):
-    sent = {}
-    page = {"type": "text", "name": "ECB holds", "url": "https://a.example/ecb", "content": "The  ECB\nheld rates. " * 200,
-            "publishedAt": "2026-12-04"}
-    results = [page, {**page, "url": "https://b.example/ecb"}, {"type": "image", "name": "chart", "url": "u"},
-               {"type": "text", "name": "Other", "url": "https://c.example", "content": "Other news."}]
+FEED = """<rss><channel>
+<item><title>ECB holds rates as inflation cools</title><link>https://www.cnbc.com/ecb-holds</link><pubDate>{now}</pubDate>
+  <description>&lt;p&gt;The ECB kept its  deposit rate at 2%.&lt;/p&gt;</description></item>
+<item><title>ECB rates: what happened</title><link>https://www.cnbc.com/old</link><pubDate>Mon, 01 Jan 2024 10:00:00 GMT</pubDate>
+  <description>A story on ECB rates from long ago.</description></item>
+<item><title>Football results</title><link>https://www.cnbc.com/football</link><pubDate>{now}</pubDate><description>Not markets.</description></item>
+</channel></rss>"""
+GOOGLE = """<rss><channel>
+<item><title>ECB rate decision due Thursday - Reuters</title><link>https://news.google.com/rss/articles/abc</link>
+  <pubDate>{now}</pubDate><source url="https://www.reuters.com">Reuters</source></item>
+<item><title>ECB will cut rates, says a blog - Some Blog</title><link>https://news.google.com/rss/articles/def</link>
+  <pubDate>{now}</pubDate><source url="https://someblog.example">Some Blog</source></item>
+</channel></rss>"""
 
-    def post(url, json, timeout, headers):
-        sent.update(url=url, body=json, headers=headers)
-        return SimpleNamespace(status_code=200, json=lambda: {"results": results}, raise_for_status=lambda: None)
 
-    monkeypatch.setattr(web_search.requests, "post", post)
-    with pytest.raises(RuntimeError, match="LINKUP_API_KEY"):
-        web_search.search("ecb")
-    monkeypatch.setattr(settings, "LINKUP_API_KEY", "key")
-    found = web_search.search("  ecb   rate decision ", "2026-11-23")
-    assert sent["headers"] == {"Authorization": "Bearer key"} and sent["body"]["q"] == "ecb rate decision"
-    assert sent["body"]["includeDomains"] == settings.WEB_SEARCH_SITES and sent["body"]["outputType"] == "searchResults"
-    assert sent["body"]["fromDate"] == "2026-11-23"
-    assert [r["url"] for r in found] == ["https://a.example/ecb", "https://c.example"]  # the copy and the image are out
-    assert len(found[0]["text"]) == settings.WEB_SEARCH_CHARS and "  " not in found[0]["text"] and found[0]["date"] == "2026-12-04"
-    web_search.search("ecb")
-    assert "fromDate" not in sent["body"]
-    assert len(settings.WEB_SEARCH_SITES) == len(set(settings.WEB_SEARCH_SITES)) <= 100
-    monkeypatch.setattr(web_search.requests, "post", lambda *a, **k: SimpleNamespace(status_code=429))
-    with pytest.raises(RuntimeError, match="no credit left"):
-        web_search.search("ecb")
+def test_a_search_reads_free_feeds_and_keeps_trusted_recent_articles(monkeypatch):
+    now = format_datetime(datetime.now(timezone.utc))
+    asked = []
+
+    def get(url, headers, timeout):
+        asked.append(url)
+        if "broken" in url:
+            raise web_search.requests.ConnectionError("down")
+        xml = GOOGLE if url.startswith("https://news.google.com") else FEED
+        return SimpleNamespace(content=xml.format(now=now).encode(), raise_for_status=lambda: None)
+
+    monkeypatch.setattr(web_search.requests, "get", get)
+    monkeypatch.setattr(settings, "NEWS_FEEDS", ["https://feed.example/markets", "https://feed.example/broken"])
+    web_search.feed_articles.cache_clear()
+    found = web_search.search("  ECB   rates decision ")
+    web_search.feed_articles.cache_clear()
+    assert [r["url"] for r in found] == ["https://www.cnbc.com/ecb-holds", "https://news.google.com/rss/articles/abc"]
+    assert found[0]["text"] == "The ECB kept its deposit rate at 2%." and found[0]["date"] == datetime.now(timezone.utc).date().isoformat()
+    assert found[1]["text"] == found[1]["title"] == "ECB rate decision due Thursday - Reuters"  # a headline has no summary
+    assert set(found[0]) == {"title", "url", "date", "text"}
+    google = next(url for url in asked if url.startswith("https://news.google.com"))
+    assert "q=ECB+rates+decision+when:14d" in google  # the old story, the football and the unknown blog are left out
+    assert len(settings.WEB_SEARCH_SITES) == len(set(settings.WEB_SEARCH_SITES)) and len(settings.NEWS_FEEDS) > 0

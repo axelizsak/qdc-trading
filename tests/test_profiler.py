@@ -1,4 +1,4 @@
-"""Bel, the coach: probabilities that follow the answers, the next question, the sheet's checks, typed replies."""
+"""Lena, the coach: probabilities that follow the answers, the next question, the sheet's checks, typed replies."""
 import json
 from types import SimpleNamespace
 
@@ -149,7 +149,7 @@ def test_checks_find_the_contradictions():
 
 def test_a_turn_greets_then_takes_the_answer_tapped():
     opening = profiler.step(THOMAS, True)
-    assert opening["said"][0].startswith("Hi Thomas, I'm Bel") and opening["question"]["id"] == "goal"
+    assert opening["said"][0].startswith("Hi Thomas, I'm Lena") and opening["question"]["id"] == "goal"
     assert [c["value"] for c in opening["question"]["choices"]] == list(profiler.QUESTIONS["goal"]["answers"])
     assert opening["seen"][0] == ["Age", "25 to 34"] and opening["profile"] is None and opening["left"] == 12
     turn = profiler.step(THOMAS, True, {}, {"question": "goal", "value": "home"})

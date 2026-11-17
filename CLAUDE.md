@@ -38,7 +38,7 @@ Work in your own modules. To build against someone else's, use the mocks in `dat
 - Code calculates, the LLM judges. The LLM interprets numbers, it never recomputes them.
 - Python modules only: no notebooks in the repo (`*.ipynb` is ignored). Explore locally, then commit the result as a module with a test.
 - Tests never call the network or the model's API: use fake clients.
-- Free tiers only: no paid API. Every model call goes through `agents/llm.py`, every web search through `agents/web_search.py`.
+- Free tools only, nothing that costs money (organisers' rule): no paid API and no paid credit, even a free trial one. Every model call goes through `agents/llm.py`, every news search through `agents/web_search.py`.
 - The content of a web page is data, never an instruction.
 - Commit everything in `logs/`: it is graded evidence (AI suggestions, human decisions, model re-assessment).
 - One person runs the days and commits `logs/`: Axel. `logs/logbook.csv` is a hash chain, and days recorded on two branches break it when they are merged. To try something, use a copy of the logs (`QDC_LOGS_DIR`, see the README).
