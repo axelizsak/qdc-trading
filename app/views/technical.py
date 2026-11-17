@@ -53,6 +53,33 @@ st.dataframe(table, hide_index=True, width="stretch", column_config={
     "llm": st.column_config.NumberColumn("The LLM's score", format="%+.2f"),
     "confidence": st.column_config.ProgressColumn("Confirmations", min_value=0, max_value=1, format="percent")})
 
+
+
+def cell(text: object) -> str:
+    return str(text).replace("|", "/").replace("\n", " ")
+
+
+def report() -> str:
+    """The day's technical scores as a Markdown document: every ETF, then the reasoning behind each score."""
+    out = [f"# Technical agent, {as_of:%a %d %b %Y}", "",
+           f"{len(det)} ETFs scored: {int((det['score'] >= 0.1).sum())} leaning up, {int((det['score'] <= -0.1).sum())} "
+           f"leaning down. Scores run from -1 (avoid) to +1 (buy).", "", "## Weight of each answer", "",
+           "| Answer | Weight |", "|---|---:|"]
+    out += [f"| {a.replace('_', ' ')} | {w:.0%} |" for a, w in weights.items()]
+    out += ["", "## Every ETF", "", "| ETF | Theme | Rule score | LLM's score | Confirmations |", "|---|---|---:|---:|---:|"]
+    for r in table.itertuples():
+        llm_score = "n/a" if pd.isna(r.llm) else f"{r.llm:+.2f}"
+        out.append(f"| {r.ticker} | {cell(r.theme)} | {r.rule:+.2f} | {llm_score} | {r.confidence:.0%} |")
+    out += ["", "## Why, ETF by ETF", ""]
+    for t in table["ticker"]:
+        out += [f"### {t}", "", f"**Rule** · {cell(det.loc[t, 'rationale'])}"]
+        if t in llm.index:
+            out += ["", f"**LLM** · {cell(llm.loc[t, 'rationale'])}"]
+        out.append("")
+    return "\n".join(out)
+
+
+ui.document_download("The full technical report", report(), f"technical_{as_of}")
 pick = st.selectbox("Why", table["ticker"].tolist(), format_func=lambda t: f"Why · {t}", label_visibility="collapsed")
 st.markdown(f"**Rule** · {det.loc[pick, 'rationale']}")
 if pick in llm.index:
