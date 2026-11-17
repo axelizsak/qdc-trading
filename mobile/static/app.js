@@ -9,7 +9,6 @@ const sum = (items, value) => items.reduce((total, item) => total + value(item),
 // Asset classes of the plan, in a fixed order: the colour follows the class, never its rank.
 const ASSETS = [["Shares", "--shares"], ["Bonds", "--bonds"], ["Gold", "--gold"], ["Cash", "--cash"], ["Crypto", "--crypto"]];
 const COLOR = Object.fromEntries(ASSETS);
-const WEALTH = { under_10k: "under €10k", "10k_50k": "€10k to €50k", "50k_250k": "€50k to €250k", over_250k: "over €250k" };
 
 const svg = (size, body, width = 2) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
@@ -30,9 +29,9 @@ const HERO_ART = `<svg viewBox="0 0 390 190" preserveAspectRatio="none" fill="no
   <path class="glow" d="${LINE}" filter="url(#glow)"/>
   <path class="stroke" d="${LINE}"/></svg>`;
 
-const blank = () => ({ consent: true, messages: [], sheet: {}, missing: null, flags: [], fresh: [], profile: null, why: "",
-  decision: null, decided_at: null, plan: null, cost: 0, busy: false });
-const state = { customers: [], profiles: {}, labels: {}, accountData: [], coach: "", id: null, known: {}, ...blank() };
+const blank = () => ({ consent: true, answers: {}, question: null, picked: [], odds: null, seen: [], sheet: [], flags: [],
+  left: null, profile: null, why: "", decision: null, decided_at: null, plan: null, busy: false });
+const state = { customers: [], profiles: {}, questions: 0, accountData: [], coach: "", id: null, known: {}, ...blank() };
 let run = 0; // grows when the customer changes, so a late answer for the previous one is dropped
 
 /** Builds an element. Text children are set as text, never as HTML: what Claude or the customer wrote stays text. */
@@ -125,8 +124,8 @@ function renderChat() {
     h("div", { class: "progress" }, h("i", { id: "progress" })),
     h("div", { class: "messages", id: "messages", "aria-live": "polite" }),
     h("div", { class: "chips", id: "chips" }),
-    h("form", { class: "composer", onsubmit: (event) => { event.preventDefault(); send($("input").value); } },
-      h("input", { id: "input", type: "text", placeholder: "Type your answer", autocomplete: "off", maxlength: "600", "aria-label": "Your answer" }),
+    h("form", { class: "composer", onsubmit: (event) => { event.preventDefault(); typed($("input").value); } },
+      h("input", { id: "input", type: "text", placeholder: "Or type your answer", autocomplete: "off", maxlength: "400", "aria-label": "Your answer" }),
       h("button", { class: "send", id: "send", type: "submit", "aria-label": "Send", icon: ICON.up })));
 }
 
@@ -141,8 +140,20 @@ function setTyping(on) {
   if (on) addToChat(h("div", { class: "typing pop", id: "typing", "aria-label": `${state.coach} is writing` }, h("i"), h("i"), h("i")));
 }
 
-function setChips(choices) {
-  $("chips").replaceChildren(...choices.map((text) => h("button", { class: "chip pop", type: "button", onclick: () => send(text) }, text)));
+/** The answers to tap for the question asked. The customer's rules take several: tap them, then confirm. */
+function showChoices() {
+  const question = state.question;
+  const chip = (label, onclick, on) => h("button", { class: on ? "chip pop is-on" : "chip pop", type: "button", onclick }, label);
+  let chips = [];
+  if (question?.kind === "rules") {
+    const toggle = (value) => { state.picked = state.picked.includes(value) ? state.picked.filter((v) => v !== value) : [...state.picked, value]; showChoices(); };
+    chips = [...question.choices.map((c) => chip(c.label, () => toggle(c.value), state.picked.includes(c.value))),
+      chip(state.picked.length ? "That is all" : "No, nothing", () => answer(state.picked,
+        state.picked.length ? question.choices.filter((c) => state.picked.includes(c.value)).map((c) => c.label).join(", ") : "No, nothing"))];
+  } else if (question) {
+    chips = question.choices.map((c) => chip(c.label, () => answer(c.value, c.label)));
+  }
+  $("chips").replaceChildren(...chips);
   $("messages").scrollTop = $("messages").scrollHeight;
 }
 
@@ -150,49 +161,47 @@ function startChat(consent) {
   Object.assign(state, blank(), { consent });
   renderChat();
   go("chat");
-  coachTurn();
+  turn();
 }
 
-function send(text) {
+const answer = (value, label) => { if (!state.busy) { addBubble("customer", label); turn({ question: state.question.id, value }); } };
+
+function typed(text) {
   text = text.trim();
-  if (!text || state.busy || state.profile) return;
-  state.messages.push({ role: "customer", text });
+  if (!text || state.busy || !state.question) return;
   addBubble("customer", text);
   $("input").value = "";
-  coachTurn();
+  turn({ question: state.question.id, text });
 }
 
-/** Asks the server for the coach's next message, and takes the sheet, the flags and the profile it sends back. */
-async function coachTurn() {
+/** Sends the customer's reply, then shows what the coach says, the next question and what the code now holds. */
+async function turn(reply) {
   const mine = run;
   state.busy = true;
-  setChips([]);
+  $("chips").replaceChildren();
   setTyping(true);
   sync();
   try {
-    const reply = await api("/api/chat", { customer: state.id, consent: state.consent, messages: state.messages, sheet: state.sheet });
+    const next = await api("/api/chat", { customer: state.id, consent: state.consent, answers: state.answers, reply });
     if (mine !== run) return;
-    state.fresh = Object.keys(reply.sheet).filter((field) => state.sheet[field] !== reply.sheet[field]);
-    Object.assign(state, { sheet: reply.sheet, missing: reply.missing, flags: reply.flags, profile: reply.profile,
-      why: reply.why, cost: state.cost + reply.cost_usd });
-    state.messages.push({ role: "coach", text: reply.message });
+    Object.assign(state, { answers: next.answers, question: next.question, picked: [], odds: next.odds, seen: next.seen,
+      sheet: next.sheet, flags: next.flags, left: next.left, profile: next.profile, why: next.why });
     setTyping(false);
-    addBubble("coach", reply.message);
-    if (reply.profile) {
+    for (const line of next.said) addBubble("coach", line);
+    if (next.question) {
+      addBubble("coach", next.question.text);
+    } else {
       addToChat(h("div", { class: "ready pop" }, h("b", {}, "Your profile is ready"),
         h("p", {}, "I found the one that fits your answers, and the plan that goes with it."),
         h("button", { class: "btn btn-primary", type: "button", onclick: () => { renderReveal(); go("reveal"); } }, "Show me")));
-    } else {
-      setChips(reply.choices);
     }
   } catch (error) {
     if (mine !== run) return;
     setTyping(false);
-    const box = h("div", { class: "chat-error pop" }, h("span", {}, error.message),
-      h("button", { type: "button", onclick: () => { box.remove(); coachTurn(); } }, "Try again"));
-    addToChat(box);
+    addToChat(h("div", { class: "chat-error pop" }, h("span", {}, error.message)));
   }
   state.busy = false;
+  showChoices();
   sync();
 }
 
@@ -301,7 +310,7 @@ function planFooter() {
 
 function renderPlan() {
   const { lines, amount } = state.plan;
-  const monthly = state.sheet.monthly_eur;
+  const monthly = state.answers.monthly;
   $("view-plan").replaceChildren(
     h("div", { class: "topbar" },
       h("button", { class: "icon-btn", type: "button", "aria-label": "Back to my profile", icon: ICON.back, onclick: () => { renderReveal(); go("reveal"); } }),
@@ -314,6 +323,8 @@ function renderPlan() {
       section("Where it goes", h("div", { class: "panel" }, allocation(lines, amount))),
       sleeve(lines, "core", "Core", "broad, diversified ETFs"),
       sleeve(lines, "satellite", "Themes", "a few convictions"),
+      state.plan.left_out.length ? section("Your rules", h("div", { class: "panel" },
+        ticks(state.plan.left_out.map((out) => `No ${out.rule.toLowerCase()}: ${out.ticker} is left out, its ${pct(out.weight)} goes to ${lines[0].ticker}`)))) : null,
       state.flags.length ? section("Before you invest", flagsPanel()) : null,
       section("How your money is handled", h("div", { class: "panel" }, ticks(profile().rules))),
       h("div", { style: "height:14px" })),
@@ -353,37 +364,34 @@ function renderDone() {
 }
 
 // ---- The presenter's side panels ---------------------------------------------------------------------------
-function shown(field, value) {
-  if (value == null) return "—";
-  if (field.endsWith("_eur")) return eur.format(value);
-  if (field === "horizon_years") return `${value} years`;
-  if (field === "buffer_months") return `${value} months`;
-  if (field === "max_loss_pct") return value === 30 ? "more than 20%" : `${value}%`;
-  if (field === "wealth_range") return WEALTH[value];
-  return String(value).replaceAll("_", " ");
+const card = (title, aside, ...children) => h("div", { class: "card" }, h("h3", {}, title, aside ? h("span", {}, aside) : null), ...children);
+const rowsOf = (pairs) => h("div", { class: "rows" }, pairs.map(([k, v]) => h("div", {}, h("span", { class: "k" }, k), h("span", { class: "v" }, v))));
+
+/** The probability of each profile: one bar each, in the same order from start to end, the leader in colour. */
+function oddsCard() {
+  if (!state.odds) return card("Probability of each profile", null, h("p", { class: "quiet" }, "Starts with the first question."));
+  const top = Math.max(...Object.values(state.odds));
+  const bars = Object.entries(state.odds).map(([key, p]) => h("div", { class: p === top ? "odd is-top" : "odd" },
+    h("span", { class: "k" }, state.profiles[key].label), h("span", { class: "track" }, h("i", { style: `width:${Math.max(p * 100, 1)}%` })),
+    h("span", { class: "v" }, pct(p))));
+  const from = state.seen.map(([name, value]) => `${name}: ${value}`).join(" · ");
+  return card("Probability of each profile", state.profile ? "final" : "after each answer", h("div", { class: "odds" }, bars),
+    h("p", { class: "quiet" }, `Starts from: ${from}`));
 }
 
-const card = (title, aside, ...children) => h("div", { class: "card" }, h("h3", {}, title, aside ? h("span", {}, aside) : null), ...children);
-const rowsOf = (pairs) => h("div", { class: "rows" }, pairs.map(([k, v, cls]) => h("div", { class: cls }, h("span", { class: "k" }, k), h("span", { class: v === "—" ? "v is-empty" : "v" }, v))));
-
-/** What the code holds right now: what Belfius knows, the sheet, the contradictions, the profile, the cost. */
+/** What the code holds right now: the probabilities, the suitability sheet and the contradictions. */
 function sync() {
-  const fields = Object.entries(state.labels);
-  const done = Object.keys(state.sheet).length;
-  if ($("progress")) $("progress").style.width = `${Math.round((done / fields.length) * 100)}%`;
-  if ($("send")) $("send").disabled = state.busy || Boolean(state.profile);
-  if ($("input")) $("input").placeholder = state.profile ? "Your profile is ready" : "Type your answer";
-  const known = Object.entries(state.known).map(([label, value]) =>
-    [label, state.consent || !state.accountData.includes(label) ? value : "not shared"]);
+  const asked = state.left == null ? 0 : state.questions - state.left;
+  if ($("progress")) $("progress").style.width = `${Math.round((asked / state.questions) * 100)}%`;
+  if ($("send")) $("send").disabled = state.busy || !state.question;
+  if ($("input")) $("input").placeholder = state.profile ? "Your profile is ready" : "Or type your answer";
   $("inspector").replaceChildren(
-    card("What Belfius knows", state.consent ? `${state.coach} may use it` : "basics only", rowsOf(known)),
-    card("Suitability sheet", `${done} of ${fields.length}`,
-      rowsOf(fields.map(([field, label]) => [label, shown(field, state.sheet[field]), state.fresh.includes(field) ? "is-new" : ""]))),
+    oddsCard(),
+    card("Suitability sheet", state.sheet.length ? `${state.sheet.length} answers` : null,
+      state.sheet.length ? rowsOf(state.sheet) : h("p", { class: "quiet" }, "Filled by the same questions.")),
     card("Checks by code", null, state.flags.length
       ? state.flags.map((flag) => h("div", { class: "flag" }, h("span", { icon: ICON.alert }), flag))
-      : h("div", { class: "ok-line" }, h("span", { icon: ICON.check }), "No contradiction found")),
-    card("Result", null, rowsOf([["Profile", state.profile ? profile().label : "not yet"],
-      ["Claude cost of this chat", `$${state.cost.toFixed(3)}`]])));
+      : h("div", { class: "ok-line" }, h("span", { icon: ICON.check }), "No contradiction found")));
   $("people").replaceChildren(...state.customers.map((c) =>
     h("button", { class: c.id === state.id ? "person is-on" : "person", type: "button", onclick: () => selectCustomer(c.id) },
       avatar(c), h("span", {}, h("b", {}, `${c.first_name}, ${c.age}`), h("small", {}, c.status)))));
@@ -393,7 +401,7 @@ function sync() {
 async function selectCustomer(id) {
   run += 1;
   const { state: saved, known } = await api(`/api/state?customer=${id}`);
-  Object.assign(state, blank(), { id, known }, saved ? { ...saved, missing: [] } : {});
+  Object.assign(state, blank(), { id, known }, saved ? { ...saved, left: 0 } : {});
   try { localStorage.setItem("rebel.customer", id); } catch { /* private window: the choice is not kept */ }
   renderWelcome();
   renderConsent();
@@ -408,8 +416,8 @@ async function startOver() {
 
 async function boot() {
   const start = await api("/api/start");
-  Object.assign(state, { customers: start.customers, profiles: start.profiles, labels: start.sheet, accountData: start.account_data,
-    coach: start.coach });
+  Object.assign(state, { customers: start.customers, profiles: start.profiles, questions: start.questions,
+    accountData: start.account_data, coach: start.coach });
   let last = null;
   try { last = localStorage.getItem("rebel.customer"); } catch { /* private window */ }
   await selectCustomer(state.customers.some((c) => c.id === last) ? last : state.customers[0].id);

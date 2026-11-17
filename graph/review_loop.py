@@ -12,7 +12,7 @@ No LLM: it reports facts with their numbers.
            (logs/technical_answers.csv, from LEARNING_START). Computed once, then one session a day.
 2. Learn   every weight of the system with one rule (agents/learning.py): after each session, a weight is
            multiplied by e^(LEARNING_SPEED x what following it earned). Three sets: the technical agent's three
-           answers (since 2022), the four agents (since their first score), Claude's portfolio against the code's.
+           answers (since 2022), the four agents (since their first score), the LLM's portfolio against the code's.
            -> logs/weights.csv, the evidence of model re-assessment. Every number is recomputed from the logs.
 3. Check   the macro sources: one on trial that is wrong too often is dropped -> logs/source_registry.csv.
 4. Write   logs/lessons.md, newest review first. Macro/News, technical_llm and the Portfolio Manager read it.
@@ -110,7 +110,7 @@ def agent_weights(calls: pd.DataFrame, prices: pd.DataFrame, as_of: date) -> tup
 
 
 def portfolio_weights(logs: Path, prices: pd.DataFrame, as_of: date) -> tuple[pd.DataFrame, dict[str, float]]:
-    """Claude's portfolio against the code's (ANCHOR), learned session by session from the first one logged."""
+    """The LLM's portfolio against the code's (ANCHOR), learned session by session from the first one logged."""
     records = portfolio_learning.load_records(logs)
     records = records[records["source"].isin(PORTFOLIOS)].assign(name=lambda r: r["source"].map(PORTFOLIOS))
     results = (learning.portfolio_results(records, prices, as_of) if len(records)
@@ -152,7 +152,7 @@ def _day(iso: str) -> str:
 
 
 WEIGHT_TITLES = {"technical": "The technical agent's three answers", "agents": "The four agents",
-                 "portfolio": "Claude's portfolio (llm) against the code's (code)"}
+                 "portfolio": "The LLM's portfolio (llm) against the code's (code)"}
 
 
 def weight_lines(board: pd.DataFrame) -> list[str]:
@@ -236,7 +236,7 @@ def review(as_of: date, prices: pd.DataFrame, logs: Path | str | None = None, fe
            replay_technical: bool = True, fetch=None) -> dict:
     """Run the review of `as_of` on <logs> and return what the day needs:
     technical_weights (today's weights of the three answers), agent_multipliers (learning.weights_now turns them into
-    today's weights over the agents that score), trust (how much Claude's portfolio counts), board (the scoreboard:
+    today's weights over the agents that score), trust (how much the LLM's portfolio counts), board (the scoreboard:
     level, name, start, weight, sessions, mean_result, right_share), weights (logs/weights.csv), lessons (the review
     as text), journal (the whole lessons.md), sources, grades.
     `replay_technical=False` skips the technical answers (a mock technical agent has no rules to replay)."""

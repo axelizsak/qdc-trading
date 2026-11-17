@@ -1,4 +1,4 @@
-"""The Risk Manager's independent reading. Owner: Person 3. LLM: yes (Sonnet), optional, never part of the numbers.
+"""The Risk Manager's independent reading. Owner: Person 3. LLM: yes, optional, never part of the numbers.
 
 After the deterministic report is done, one call reads it and writes three labelled parts for the human:
   reading         what the warnings mean together, in plain words
@@ -98,6 +98,6 @@ def sanitize(raw: dict, tickers: list[str], start: date | None = None, end: date
 
 def judge(client, usage: macro_llm.Usage, context: str, tickers: list[str], start: date | None = None,
           end: date | None = None) -> dict:
-    """One Sonnet call on `context` (built by agents/risk.py). Returns a sanitized reply."""
+    """One LLM call on `context` (built by agents/risk.py). Returns a sanitized reply."""
     reply = macro_llm.ask(client, usage, settings.LLM_REASONING, SYSTEM.format(untrusted=macro_llm.UNTRUSTED), context)
     return sanitize(macro_llm.extract_json(reply), tickers, start, end)

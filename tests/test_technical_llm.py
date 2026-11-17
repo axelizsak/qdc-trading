@@ -15,7 +15,7 @@ from tests.test_technical import made_up_prices
 DAY = date(2026, 12, 7)
 
 
-class FakeClaude:
+class FakeModel:
     """Answers with one score per ETF of the prompt, or with whatever `answer` returns."""
 
     def __init__(self, answer=None):
@@ -43,7 +43,7 @@ def sheet():
 
 
 def test_every_etf_of_the_sheet_gets_an_llm_score(sheet):
-    client = FakeClaude()
+    client = FakeModel()
     signals = technical_llm.interpret(sheet, DAY, "lesson: buy setups on stretched ETFs gave back", client)
 
     validate_signals(signals)
@@ -75,7 +75,7 @@ def test_bad_answers_are_dropped_and_scores_stay_in_range(sheet):
                 {"ticker": tickers[1], "score": "high", "confidence": 1, "rationale": "x"},   # not a number
                 {"ticker": tickers[2], "score": 0.25, "confidence": 0.5, "rationale": ""}]
 
-    signals = technical_llm.interpret(sheet, DAY, "", FakeClaude(answer)).set_index("ticker")
+    signals = technical_llm.interpret(sheet, DAY, "", FakeModel(answer)).set_index("ticker")
     tickers = sheet["ticker"].tolist()
     assert list(signals.index) == [tickers[0], tickers[2]]
     assert signals.loc[tickers[0], ["score", "confidence"]].tolist() == [1.0, 0.0]
@@ -84,20 +84,20 @@ def test_bad_answers_are_dropped_and_scores_stay_in_range(sheet):
 
 def test_without_a_key_or_when_the_call_fails_there_is_no_llm_score(sheet, capsys):
     assert technical_llm.interpret(sheet, DAY).empty  # no key in tests
-    assert "no ANTHROPIC_API_KEY" in capsys.readouterr().out
+    assert "no GEMINI_API_KEY" in capsys.readouterr().out
 
     def down(tickers):
         raise RuntimeError("API down")
 
-    assert technical_llm.interpret(sheet, DAY, "", FakeClaude(down)).empty
-    assert technical_llm.interpret(sheet.iloc[0:0], DAY, "", FakeClaude()).empty
+    assert technical_llm.interpret(sheet, DAY, "", FakeModel(down)).empty
+    assert technical_llm.interpret(sheet.iloc[0:0], DAY, "", FakeModel()).empty
 
 
 def test_run_gives_both_technical_scores_when_the_llm_answers():
     prices = made_up_prices()
     features = compute_features(prices)
     as_of = pd.to_datetime(prices["date"]).max().date()
-    both = technical.run(prices, features, as_of, "", client=FakeClaude())
+    both = technical.run(prices, features, as_of, "", client=FakeModel())
     assert both.groupby("agent")["ticker"].nunique().to_dict() == {"technical_det": 42, "technical_llm": 42}
     assert set(technical.run(prices, features, as_of, use_llm=False)["agent"]) == {"technical_det"}
     assert set(technical.run(prices, features, as_of)["agent"]) == {"technical_det"}  # no key: the rule score alone
@@ -115,7 +115,7 @@ def test_the_llm_is_given_what_each_answer_has_been_worth(sheet, tmp_path, monke
     assert technical_llm.record_lines(tmp_path / "missing.csv") == ""
 
     monkeypatch.setattr(technical_llm, "STUDY_CSV", study)
-    client = FakeClaude()
+    client = FakeModel()
     technical_llm.interpret(sheet, DAY, "", client)
     assert "- rule: watch: -0.12% after 3 sessions (t -2.0)" in client.calls[0]["messages"][0]["content"]
     assert "Use the record" in client.calls[0]["system"]

@@ -10,7 +10,7 @@ Input:  the sheet of the day (one row per ETF) + what each answer of the sheet h
 Output: one technical_llm row per ETF (Signals format): a score in [-1, 1] for the next HORIZON_SESSIONS
         trading sessions, a confidence and one sentence that names the numbers behind it.
 
-One Claude call a day (about $0.05). Without a key, or when the call fails, there is no technical_llm score
+One LLM call a day. Without a key, or when the call fails, there is no technical_llm score
 that day: the day goes on with technical_det, which then carries the whole technical weight.
 The review loop grades both scores on the same sessions, so it shows whether this layer adds anything.
 """
@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from agents import macro_llm
+from agents import llm, macro_llm
 from agents import strategy_config as cfg
 from data import config as settings
 from data.schemas import SIGNALS, validate_signals
@@ -117,11 +117,7 @@ def interpret(sheet: pd.DataFrame, as_of: date, lessons: str = "", client=None,
         return empty
     usage = macro_llm.Usage() if usage is None else usage
     try:
-        if client is None:
-            if not settings.ANTHROPIC_API_KEY:
-                raise RuntimeError("no ANTHROPIC_API_KEY")
-            import anthropic
-            client = anthropic.Anthropic()
+        client = client or llm.client()
         ordinary = sheet.loc[sheet["leveraged"] >= 0, "market_trend"]
         market = (ordinary.iloc[0] if len(ordinary) else None) or "n/a"
         prompt = (f"Market filter: the benchmark ({cfg.MARKET_TICKER}) is {market} against its 200-day average.\n\n"

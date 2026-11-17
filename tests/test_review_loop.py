@@ -144,7 +144,7 @@ def test_claudes_portfolio_gains_trust_when_it_earns_more_than_the_codes(tmp_pat
     pd.DataFrame(rows).to_csv(tmp_path / "pm_portfolios.csv", index=False)
     result = review_loop.review(DAY, prices, tmp_path, replay_technical=False)
     assert result["trust"] > pm_cfg.TRUST_START  # judged against the anchor portfolio, not the other code one
-    assert "- Claude's portfolio (llm) against the code's (code): code 40% -> " in result["lessons"]
+    assert "- The LLM's portfolio (llm) against the code's (code): code 40% -> " in result["lessons"]
     assert "llm 60% -> " in result["lessons"]
 
 

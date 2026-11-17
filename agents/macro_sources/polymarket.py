@@ -6,7 +6,7 @@ from agents.macro_sources._common import evidence, http_client
 
 SOURCE = "polymarket"
 API = "https://gamma-api.polymarket.com/public-search"
-# search query -> factor (no liquid markets found for the ECB, EUR/USD or copper: Claude's searches cover them)
+# search query -> factor (no liquid markets found for the ECB, EUR/USD or copper: the LLM's searches cover them)
 QUERIES = {
     "fed rate cut": "fed_us_rates",
     "fed hike": "fed_us_rates",

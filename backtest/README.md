@@ -10,7 +10,7 @@ construction. Every past 3-week window is traded like the competition: decisions
 Thursday, Monday, each from the prices known that morning, orders filled at the last close before the day, at
 most 5 orders a day, €10,000 to start, valued against the same money in the benchmark (WORLD).
 
-Nothing that asks Claude is replayed (Macro/News, `technical_llm`, the Portfolio Manager's own portfolio). An
+Nothing that asks the LLM is replayed (Macro/News, `technical_llm`, the Portfolio Manager's own portfolio). An
 LLM already knows what happened in the past and a web search returns later articles, so their backtest would
 look into the future. They are judged forward only, by the learning step every morning.
 
@@ -139,7 +139,7 @@ mean reversion, momentum ranking) weighted by what each earned since January 202
 - **Speed 2 is not a tuned value:** 1 and 5 do worse, and nothing says 2 is best beyond this history.
 - **Other variants:** none beats the system now with a t-value of 2. `no_leverage` (1.27, t +1.0) is ahead in both
   halves.
-- **The four agents and Claude's portfolio cannot be backtested:** an LLM already knows the past. They learn live,
+- **The four agents and the LLM's portfolio cannot be backtested:** an LLM already knows the past. They learn live,
   from 8 November 2026; by 7 December they will have about 20 sessions of evidence, so their weights will have moved
   little.
 

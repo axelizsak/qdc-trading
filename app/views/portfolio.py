@@ -10,7 +10,7 @@ as_of, logs = ui.as_of(), ui.pipeline_logs()
 _, state, _ = pipeline.day_status(as_of, logs)
 record = data.day_record(as_of, logs)  # what the day wrote to the logs; the saved state while a mock is running
 ui.page("Portfolio Manager", "It combines the four scores with their weights, builds a target portfolio with the code "
-                             "and with Claude, blends both, then picks at most 5 orders.")
+                             "and with the LLM, blends both, then picks at most 5 orders.")
 memo = record["memo"] or state.get("memo", "")
 if not memo:
     st.info("The Portfolio Manager has not run for this day: run the day from the dashboard.", icon=":material/info:")
@@ -23,7 +23,7 @@ weights = state.get("agent_weights") or learned.get("agents", {})
 trust = state.get("trust", learned.get("portfolio", {}).get("llm"))
 ui.kpis([("Invested", f"{target['target_weight'].sum():.0%}", "of the portfolio in the target"),
          ("Positions", len(target), "in the target"),
-         ("Claude's share", "—" if trust is None else f"{trust:.0%}", "of the blend with the code's portfolio"),
+         ("The LLM's share", "—" if trust is None else f"{trust:.0%}", "of the blend with the code's portfolio"),
          ("Orders proposed", len(orders), f"round {state.get('round', 1)}")])
 
 summary = data.memo_summary(memo)
@@ -50,6 +50,6 @@ st.dataframe(orders.drop(columns="date"), hide_index=True, width="stretch",
 
 flags = data.section(memo, "### To consider")
 if flags:
-    ui.label("To consider", "what Claude flags")
+    ui.label("To consider", "what the LLM flags")
     st.markdown(flags)
 st.download_button("The full memo", memo, f"memo_{as_of}.md", "text/markdown", icon=":material/description:")

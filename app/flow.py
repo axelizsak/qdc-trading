@@ -47,7 +47,7 @@ STEPS = [
          ["agents/learning.py", "graph/review_loop.py"], [learning.daily_weights, learning.call_results]),
     Step("technical", "Technical agent", "Technical", "llm", 2.3, 0.55,
          "Three answers per ETF from prices (trend, mean reversion, momentum ranking), weighted by what each earned "
-         "since 2022: technical_det. Claude weighs the same answers when they disagree: technical_llm.",
+         "since 2022: technical_det. The LLM weighs the same answers when they disagree: technical_llm.",
          "prices, indicators, its weights", "2 scores per ETF",
          ["agents/technical.py", "agents/technical_llm.py", "agents/strategy_config.py"],
          [technical.suggest_signal, technical.signal_scores, technical.blend]),
@@ -58,7 +58,7 @@ STEPS = [
          ["agents/macro_news.py", "agents/macro_llm.py", "agents/macro_analysts.py", "data/macro_exposure.csv"],
          [macro_news.score_etfs, macro_analysts.etf_signals]),
     Step("portfolio", "Portfolio Manager", "Portfolio\nManager", "llm", 3.45, 0.0,
-         "Combines the four scores with their weights, builds a target portfolio (code) and asks Claude for its "
+         "Combines the four scores with their weights, builds a target portfolio (code) and asks the LLM for its "
          "own, blends both, then picks at most 5 orders.",
          "4 scores, weights, holdings, cash", "target, up to 5 orders, a memo",
          ["agents/portfolio.py", "agents/portfolio_config.py", "agents/portfolio_llm.py"],
@@ -68,7 +68,7 @@ STEPS = [
          "the proposed orders", "approved orders, or the day sent back", ["app/views/today.py", "graph/pipeline.py"],
          [pipeline.check_orders]),
     Step("risk", "Risk Manager", "Risk\nManager", "llm", 5.75, 0.0,
-         "Measures the portfolio after your orders on 22 metrics against reference levels. Claude writes an "
+         "Measures the portfolio after your orders on 22 metrics against reference levels. The LLM writes an "
          "independent reading. It reports, it never advises.",
          "approved orders, holdings, prices", "risk report, board, reading",
          ["agents/risk.py", "agents/risk_config.py", "agents/risk_llm.py"], [risk.status_of, risk.board]),

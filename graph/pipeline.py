@@ -8,7 +8,7 @@
   fallback (neutral signals with confidence 0, no orders, no risk report), the failure goes to
   <logs>/incidents.csv, and the day carries on to the human.
 - The day starts with the learning step (graph/review_loop.py): one rule re-weights the technical agent's three
-  answers, the four agents and Claude's portfolio against the code's from what each earned, and it writes the
+  answers, the four agents and the LLM's portfolio against the code's from what each earned, and it writes the
   lessons the agents then read. The technical agent and the Portfolio Manager use those weights as given.
 - The graph pauses at three human reviews. At each one the human approves, sends the day back to
   the Portfolio Manager with feedback (at most MAX_REVISIONS times a day), or stops it: no trade today.
@@ -19,7 +19,7 @@
   reading to <logs>/risk/<date>.md. When the day ends: <logs>/orders.csv (AI suggestion next to the human decision),
   <logs>/reviews.csv (every review with its feedback) and <logs>/summary/<date>.md.
 - Signals and the macro summary are written to <logs>/ and read back when a date is run
-  again, so a rerun never calls the agents (or the Claude API) twice. A real signal step always
+  again, so a rerun never calls the agents (or the the LLM API) twice. A real signal step always
   uses logs/. The real Macro/News agent only runs on the day itself (it reads the news of the day).
 - Any day can be run: days before the trading window are practice, to collect signals and test
   orders. Practice orders never count in the competition, which starts from START_CAPITAL_EUR.
@@ -87,7 +87,7 @@ class DayState(TypedDict, total=False):
     lessons: str
     technical_weights: dict[str, float]  # today's weights of the technical agent's three answers (learning step)
     agent_multipliers: dict[str, float]  # what each agent's record makes of its starting weight (learning step)
-    trust: float  # how much Claude's portfolio counts against the code's (learning step)
+    trust: float  # how much the LLM's portfolio counts against the code's (learning step)
     learning: list[dict]  # the learning scoreboard: level, name, start, weight, sessions, mean_result, right_share
     agent_weights: dict[str, float]  # today's weights over the agents that scored (portfolio step)
     round: int  # 1, then +1 each time the human sends the day back to the Portfolio Manager
@@ -141,7 +141,7 @@ REAL = {
     "macro_news": lambda *args, **extra: macro_news.run(*args, **extra),
     "portfolio": lambda *args, **extra: portfolio.run(*args, **extra),
     "risk": lambda *args, **extra: risk.analyse(*args, **extra),  # (report, the details behind it)
-    # Optional LLM text on top of the report (one Claude call, about $0.05). It never fails the day.
+    # Optional LLM text on top of the report (one LLM call). It never fails the day.
     "risk_reading": lambda report, *args, **extra: risk.render_assessment(risk.assess(report, *args, **extra)),
 }
 
@@ -500,7 +500,7 @@ def _signals_home(step: str, logs: Path) -> Path:
 
 def learning_step(state: DayState, config: RunnableConfig) -> dict:
     """Performance monitoring and learning (graph/review_loop.py): one rule re-weights the technical answers, the
-    agents and Claude's portfolio from what each earned, and the lessons are written. A failure is an incident: the
+    agents and the LLM's portfolio from what each earned, and the lessons are written. A failure is an incident: the
     day goes on with the starting weights and the lessons already on file."""
     as_of, logs = _day(state, config)
     try:
@@ -535,7 +535,7 @@ def technical_step(state: DayState, config: RunnableConfig) -> dict:
 
 def macro_news_step(state: DayState, config: RunnableConfig) -> dict:
     """The real agent reads and writes logs/ (graded evidence) even while other steps are on mocks, so the
-    day's run from `python -m agents.macro_news` is reused and Claude is never paid twice for a date.
+    day's run from `python -m agents.macro_news` is reused and the model is never called twice for a date.
     It reads the news of the day: it runs on the day itself, never for another date."""
     as_of, logs = _day(state, config)
     real = not settings.USE_MOCK["macro_news"]

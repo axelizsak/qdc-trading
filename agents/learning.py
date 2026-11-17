@@ -6,7 +6,7 @@
 Three sets of experts follow it (graph/review_loop.py runs them every morning):
   technical  the technical agent's three answers (trend, mean_reversion, momentum), replayed from LEARNING_START
   agents     the four scores the Portfolio Manager combines, from their first logged score
-  portfolio  Claude's portfolio against the code's, from the first one logged
+  portfolio  the LLM's portfolio against the code's, from the first one logged
 
 What following an expert earned in a session:
   - scores: Σ score x (ETF return - average ETF return) / Σ |score|, its calls against the average ETF;

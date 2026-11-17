@@ -43,7 +43,7 @@ if len(areas):
 
 paragraphs = data.section(page, "### Independent reading").split("\n\n")
 if len(paragraphs) > 1:
-    ui.label("Independent reading", "written by Claude from the numbers; it changes none of them")
+    ui.label("Independent reading", "written by the LLM from the numbers; it changes none of them")
     st.markdown(paragraphs[1])
     scenarios = data.md_table(page, "| Scenario")
     if len(scenarios):

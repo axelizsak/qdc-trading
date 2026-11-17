@@ -17,7 +17,7 @@ What is replayed:
   - at most MAX_ORDERS_PER_DAY orders, the Portfolio Manager's hard limits, START_CAPITAL_EUR to start;
   - valued two days after the last decision, against the same money put in the benchmark on day one.
 
-What is not replayed: everything that asks Claude (Macro/News, technical_llm, the Portfolio Manager's own
+What is not replayed: everything that asks the LLM (Macro/News, technical_llm, the Portfolio Manager's own
 portfolio, the Risk Manager's reading). An LLM already knows what happened in the past and a web search
 returns articles written later, so a backtest of them would look into the future. They are judged forward
 only, by the review loop (graph/review_loop.py).

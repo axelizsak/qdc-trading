@@ -43,7 +43,7 @@ VOL_DEFAULT = 0.20            # for an ETF with too little history
 CONFIDENCE_FLOOR = 0.5
 FAILED_MARKER = "agent failed"   # rationale prefix of the neutral fallback rows (graph/pipeline.py)
 
-# --- How much Claude's portfolio counts ----------------------------------------------------------------------------
+# --- How much the LLM's portfolio counts ----------------------------------------------------------------------------
 # final target = trust x the LLM's weights + (1 - trust) x the code's ANCHOR portfolio. The trust starts here and
 # then follows the system's learning rule (agents/learning.py): the portfolio that earned more gains weight.
 TRUST_START = 0.6

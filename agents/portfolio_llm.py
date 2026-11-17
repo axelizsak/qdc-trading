@@ -1,4 +1,4 @@
-"""The Portfolio Manager's judgement call. Owner: Person 3. LLM: yes (Sonnet).
+"""The Portfolio Manager's judgement call. Owner: Person 3. LLM: yes.
 
 The code has already calculated every number (combined scores, learned agent weights, volatilities, the current
 portfolio, the code's baseline portfolio). The LLM reads them and proposes its own portfolio, as freely as it
@@ -75,6 +75,6 @@ def sanitize(raw: dict, tickers: list[str]) -> dict:
 
 
 def judge(client, usage: macro_llm.Usage, context: str, tickers: list[str]) -> dict:
-    """One Sonnet call on the day's numbers (`context`, built by agents/portfolio.py). Returns a sanitized reply."""
+    """One LLM call on the day's numbers (`context`, built by agents/portfolio.py). Returns a sanitized reply."""
     reply = macro_llm.ask(client, usage, settings.LLM_REASONING, system_prompt(), context)
     return sanitize(macro_llm.extract_json(reply), tickers)

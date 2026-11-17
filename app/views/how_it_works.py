@@ -4,11 +4,11 @@ import streamlit as st
 from app import charts, flow, ui
 from graph import pipeline
 
-KIND = {"code": "Code", "llm": "Agent that asks Claude", "you": "You"}
+KIND = {"code": "Code", "llm": "Agent that asks the LLM", "you": "You"}
 as_of, logs = ui.as_of(), ui.pipeline_logs()
 status, state, pending = pipeline.day_status(as_of, logs)
 ui.page("How it works", "One trading day, step by step. Click a box.")
-ui.chips([("Code", "code"), ("Asks Claude", "llm"), ("You", "you"), ("- - - your review can send the day back", "back"),
+ui.chips([("Code", "code"), ("Asks the LLM", "llm"), ("You", "you"), ("- - - your review can send the day back", "back"),
           ("- - - the next morning, the learning reads the day", "next")])
 
 selected = st.session_state.get("flow_step", "data")

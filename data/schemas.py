@@ -29,7 +29,7 @@ HOLDINGS = ["ticker", "units"]
 FEATURES = ["date", "ticker", "feature", "value"]  # long format: one row per (date, ticker, feature)
 # logs/weights.csv: every weight of the system (agents/learning.py), one row per session and expert: the weight it had
 # for that session's decisions and what following it earned in the session (empty until the session's close is known).
-# level: technical (the technical agent's three answers), agents (the four scores), portfolio (Claude's portfolio and
+# level: technical (the technical agent's three answers), agents (the four scores), portfolio (the LLM's portfolio and
 # the code's).
 WEIGHTS = ["date", "level", "name", "weight", "result"]
 # logs/technical_answers.csv: what the technical agent's rules answered for each ETF on the morning of every session

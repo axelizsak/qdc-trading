@@ -27,7 +27,7 @@ learned = learned.assign(date=pd.to_datetime(learned["date"].astype(str)))
 ui.mock_note(learned_mock, "the learning step has not written logs/weights.csv yet")
 LEVELS = [("technical", "The technical agent's three answers", "since 2022, one point a week"),
           ("agents", "The four agents", "since their first score"),
-          ("portfolio", "Claude's portfolio against the code's", "in the Portfolio Manager's blend")]
+          ("portfolio", "The LLM's portfolio against the code's", "in the Portfolio Manager's blend")]
 for level, title, aside in LEVELS:
     rows = learned[learned["level"] == level]
     if level == "technical":
@@ -61,4 +61,4 @@ st.dataframe(table, hide_index=True, width="stretch", column_config={
     "t_sharpe_vs_first": st.column_config.NumberColumn("t", format="%+.1f"),
     "holds": st.column_config.CheckboxColumn("Ahead in both halves")})
 st.caption("A t-value under 2 means the gap is not distinguishable from luck. The LLM scores cannot be replayed on the "
-           "past (Claude already knows it): they learn live, from their first day.")
+           "past (the LLM already knows it): they learn live, from their first day.")
