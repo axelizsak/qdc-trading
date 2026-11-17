@@ -174,8 +174,20 @@ def _pdf_of(text: str) -> bytes | None:
         return None
 
 
-def document_download(label: str, text: str, name: str, **kwargs) -> None:
-    """A button that offers a Markdown document as .md or .pdf, the reader's choice (`name` has no extension)."""
+@st.cache_data(show_spinner=False)
+def _deck_of(text: str) -> bytes | None:
+    """The PowerPoint deck of an executive summary, or None if it cannot be made."""
+    from app.deck import to_pptx  # only loaded when a deck is offered
+
+    try:
+        return to_pptx(text)
+    except Exception:  # a summary the deck maker cannot read must not break the page
+        return None
+
+
+def document_download(label: str, text: str, name: str, deck: bool = False, **kwargs) -> None:
+    """A button that offers a Markdown document as .md or .pdf, the reader's choice (`name` has no extension).
+    `deck=True` (the executive summary) adds a PowerPoint deck."""
     pdf = _pdf_of(text)
     with st.popover(label, icon=kwargs.pop("icon", ":material/description:"), width=kwargs.pop("width", "content")):
         st.download_button("Markdown (.md)", text, f"{name}.md", "text/markdown", width="stretch",
@@ -185,6 +197,13 @@ def document_download(label: str, text: str, name: str, **kwargs) -> None:
         else:
             st.download_button("PDF (.pdf)", pdf, f"{name}.pdf", "application/pdf", width="stretch",
                                key=f"{name}_pdf", **kwargs)
+        slides = _deck_of(text) if deck else None
+        if deck and slides is None:
+            st.caption("The PowerPoint could not be made for this summary.")
+        elif slides is not None:
+            st.download_button("PowerPoint (.pptx)", slides, f"{name}.pptx",
+                               "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                               width="stretch", key=f"{name}_pptx", **kwargs)
 
 
 def steps(cells: list[tuple[str, str, str, bool]]) -> None:

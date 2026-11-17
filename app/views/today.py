@@ -100,7 +100,7 @@ def show_record(record: dict) -> None:
         left.download_button("Export for the Belfius form", belfius_export(day_log), f"orders_{as_of}.csv", "text/csv",
                              icon=":material/download:", type="primary", width="stretch")
         with right:
-            ui.document_download("The summary that was signed", record["summary"], f"summary_{as_of}", width="stretch")
+            ui.document_download("The summary that was signed", record["summary"], f"summary_{as_of}", deck=True, width="stretch")
         ui.label("Order log", "the AI's proposal next to the human decision")
         text = {"ai_side": "", "side": "", "reason": ""}  # empty, not "None", where the AI or the human left nothing
         st.dataframe(day_log.drop(columns="date").astype(dict.fromkeys(text, object)).fillna(text), hide_index=True,
@@ -174,7 +174,7 @@ if gate == "summary":
     orders_table(orders)
     if changes:
         st.caption("Your changes to the AI's proposal: " + changes)
-    ui.document_download("Read the full summary", pending["summary"], f"summary_{as_of}")
+    ui.document_download("Read the full summary", pending["summary"], f"summary_{as_of}", deck=True)
     review_actions("Approve and write the order log")
     your_reviews()
     st.stop()
