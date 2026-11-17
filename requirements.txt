@@ -11,3 +11,6 @@ starlette
 uvicorn
 python-dotenv
 pytest
+fpdf2
+scipy
+python-pptx
