@@ -1,6 +1,6 @@
 source,kind,factors,status,first_seen,n_uses,hit_rate
-attention,text,crypto;risk_appetite;tech_ai_semis;uranium,active,2026-11-08,12,0.6666666666666666
-calendar,text,ecb_rates;fed_us_rates;growth_recession;inflation,active,2026-11-08,17,0.35294117647058826
+attention,text,crypto;energy_weather;risk_appetite;tech_ai_semis;uranium,active,2026-11-08,12,0.6666666666666666
+calendar,text,ecb_rates;fed_us_rates;growth_recession;inflation;tech_ai_semis,active,2026-11-08,17,0.35294117647058826
 cb_tone,text,ecb_rates;fed_us_rates;inflation,active,2026-11-08,14,0.35714285714285715
 explore_cftc_cot_gold_speculative_net,exploration,gold_silver,testing,2026-11-08,0,
 explore_engie_energyscan_agsi_tracker,exploration,energy_weather,testing,2026-11-08,0,
@@ -8,7 +8,7 @@ explore_hellenic_shipping_bdi_daily,exploration,growth_recession,testing,2026-11
 explore_tftc_spot_btc_etf_flow_tracker,exploration,crypto,testing,2026-11-08,0,
 gas_storage,text,energy_weather,active,2026-11-08,6,0.3333333333333333
 gdpnow,text,growth_recession,active,2026-11-08,5,0.6
-manager_notes,text,ecb_rates;fed_us_rates;growth_recession;oil;risk_appetite;tech_ai_semis,active,2026-11-08,15,0.6
+manager_notes,text,crypto;ecb_rates;fed_us_rates;growth_recession;oil;risk_appetite;tech_ai_semis,active,2026-11-08,15,0.6
 market_stress,number,fed_us_rates;growth_recession;risk_appetite,active,2026-11-08,15,0.6666666666666666
 open_meteo,number,energy_weather,active,2026-11-08,6,0.3333333333333333
 polymarket,number,crypto;fed_us_rates;geopolitics_defence;gold_silver;growth_recession;oil;tech_ai_semis,active,2026-11-08,34,0.5294117647058824

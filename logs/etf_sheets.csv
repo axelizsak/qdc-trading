@@ -1,0 +1,492 @@
+date,ticker,block,name,value,state,detail
+2026-11-17,BEL 20,returns,1 month,0.09639273769708567,,
+2026-11-17,BEL 20,returns,1 year,0.2449714222160737,,
+2026-11-17,BEL 20,returns,3 years,0.8220544214446219,,
+2026-11-17,BEL 20,returns,volatility,0.14117062713674358,,"over one year, yearly"
+2026-11-17,BEL 20,trend,short,0.03497071209908853,up,Price above its 20-day average: yes (+3.5%); 1-month return positive: yes (+9.6%)
+2026-11-17,BEL 20,trend,medium,0.06493072555439294,up,Price above its 50-day average: yes (+6.5%); 3-month return positive: yes (+6.2%)
+2026-11-17,BEL 20,trend,long,0.09814778037522931,up,Price above its 200-day average: yes (+9.8%); 12-month return positive: yes (+13.6%)
+2026-11-17,BEL 20,macro,growth recession,-0.15,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,BEL 20,macro,risk appetite,-0.3,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,BEL 20,macro,ecb rates,-0.13999999999999999,headwind,"Today's view: +0.7 (+1 means ECB more hawkish, euro rates higher). Governing Council members and recent polling indicate a December rate hike is highly probable to combat persistent inflation."
+2026-11-17,BIOTECH,returns,1 month,0.06830343090966307,,
+2026-11-17,BIOTECH,returns,1 year,0.362505018065034,,
+2026-11-17,BIOTECH,returns,3 years,0.8900180982876236,,
+2026-11-17,BIOTECH,returns,volatility,0.2039276539608883,,"over one year, yearly"
+2026-11-17,BIOTECH,trend,short,0.0063900131951548644,up,Price above its 20-day average: yes (+0.6%); 1-month return positive: yes (+6.8%)
+2026-11-17,BIOTECH,trend,medium,0.03824752139052978,up,Price above its 50-day average: yes (+3.8%); 3-month return positive: yes (+4.5%)
+2026-11-17,BIOTECH,trend,long,0.16644828697239822,up,Price above its 200-day average: yes (+16.6%); 12-month return positive: yes (+27.5%)
+2026-11-17,BIOTECH,macro,fed us rates,-0.54,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,BIOTECH,macro,eurusd,0.12,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,BIOTECH,macro,risk appetite,-0.36,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,BITCOIN,returns,1 month,-0.19059781858345992,,
+2026-11-17,BITCOIN,returns,1 year,-0.29899557575032876,,
+2026-11-17,BITCOIN,returns,volatility,0.41719195981621787,,"over one year, yearly"
+2026-11-17,BITCOIN,trend,short,-0.15065158967598014,down,Price above its 20-day average: no (-15.1%); 1-month return positive: no (-19.1%)
+2026-11-17,BITCOIN,trend,medium,-0.171945733313559,neutral,Price above its 50-day average: no (-17.2%); 3-month return positive: yes (+0.4%)
+2026-11-17,BITCOIN,trend,long,-0.06437984343025072,down,Price above its 200-day average: no (-6.4%); 12-month return positive: no (-13.4%)
+2026-11-17,BITCOIN,macro,crypto,-0.7,headwind,"Today's view: -0.7 (+1 means crypto prices higher). Consistent ETF outflows, loss of speculative liquidity, and poor technicals suggest a clear downward trend."
+2026-11-17,BITCOIN,macro,risk appetite,-0.36,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,BITCOIN,macro,eurusd,0.1,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,BRAZIL,returns,1 month,-0.2363819771351714,,
+2026-11-17,BRAZIL,returns,1 year,0.03827110259727795,,
+2026-11-17,BRAZIL,returns,3 years,0.0893444746107428,,
+2026-11-17,BRAZIL,returns,volatility,0.34368126314220343,,"over one year, yearly"
+2026-11-17,BRAZIL,trend,short,-0.08145931079113411,down,Price above its 20-day average: no (-8.1%); 1-month return positive: no (-23.6%)
+2026-11-17,BRAZIL,trend,medium,-0.14272817190010167,down,Price above its 50-day average: no (-14.3%); 3-month return positive: no (-3.8%)
+2026-11-17,BRAZIL,trend,long,-0.11091701706199575,neutral,Price above its 200-day average: no (-11.1%); 12-month return positive: yes (+36.0%)
+2026-11-17,BRAZIL,macro,risk appetite,-0.42,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,BRAZIL,macro,fed us rates,-0.45,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,BRAZIL,macro,china em,-0.25,headwind,Today's view: -0.5 (+1 means China and emerging markets outlook improving). Industrial and property sector data indicate that stimulus measures have failed to effectively revive momentum.
+2026-11-17,CHINA A,returns,1 month,-0.024858993106329552,,
+2026-11-17,CHINA A,returns,1 year,-0.041084634346754356,,
+2026-11-17,CHINA A,returns,3 years,0.19355663513167998,,
+2026-11-17,CHINA A,returns,volatility,0.17713082862305954,,"over one year, yearly"
+2026-11-17,CHINA A,trend,short,-0.010025926377570715,down,Price above its 20-day average: no (-1.0%); 1-month return positive: no (-2.5%)
+2026-11-17,CHINA A,trend,medium,-0.04915742066636375,down,Price above its 50-day average: no (-4.9%); 3-month return positive: no (-9.0%)
+2026-11-17,CHINA A,trend,long,-0.0927519275134443,down,Price above its 200-day average: no (-9.3%); 12-month return positive: no (-1.7%)
+2026-11-17,CHINA A,macro,china em,-0.5,headwind,Today's view: -0.5 (+1 means China and emerging markets outlook improving). Industrial and property sector data indicate that stimulus measures have failed to effectively revive momentum.
+2026-11-17,CHINA A,macro,risk appetite,-0.3,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,CHINA A,macro,growth recession,-0.09,watch,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,CHINA LC,returns,1 month,0.011537116886143783,,
+2026-11-17,CHINA LC,returns,1 year,-0.11169512721794794,,
+2026-11-17,CHINA LC,returns,3 years,0.34687658079552586,,
+2026-11-17,CHINA LC,returns,volatility,0.1839487289607509,,"over one year, yearly"
+2026-11-17,CHINA LC,trend,short,0.01733453663224771,up,Price above its 20-day average: yes (+1.7%); 1-month return positive: yes (+1.2%)
+2026-11-17,CHINA LC,trend,medium,0.015748858388389797,neutral,Price above its 50-day average: yes (+1.6%); 3-month return positive: no (-0.4%)
+2026-11-17,CHINA LC,trend,long,-0.0010570899037977144,down,Price above its 200-day average: no (-0.1%); 12-month return positive: no (-12.2%)
+2026-11-17,CHINA LC,macro,china em,-0.5,headwind,Today's view: -0.5 (+1 means China and emerging markets outlook improving). Industrial and property sector data indicate that stimulus measures have failed to effectively revive momentum.
+2026-11-17,CHINA LC,macro,risk appetite,-0.36,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,CHINA LC,macro,geopolitics defence,-0.16000000000000003,headwind,Today's view: +0.4 (+1 means geopolitical tension and defence spending rising). Persistent instability in the Middle East and ongoing tensions in Eastern Europe keep defence sector focus elevated.
+2026-11-17,CLEAN ENERGY,returns,1 month,-0.010919017288444022,,
+2026-11-17,CLEAN ENERGY,returns,1 year,0.1078647868184135,,
+2026-11-17,CLEAN ENERGY,returns,3 years,0.5044982698961937,,
+2026-11-17,CLEAN ENERGY,returns,volatility,0.25449066367379414,,"over one year, yearly"
+2026-11-17,CLEAN ENERGY,trend,short,-0.0033770877584389236,down,Price above its 20-day average: no (-0.3%); 1-month return positive: no (-1.1%)
+2026-11-17,CLEAN ENERGY,trend,medium,-0.026941864177674746,down,Price above its 50-day average: no (-2.7%); 3-month return positive: no (-7.6%)
+2026-11-17,CLEAN ENERGY,trend,long,-0.09360016677089833,neutral,Price above its 200-day average: no (-9.4%); 12-month return positive: yes (+12.0%)
+2026-11-17,CLEAN ENERGY,macro,risk appetite,-0.42,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,CLEAN ENERGY,macro,fed us rates,-0.54,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,CLEAN ENERGY,macro,ecb rates,-0.21,headwind,"Today's view: +0.7 (+1 means ECB more hawkish, euro rates higher). Governing Council members and recent polling indicate a December rate hike is highly probable to combat persistent inflation."
+2026-11-17,COPPER LVG,returns,1 month,-0.22716798059429955,,
+2026-11-17,COPPER LVG,returns,1 year,0.19751926329637293,,
+2026-11-17,COPPER LVG,returns,3 years,0.1259939918713553,,
+2026-11-17,COPPER LVG,returns,volatility,0.7122422300762321,,"over one year, yearly"
+2026-11-17,COPPER LVG,trend,short,-0.16099385097502217,down,Price above its 20-day average: no (-16.1%); 1-month return positive: no (-22.7%)
+2026-11-17,COPPER LVG,trend,medium,-0.2110639246226801,down,Price above its 50-day average: no (-21.1%); 3-month return positive: no (-21.4%)
+2026-11-17,COPPER LVG,trend,long,-0.1748700536878336,neutral,Price above its 200-day average: no (-17.5%); 12-month return positive: yes (+55.0%)
+2026-11-17,COPPER LVG,macro,copper metals,0.8999999999999999,supportive,Today's view: +0.3 (+1 means copper and strategic metals higher). Physical supply squeezes and strategic inventory interventions are creating upward price volatility.
+2026-11-17,COPPER LVG,macro,china em,-0.75,headwind,Today's view: -0.5 (+1 means China and emerging markets outlook improving). Industrial and property sector data indicate that stimulus measures have failed to effectively revive momentum.
+2026-11-17,COPPER LVG,macro,growth recession,-0.36000000000000004,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,COPPER MINERS,returns,1 month,-0.16660799155078332,,
+2026-11-17,COPPER MINERS,returns,1 year,0.1701680672268906,,
+2026-11-17,COPPER MINERS,returns,3 years,1.0398535114174923,,
+2026-11-17,COPPER MINERS,returns,volatility,0.4463548831126434,,"over one year, yearly"
+2026-11-17,COPPER MINERS,trend,short,-0.08462992232549815,down,Price above its 20-day average: no (-8.5%); 1-month return positive: no (-16.7%)
+2026-11-17,COPPER MINERS,trend,medium,-0.15707782230712664,down,Price above its 50-day average: no (-15.7%); 3-month return positive: no (-20.4%)
+2026-11-17,COPPER MINERS,trend,long,-0.15707894784865517,neutral,Price above its 200-day average: no (-15.7%); 12-month return positive: yes (+40.4%)
+2026-11-17,COPPER MINERS,macro,copper metals,0.3,supportive,Today's view: +0.3 (+1 means copper and strategic metals higher). Physical supply squeezes and strategic inventory interventions are creating upward price volatility.
+2026-11-17,COPPER MINERS,macro,china em,-0.3,headwind,Today's view: -0.5 (+1 means China and emerging markets outlook improving). Industrial and property sector data indicate that stimulus measures have failed to effectively revive momentum.
+2026-11-17,COPPER MINERS,macro,risk appetite,-0.36,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,CRYPTO EQUITY,returns,1 month,-0.19027941755214473,,
+2026-11-17,CRYPTO EQUITY,returns,1 year,-0.26042415528396834,,
+2026-11-17,CRYPTO EQUITY,returns,3 years,1.1227753417590924,,
+2026-11-17,CRYPTO EQUITY,returns,volatility,0.5807011754720067,,"over one year, yearly"
+2026-11-17,CRYPTO EQUITY,trend,short,-0.10262561060711795,down,Price above its 20-day average: no (-10.3%); 1-month return positive: no (-19.0%)
+2026-11-17,CRYPTO EQUITY,trend,medium,-0.2342804189779365,down,Price above its 50-day average: no (-23.4%); 3-month return positive: no (-25.0%)
+2026-11-17,CRYPTO EQUITY,trend,long,-0.2604460866994418,down,Price above its 200-day average: no (-26.0%); 12-month return positive: no (-8.7%)
+2026-11-17,CRYPTO EQUITY,macro,crypto,-0.7,headwind,"Today's view: -0.7 (+1 means crypto prices higher). Consistent ETF outflows, loss of speculative liquidity, and poor technicals suggest a clear downward trend."
+2026-11-17,CRYPTO EQUITY,macro,risk appetite,-0.48,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,CRYPTO EQUITY,macro,eurusd,0.1,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,CYBERSEC,returns,1 month,0.008566882878472626,,
+2026-11-17,CYBERSEC,returns,1 year,0.47847147470398266,,
+2026-11-17,CYBERSEC,returns,3 years,1.085906651817353,,
+2026-11-17,CYBERSEC,returns,volatility,0.3323869464790901,,"over one year, yearly"
+2026-11-17,CYBERSEC,trend,short,-0.0367318313316386,neutral,Price above its 20-day average: no (-3.7%); 1-month return positive: yes (+0.9%)
+2026-11-17,CYBERSEC,trend,medium,-0.03256934368264597,neutral,Price above its 50-day average: no (-3.3%); 3-month return positive: yes (+5.1%)
+2026-11-17,CYBERSEC,trend,long,0.1801256022528499,up,Price above its 200-day average: yes (+18.0%); 12-month return positive: yes (+46.6%)
+2026-11-17,CYBERSEC,macro,eurusd,0.12,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,CYBERSEC,macro,tech ai semis,-0.12,headwind,"Today's view: -0.2 (+1 means AI and semiconductor cycle strengthening). Despite strong fundamentals, negative news flow regarding executive leadership and export restrictions is hurting sentiment."
+2026-11-17,CYBERSEC,macro,risk appetite,-0.36,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,DEFENSE,returns,1 month,-0.038491446345256586,,
+2026-11-17,DEFENSE,returns,1 year,-0.051763803680981546,,
+2026-11-17,DEFENSE,returns,3 years,1.1471673540264815,,
+2026-11-17,DEFENSE,returns,volatility,0.2629979697840419,,"over one year, yearly"
+2026-11-17,DEFENSE,trend,short,-0.02968238086830277,down,Price above its 20-day average: no (-3.0%); 1-month return positive: no (-3.8%)
+2026-11-17,DEFENSE,trend,medium,-0.03555912611439149,down,Price above its 50-day average: no (-3.6%); 3-month return positive: no (-13.4%)
+2026-11-17,DEFENSE,trend,long,-0.09540372364089933,down,Price above its 200-day average: no (-9.5%); 12-month return positive: no (-1.4%)
+2026-11-17,DEFENSE,macro,geopolitics defence,0.4,supportive,Today's view: +0.4 (+1 means geopolitical tension and defence spending rising). Persistent instability in the Middle East and ongoing tensions in Eastern Europe keep defence sector focus elevated.
+2026-11-17,DEFENSE,macro,eurusd,0.06,watch,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,DEFENSE,macro,growth recession,-0.06,watch,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,DIVIDEND LEADERS,returns,1 month,0.038253338145074034,,
+2026-11-17,DIVIDEND LEADERS,returns,1 year,0.28237415282851086,,
+2026-11-17,DIVIDEND LEADERS,returns,3 years,0.8743464706974562,,
+2026-11-17,DIVIDEND LEADERS,returns,volatility,0.09417610002016012,,"over one year, yearly"
+2026-11-17,DIVIDEND LEADERS,trend,short,0.025449101796407136,up,Price above its 20-day average: yes (+2.5%); 1-month return positive: yes (+3.8%)
+2026-11-17,DIVIDEND LEADERS,trend,medium,0.04206660243547322,up,Price above its 50-day average: yes (+4.2%); 3-month return positive: yes (+4.7%)
+2026-11-17,DIVIDEND LEADERS,trend,long,0.08762802985283757,up,Price above its 200-day average: yes (+8.8%); 12-month return positive: yes (+23.5%)
+2026-11-17,DIVIDEND LEADERS,macro,fed us rates,-0.36000000000000004,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,DIVIDEND LEADERS,macro,growth recession,-0.12,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,DIVIDEND LEADERS,macro,risk appetite,-0.24,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,EMMKT,returns,1 month,-0.04400155299598807,,
+2026-11-17,EMMKT,returns,1 year,0.14776258545680565,,
+2026-11-17,EMMKT,returns,3 years,0.5774637861693419,,
+2026-11-17,EMMKT,returns,volatility,0.21891379417684273,,"over one year, yearly"
+2026-11-17,EMMKT,trend,short,-0.020395713982601316,down,Price above its 20-day average: no (-2.0%); 1-month return positive: no (-4.4%)
+2026-11-17,EMMKT,trend,medium,-0.057651199548237275,down,Price above its 50-day average: no (-5.8%); 3-month return positive: no (-4.8%)
+2026-11-17,EMMKT,trend,long,-0.028016830427402217,neutral,Price above its 200-day average: no (-2.8%); 12-month return positive: yes (+20.1%)
+2026-11-17,EMMKT,macro,china em,-0.4,headwind,Today's view: -0.5 (+1 means China and emerging markets outlook improving). Industrial and property sector data indicate that stimulus measures have failed to effectively revive momentum.
+2026-11-17,EMMKT,macro,risk appetite,-0.42,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,EMMKT,macro,fed us rates,-0.45,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,EUR GOVT BOND,returns,1 month,0.0018072862170646076,,
+2026-11-17,EUR GOVT BOND,returns,1 year,-0.026329413504918353,,
+2026-11-17,EUR GOVT BOND,returns,3 years,0.04458944917048768,,
+2026-11-17,EUR GOVT BOND,returns,volatility,0.04632653615539414,,"over one year, yearly"
+2026-11-17,EUR GOVT BOND,trend,short,-0.0013369871326842642,neutral,Price above its 20-day average: no (-0.1%); 1-month return positive: yes (+0.2%)
+2026-11-17,EUR GOVT BOND,trend,medium,0.002159991626464297,neutral,Price above its 50-day average: yes (+0.2%); 3-month return positive: no (-1.4%)
+2026-11-17,EUR GOVT BOND,trend,long,-0.016819614680199324,down,Price above its 200-day average: no (-1.7%); 12-month return positive: no (-2.8%)
+2026-11-17,EUR GOVT BOND,macro,ecb rates,-0.5599999999999999,headwind,"Today's view: +0.7 (+1 means ECB more hawkish, euro rates higher). Governing Council members and recent polling indicate a December rate hike is highly probable to combat persistent inflation."
+2026-11-17,EUR GOVT BOND,macro,inflation,-0.4,headwind,"Today's view: +0.8 (+1 means inflation rising). Recent CPI data showed a 0.4% increase, confirming that inflationary pressures remain embedded in the US economy."
+2026-11-17,EUR GOVT BOND,macro,growth recession,0.12,supportive,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,EURO BANKS,returns,1 month,0.028799444829979093,,
+2026-11-17,EURO BANKS,returns,1 year,0.2860550856647148,,
+2026-11-17,EURO BANKS,returns,3 years,2.0245457443417276,,
+2026-11-17,EURO BANKS,returns,volatility,0.2527221072096801,,"over one year, yearly"
+2026-11-17,EURO BANKS,trend,short,0.0417192759787528,up,Price above its 20-day average: yes (+4.2%); 1-month return positive: yes (+2.9%)
+2026-11-17,EURO BANKS,trend,medium,0.0027410510011345313,neutral,Price above its 50-day average: yes (+0.3%); 3-month return positive: no (-3.6%)
+2026-11-17,EURO BANKS,trend,long,0.06634730194352123,up,Price above its 200-day average: yes (+6.6%); 12-month return positive: yes (+25.0%)
+2026-11-17,EURO BANKS,macro,ecb rates,0.48999999999999994,supportive,"Today's view: +0.7 (+1 means ECB more hawkish, euro rates higher). Governing Council members and recent polling indicate a December rate hike is highly probable to combat persistent inflation."
+2026-11-17,EURO BANKS,macro,growth recession,-0.18,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,EURO BANKS,macro,risk appetite,-0.36,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,EURO STOXX 2X,returns,1 month,0.04218844984802428,,
+2026-11-17,EURO STOXX 2X,returns,1 year,0.23302646720368236,,
+2026-11-17,EURO STOXX 2X,returns,3 years,1.0805825242718443,,
+2026-11-17,EURO STOXX 2X,returns,volatility,0.32268910223470376,,"over one year, yearly"
+2026-11-17,EURO STOXX 2X,trend,short,0.03883512794565891,up,Price above its 20-day average: yes (+3.9%); 1-month return positive: yes (+4.2%)
+2026-11-17,EURO STOXX 2X,trend,medium,0.03128007699711244,neutral,Price above its 50-day average: yes (+3.1%); 3-month return positive: no (-3.7%)
+2026-11-17,EURO STOXX 2X,trend,long,0.06481628130428829,up,Price above its 200-day average: yes (+6.5%); 12-month return positive: yes (+18.3%)
+2026-11-17,EURO STOXX 2X,macro,risk appetite,-0.84,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,EURO STOXX 2X,macro,growth recession,-0.36,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,EURO STOXX 2X,macro,ecb rates,-0.42,headwind,"Today's view: +0.7 (+1 means ECB more hawkish, euro rates higher). Governing Council members and recent polling indicate a December rate hike is highly probable to combat persistent inflation."
+2026-11-17,EURO STOXX 50,returns,1 month,0.023735810113518996,,
+2026-11-17,EURO STOXX 50,returns,1 year,0.14338404794836324,,
+2026-11-17,EURO STOXX 50,returns,3 years,0.5870984257007552,,
+2026-11-17,EURO STOXX 50,returns,volatility,0.16119164028681482,,"over one year, yearly"
+2026-11-17,EURO STOXX 50,trend,short,0.020828188029966332,up,Price above its 20-day average: yes (+2.1%); 1-month return positive: yes (+2.4%)
+2026-11-17,EURO STOXX 50,trend,medium,0.01865619531911067,neutral,Price above its 50-day average: yes (+1.9%); 3-month return positive: no (-1.4%)
+2026-11-17,EURO STOXX 50,trend,long,0.04404238054292309,up,Price above its 200-day average: yes (+4.4%); 12-month return positive: yes (+11.7%)
+2026-11-17,EURO STOXX 50,macro,risk appetite,-0.42,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,EURO STOXX 50,macro,growth recession,-0.18,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,EURO STOXX 50,macro,ecb rates,-0.21,headwind,"Today's view: +0.7 (+1 means ECB more hawkish, euro rates higher). Governing Council members and recent polling indicate a December rate hike is highly probable to combat persistent inflation."
+2026-11-17,EUROPE 600,returns,1 month,0.028755499685732433,,
+2026-11-17,EUROPE 600,returns,1 year,0.18433429811866886,,
+2026-11-17,EUROPE 600,returns,volatility,0.13037835858913005,,"over one year, yearly"
+2026-11-17,EUROPE 600,trend,short,0.01917074651494044,up,Price above its 20-day average: yes (+1.9%); 1-month return positive: yes (+2.9%)
+2026-11-17,EUROPE 600,trend,medium,0.032506529062212186,up,Price above its 50-day average: yes (+3.3%); 3-month return positive: yes (+2.1%)
+2026-11-17,EUROPE 600,trend,long,0.05998800288513628,up,Price above its 200-day average: yes (+6.0%); 12-month return positive: yes (+15.1%)
+2026-11-17,EUROPE 600,macro,growth recession,-0.18,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,EUROPE 600,macro,risk appetite,-0.36,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,EUROPE 600,macro,ecb rates,-0.21,headwind,"Today's view: +0.7 (+1 means ECB more hawkish, euro rates higher). Governing Council members and recent polling indicate a December rate hike is highly probable to combat persistent inflation."
+2026-11-17,GLOBAL AGG BOND,returns,1 month,4.301630317904426e-05,,
+2026-11-17,GLOBAL AGG BOND,returns,1 year,-0.022495059496278835,,
+2026-11-17,GLOBAL AGG BOND,returns,3 years,0.05375759224005083,,
+2026-11-17,GLOBAL AGG BOND,returns,volatility,0.0410188651136952,,"over one year, yearly"
+2026-11-17,GLOBAL AGG BOND,trend,short,-0.004112405757368043,neutral,Price above its 20-day average: no (-0.4%); 1-month return positive: yes (+0.0%)
+2026-11-17,GLOBAL AGG BOND,trend,medium,0.0008222515917670759,neutral,Price above its 50-day average: yes (+0.1%); 3-month return positive: no (-1.3%)
+2026-11-17,GLOBAL AGG BOND,trend,long,-0.013813106808986841,down,Price above its 200-day average: no (-1.4%); 12-month return positive: no (-2.3%)
+2026-11-17,GLOBAL AGG BOND,macro,fed us rates,-0.45,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,GLOBAL AGG BOND,macro,inflation,-0.32000000000000006,headwind,"Today's view: +0.8 (+1 means inflation rising). Recent CPI data showed a 0.4% increase, confirming that inflationary pressures remain embedded in the US economy."
+2026-11-17,GLOBAL AGG BOND,macro,ecb rates,-0.21,headwind,"Today's view: +0.7 (+1 means ECB more hawkish, euro rates higher). Governing Council members and recent polling indicate a December rate hike is highly probable to combat persistent inflation."
+2026-11-17,GOLD,returns,1 month,-0.056311623385640996,,
+2026-11-17,GOLD,returns,1 year,-0.007376570260005821,,
+2026-11-17,GOLD,returns,3 years,0.9361502079890591,,
+2026-11-17,GOLD,returns,volatility,0.25211046112497226,,"over one year, yearly"
+2026-11-17,GOLD,trend,short,-0.025151255410944984,down,Price above its 20-day average: no (-2.5%); 1-month return positive: no (-5.6%)
+2026-11-17,GOLD,trend,medium,-0.04620411554748349,down,Price above its 50-day average: no (-4.6%); 3-month return positive: no (-8.9%)
+2026-11-17,GOLD,trend,long,-0.08998995647807162,neutral,Price above its 200-day average: no (-9.0%); 12-month return positive: yes (+5.2%)
+2026-11-17,GOLD,macro,gold silver,-0.3,headwind,Today's view: -0.3 (+1 means gold and silver higher). Rising US interest rate expectations are pressuring non-yielding precious metals and leading to ETF outflows.
+2026-11-17,GOLD,macro,eurusd,0.12,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,GOLD,macro,fed us rates,-0.36000000000000004,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,GOLD MINERS,returns,1 month,-0.06824858757062158,,
+2026-11-17,GOLD MINERS,returns,1 year,0.114023236962983,,
+2026-11-17,GOLD MINERS,returns,3 years,1.888266199649737,,
+2026-11-17,GOLD MINERS,returns,volatility,0.4730159154159786,,"over one year, yearly"
+2026-11-17,GOLD MINERS,trend,short,-0.023078381196095288,down,Price above its 20-day average: no (-2.3%); 1-month return positive: no (-6.8%)
+2026-11-17,GOLD MINERS,trend,medium,-0.06429642943869152,down,Price above its 50-day average: no (-6.4%); 3-month return positive: no (-12.2%)
+2026-11-17,GOLD MINERS,trend,long,-0.05989117949682643,neutral,Price above its 200-day average: no (-6.0%); 12-month return positive: yes (+19.6%)
+2026-11-17,GOLD MINERS,macro,gold silver,-0.3,headwind,Today's view: -0.3 (+1 means gold and silver higher). Rising US interest rate expectations are pressuring non-yielding precious metals and leading to ETF outflows.
+2026-11-17,GOLD MINERS,macro,eurusd,0.1,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,GOLD MINERS,macro,fed us rates,-0.36000000000000004,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,HEALTH CARE,returns,1 month,0.09331937903366483,,
+2026-11-17,HEALTH CARE,returns,1 year,0.267158596987769,,
+2026-11-17,HEALTH CARE,returns,3 years,0.4439069338862014,,
+2026-11-17,HEALTH CARE,returns,volatility,0.15115940910755524,,"over one year, yearly"
+2026-11-17,HEALTH CARE,trend,short,0.039952216617998415,up,Price above its 20-day average: yes (+4.0%); 1-month return positive: yes (+9.3%)
+2026-11-17,HEALTH CARE,trend,medium,0.10364159468110956,up,Price above its 50-day average: yes (+10.4%); 3-month return positive: yes (+13.8%)
+2026-11-17,HEALTH CARE,trend,long,0.202731089917485,up,Price above its 200-day average: yes (+20.3%); 12-month return positive: yes (+15.9%)
+2026-11-17,HEALTH CARE,macro,eurusd,0.1,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,HEALTH CARE,macro,fed us rates,-0.18000000000000002,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,HEALTH CARE,macro,risk appetite,-0.12,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,HIGHY BOND,returns,1 month,0.006444473375862625,,
+2026-11-17,HIGHY BOND,returns,1 year,0.013098662612786693,,
+2026-11-17,HIGHY BOND,returns,3 years,0.15604040645725692,,
+2026-11-17,HIGHY BOND,returns,volatility,0.040569804834703856,,"over one year, yearly"
+2026-11-17,HIGHY BOND,trend,short,0.004000155850227616,up,Price above its 20-day average: yes (+0.4%); 1-month return positive: yes (+0.6%)
+2026-11-17,HIGHY BOND,trend,medium,0.0014755587107839752,neutral,Price above its 50-day average: yes (+0.1%); 3-month return positive: no (-1.5%)
+2026-11-17,HIGHY BOND,trend,long,-0.0021274737780127007,neutral,Price above its 200-day average: no (-0.2%); 12-month return positive: yes (+0.7%)
+2026-11-17,HIGHY BOND,macro,risk appetite,-0.3,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,HIGHY BOND,macro,fed us rates,-0.36000000000000004,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,HIGHY BOND,macro,growth recession,-0.12,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,HYDROGEN,returns,1 month,-0.012082853855005848,,
+2026-11-17,HYDROGEN,returns,1 year,0.14219191751205718,,
+2026-11-17,HYDROGEN,returns,3 years,0.9146919431279621,,
+2026-11-17,HYDROGEN,returns,volatility,0.1876257282507207,,"over one year, yearly"
+2026-11-17,HYDROGEN,trend,short,-0.003127925626492223,down,Price above its 20-day average: no (-0.3%); 1-month return positive: no (-1.2%)
+2026-11-17,HYDROGEN,trend,medium,-0.016167062510922814,down,Price above its 50-day average: no (-1.6%); 3-month return positive: no (-2.6%)
+2026-11-17,HYDROGEN,trend,long,-0.04539515747922063,neutral,Price above its 200-day average: no (-4.5%); 12-month return positive: yes (+15.6%)
+2026-11-17,HYDROGEN,macro,risk appetite,-0.48,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,HYDROGEN,macro,fed us rates,-0.54,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,HYDROGEN,macro,ecb rates,-0.21,headwind,"Today's view: +0.7 (+1 means ECB more hawkish, euro rates higher). Governing Council members and recent polling indicate a December rate hike is highly probable to combat persistent inflation."
+2026-11-17,IBEX 35,returns,1 month,0.03677058353317331,,
+2026-11-17,IBEX 35,returns,1 year,0.2555663117134559,,
+2026-11-17,IBEX 35,returns,volatility,0.17614687199659299,,"over one year, yearly"
+2026-11-17,IBEX 35,trend,short,0.03409957294557908,up,Price above its 20-day average: yes (+3.4%); 1-month return positive: yes (+3.7%)
+2026-11-17,IBEX 35,trend,medium,0.03266797773832164,up,Price above its 50-day average: yes (+3.3%); 3-month return positive: yes (+1.3%)
+2026-11-17,IBEX 35,trend,long,0.07449938332268413,up,Price above its 200-day average: yes (+7.4%); 12-month return positive: yes (+21.1%)
+2026-11-17,IBEX 35,macro,growth recession,-0.18,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,IBEX 35,macro,risk appetite,-0.36,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,IBEX 35,macro,ecb rates,0.13999999999999999,supportive,"Today's view: +0.7 (+1 means ECB more hawkish, euro rates higher). Governing Council members and recent polling indicate a December rate hike is highly probable to combat persistent inflation."
+2026-11-17,INDIA,returns,1 month,0.11359107214029485,,
+2026-11-17,INDIA,returns,1 year,-0.014693781591630373,,
+2026-11-17,INDIA,returns,3 years,0.17427850938638278,,
+2026-11-17,INDIA,returns,volatility,0.17098347005898124,,"over one year, yearly"
+2026-11-17,INDIA,trend,short,0.07484275519821493,up,Price above its 20-day average: yes (+7.5%); 1-month return positive: yes (+11.4%)
+2026-11-17,INDIA,trend,medium,0.10918204771256002,up,Price above its 50-day average: yes (+10.9%); 3-month return positive: yes (+10.6%)
+2026-11-17,INDIA,trend,long,0.10411580175180557,neutral,Price above its 200-day average: yes (+10.4%); 12-month return positive: no (-11.5%)
+2026-11-17,INDIA,macro,risk appetite,-0.36,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,INDIA,macro,growth recession,-0.15,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,INDIA,macro,oil,0.24,supportive,"Today's view: -0.6 (+1 means oil price higher). Market concerns are shifting toward a global supply surplus as production recovers, outweighing geopolitical risks."
+2026-11-17,KOREA,returns,1 month,-0.07392438070404173,,
+2026-11-17,KOREA,returns,1 year,0.6240996913227392,,
+2026-11-17,KOREA,returns,3 years,1.355496600895374,,
+2026-11-17,KOREA,returns,volatility,0.5118381846769576,,"over one year, yearly"
+2026-11-17,KOREA,trend,short,-0.060660962481981606,down,Price above its 20-day average: no (-6.1%); 1-month return positive: no (-7.4%)
+2026-11-17,KOREA,trend,medium,-0.1509905309685855,down,Price above its 50-day average: no (-15.1%); 3-month return positive: no (-15.4%)
+2026-11-17,KOREA,trend,long,-0.11845094095092012,neutral,Price above its 200-day average: no (-11.8%); 12-month return positive: yes (+75.4%)
+2026-11-17,KOREA,macro,tech ai semis,-0.13999999999999999,headwind,"Today's view: -0.2 (+1 means AI and semiconductor cycle strengthening). Despite strong fundamentals, negative news flow regarding executive leadership and export restrictions is hurting sentiment."
+2026-11-17,KOREA,macro,risk appetite,-0.42,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,KOREA,macro,growth recession,-0.15,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,NASDAQ,returns,1 month,-0.04758748674443258,,
+2026-11-17,NASDAQ,returns,1 year,0.162621359223301,,
+2026-11-17,NASDAQ,returns,3 years,0.7125491598140865,,
+2026-11-17,NASDAQ,returns,volatility,0.1821458089009988,,"over one year, yearly"
+2026-11-17,NASDAQ,trend,short,-0.02304047209512594,down,Price above its 20-day average: no (-2.3%); 1-month return positive: no (-4.8%)
+2026-11-17,NASDAQ,trend,medium,-0.04376711836526115,down,Price above its 50-day average: no (-4.4%); 3-month return positive: no (-1.1%)
+2026-11-17,NASDAQ,trend,long,0.02390464647501056,up,Price above its 200-day average: yes (+2.4%); 12-month return positive: yes (+22.1%)
+2026-11-17,NASDAQ,macro,tech ai semis,-0.16000000000000003,headwind,"Today's view: -0.2 (+1 means AI and semiconductor cycle strengthening). Despite strong fundamentals, negative news flow regarding executive leadership and export restrictions is hurting sentiment."
+2026-11-17,NASDAQ,macro,risk appetite,-0.48,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,NASDAQ,macro,eurusd,0.13999999999999999,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,NASDAQ 3X,returns,1 month,-0.20745029495302614,,
+2026-11-17,NASDAQ 3X,returns,1 year,0.08942112771229072,,
+2026-11-17,NASDAQ 3X,returns,volatility,0.5598276513794963,,"over one year, yearly"
+2026-11-17,NASDAQ 3X,trend,short,-0.11613315871227115,down,Price above its 20-day average: no (-11.6%); 1-month return positive: no (-20.7%)
+2026-11-17,NASDAQ 3X,trend,medium,-0.2050796016084676,down,Price above its 50-day average: no (-20.5%); 3-month return positive: no (-19.9%)
+2026-11-17,NASDAQ 3X,trend,long,-0.13650920605562356,neutral,Price above its 200-day average: no (-13.7%); 12-month return positive: yes (+37.5%)
+2026-11-17,NASDAQ 3X,macro,tech ai semis,-0.4800000000000001,headwind,"Today's view: -0.2 (+1 means AI and semiconductor cycle strengthening). Despite strong fundamentals, negative news flow regarding executive leadership and export restrictions is hurting sentiment."
+2026-11-17,NASDAQ 3X,macro,risk appetite,-1.4400000000000002,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,NASDAQ 3X,macro,eurusd,0.41999999999999993,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,NASDAQ INCOME,returns,1 month,-0.03867945909193915,,
+2026-11-17,NASDAQ INCOME,returns,1 year,0.13929150542661883,,
+2026-11-17,NASDAQ INCOME,returns,volatility,0.14559789072704662,,"over one year, yearly"
+2026-11-17,NASDAQ INCOME,trend,short,-0.017225477995053917,down,Price above its 20-day average: no (-1.7%); 1-month return positive: no (-3.9%)
+2026-11-17,NASDAQ INCOME,trend,medium,-0.030283191177350788,neutral,Price above its 50-day average: no (-3.0%); 3-month return positive: yes (+0.9%)
+2026-11-17,NASDAQ INCOME,trend,long,0.03349806132819477,up,Price above its 200-day average: yes (+3.3%); 12-month return positive: yes (+18.5%)
+2026-11-17,NASDAQ INCOME,macro,eurusd,0.13999999999999999,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,NASDAQ INCOME,macro,growth recession,-0.12,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,NASDAQ INCOME,macro,tech ai semis,-0.08000000000000002,watch,"Today's view: -0.2 (+1 means AI and semiconductor cycle strengthening). Despite strong fundamentals, negative news flow regarding executive leadership and export restrictions is hurting sentiment."
+2026-11-17,OIL & GAS E&P,returns,1 month,-0.03953946371761863,,
+2026-11-17,OIL & GAS E&P,returns,1 year,0.35847439468609377,,
+2026-11-17,OIL & GAS E&P,returns,3 years,0.3333333333333335,,
+2026-11-17,OIL & GAS E&P,returns,volatility,0.2940302638940467,,"over one year, yearly"
+2026-11-17,OIL & GAS E&P,trend,short,-0.033300805074408246,down,Price above its 20-day average: no (-3.3%); 1-month return positive: no (-4.0%)
+2026-11-17,OIL & GAS E&P,trend,medium,-0.008144479244562963,neutral,Price above its 50-day average: no (-0.8%); 3-month return positive: yes (+2.0%)
+2026-11-17,OIL & GAS E&P,trend,long,0.06405296768400648,up,Price above its 200-day average: yes (+6.4%); 12-month return positive: yes (+41.4%)
+2026-11-17,OIL & GAS E&P,macro,oil,-0.6,headwind,"Today's view: -0.6 (+1 means oil price higher). Market concerns are shifting toward a global supply surplus as production recovers, outweighing geopolitical risks."
+2026-11-17,OIL & GAS E&P,macro,eurusd,0.1,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,OIL & GAS E&P,macro,energy weather,0.35,supportive,"Today's view: +0.7 (+1 means European energy and gas prices higher (cold weather, low storage, supply cuts)). Cold weather forecasts in Europe combined with Strait of Hormuz supply risks are driving up gas prices."
+2026-11-17,OVERNIGHT CASH,returns,1 month,0.002294555645241836,,
+2026-11-17,OVERNIGHT CASH,returns,1 year,0.024891032180283768,,
+2026-11-17,OVERNIGHT CASH,returns,volatility,0.0033540129589155706,,"over one year, yearly"
+2026-11-17,OVERNIGHT CASH,trend,short,0.0010294351421893388,up,Price above its 20-day average: yes (+0.1%); 1-month return positive: yes (+0.2%)
+2026-11-17,OVERNIGHT CASH,trend,medium,0.0026823117310037503,up,Price above its 50-day average: yes (+0.3%); 3-month return positive: yes (+0.7%)
+2026-11-17,OVERNIGHT CASH,trend,long,0.010206039014516666,up,Price above its 200-day average: yes (+1.0%); 12-month return positive: yes (+2.3%)
+2026-11-17,OVERNIGHT CASH,macro,ecb rates,0.06999999999999999,watch,"Today's view: +0.7 (+1 means ECB more hawkish, euro rates higher). Governing Council members and recent polling indicate a December rate hike is highly probable to combat persistent inflation."
+2026-11-17,PALLADIUM LVG,returns,1 month,-0.2491964454528266,,
+2026-11-17,PALLADIUM LVG,returns,1 year,-0.6829287767486425,,
+2026-11-17,PALLADIUM LVG,returns,3 years,-0.656011781011781,,
+2026-11-17,PALLADIUM LVG,returns,volatility,0.9979934555119911,,"over one year, yearly"
+2026-11-17,PALLADIUM LVG,trend,short,-0.09505768409058546,down,Price above its 20-day average: no (-9.5%); 1-month return positive: no (-24.9%)
+2026-11-17,PALLADIUM LVG,trend,medium,-0.28383995960215336,down,Price above its 50-day average: no (-28.4%); 3-month return positive: no (-46.9%)
+2026-11-17,PALLADIUM LVG,trend,long,-0.5419517572886451,down,Price above its 200-day average: no (-54.2%); 12-month return positive: no (-57.8%)
+2026-11-17,PALLADIUM LVG,macro,copper metals,0.36,supportive,Today's view: +0.3 (+1 means copper and strategic metals higher). Physical supply squeezes and strategic inventory interventions are creating upward price volatility.
+2026-11-17,PALLADIUM LVG,macro,growth recession,-0.24,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,PALLADIUM LVG,macro,eurusd,0.16000000000000003,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,QUANTUM,returns,1 month,-0.10449989336745569,,
+2026-11-17,QUANTUM,returns,1 year,-0.00850059031877215,,
+2026-11-17,QUANTUM,returns,volatility,0.3056578691530693,,"over one year, yearly"
+2026-11-17,QUANTUM,trend,short,-0.06490440824416255,down,Price above its 20-day average: no (-6.5%); 1-month return positive: no (-10.4%)
+2026-11-17,QUANTUM,trend,medium,-0.130850561769844,down,Price above its 50-day average: no (-13.1%); 3-month return positive: no (-16.0%)
+2026-11-17,QUANTUM,trend,long,-0.12468277828479524,neutral,Price above its 200-day average: no (-12.5%); 12-month return positive: yes (+10.7%)
+2026-11-17,QUANTUM,macro,risk appetite,-0.54,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,QUANTUM,macro,tech ai semis,-0.13999999999999999,headwind,"Today's view: -0.2 (+1 means AI and semiconductor cycle strengthening). Despite strong fundamentals, negative news flow regarding executive leadership and export restrictions is hurting sentiment."
+2026-11-17,QUANTUM,macro,eurusd,0.12,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,RARE EARTHS,returns,1 month,-0.11086843473738961,,
+2026-11-17,RARE EARTHS,returns,1 year,-0.27390861219636486,,
+2026-11-17,RARE EARTHS,returns,3 years,-0.17080504364694482,,
+2026-11-17,RARE EARTHS,returns,volatility,0.4247122682166993,,"over one year, yearly"
+2026-11-17,RARE EARTHS,trend,short,-0.06563710783590437,down,Price above its 20-day average: no (-6.6%); 1-month return positive: no (-11.1%)
+2026-11-17,RARE EARTHS,trend,medium,-0.17807402621625645,down,Price above its 50-day average: no (-17.8%); 3-month return positive: no (-33.5%)
+2026-11-17,RARE EARTHS,trend,long,-0.38036917646504564,down,Price above its 200-day average: no (-38.0%); 12-month return positive: no (-18.3%)
+2026-11-17,RARE EARTHS,macro,copper metals,0.24,supportive,Today's view: +0.3 (+1 means copper and strategic metals higher). Physical supply squeezes and strategic inventory interventions are creating upward price volatility.
+2026-11-17,RARE EARTHS,macro,risk appetite,-0.36,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,RARE EARTHS,macro,china em,-0.25,headwind,Today's view: -0.5 (+1 means China and emerging markets outlook improving). Industrial and property sector data indicate that stimulus measures have failed to effectively revive momentum.
+2026-11-17,ROBOTICS,returns,1 month,-0.07031332979288363,,
+2026-11-17,ROBOTICS,returns,1 year,0.26033117350611956,,
+2026-11-17,ROBOTICS,returns,3 years,0.64005995877834,,
+2026-11-17,ROBOTICS,returns,volatility,0.26516962006213524,,"over one year, yearly"
+2026-11-17,ROBOTICS,trend,short,-0.0484059467833553,down,Price above its 20-day average: no (-4.8%); 1-month return positive: no (-7.0%)
+2026-11-17,ROBOTICS,trend,medium,-0.06916746159106124,down,Price above its 50-day average: no (-6.9%); 3-month return positive: no (-5.2%)
+2026-11-17,ROBOTICS,trend,long,0.02388789053418372,up,Price above its 200-day average: yes (+2.4%); 12-month return positive: yes (+35.6%)
+2026-11-17,ROBOTICS,macro,tech ai semis,-0.13999999999999999,headwind,"Today's view: -0.2 (+1 means AI and semiconductor cycle strengthening). Despite strong fundamentals, negative news flow regarding executive leadership and export restrictions is hurting sentiment."
+2026-11-17,ROBOTICS,macro,risk appetite,-0.42,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,ROBOTICS,macro,growth recession,-0.18,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,S&P 500,returns,1 month,-0.008504549258889216,,
+2026-11-17,S&P 500,returns,1 year,0.18003920182513422,,
+2026-11-17,S&P 500,returns,3 years,0.6921942678094184,,
+2026-11-17,S&P 500,returns,volatility,0.11325341697033829,,"over one year, yearly"
+2026-11-17,S&P 500,trend,short,-0.0029376469502229163,down,Price above its 20-day average: no (-0.3%); 1-month return positive: no (-0.9%)
+2026-11-17,S&P 500,trend,medium,0.0010603760109690885,up,Price above its 50-day average: yes (+0.1%); 3-month return positive: yes (+2.9%)
+2026-11-17,S&P 500,trend,long,0.06786468499314857,up,Price above its 200-day average: yes (+6.8%); 12-month return positive: yes (+19.0%)
+2026-11-17,S&P 500,macro,eurusd,0.13999999999999999,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,S&P 500,macro,risk appetite,-0.42,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,S&P 500,macro,growth recession,-0.18,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,S&P 500 SHORT,returns,1 month,0.056127599434685926,,
+2026-11-17,S&P 500 SHORT,returns,1 year,0.0026835345984281833,,
+2026-11-17,S&P 500 SHORT,returns,3 years,-0.28214628790997665,,
+2026-11-17,S&P 500 SHORT,returns,volatility,0.15637210538729557,,"over one year, yearly"
+2026-11-17,S&P 500 SHORT,trend,short,0.03162316468302895,up,Price above its 20-day average: yes (+3.2%); 1-month return positive: yes (+5.6%)
+2026-11-17,S&P 500 SHORT,trend,medium,0.053339535370742874,up,Price above its 50-day average: yes (+5.3%); 3-month return positive: yes (+10.8%)
+2026-11-17,S&P 500 SHORT,trend,long,0.04650348601094323,neutral,Price above its 200-day average: yes (+4.7%); 12-month return positive: no (-5.1%)
+2026-11-17,S&P 500 SHORT,macro,eurusd,-0.13999999999999999,headwind,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,S&P 500 SHORT,macro,risk appetite,0.42,supportive,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,S&P 500 SHORT,macro,growth recession,0.18,supportive,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,SEMIS,returns,1 month,-0.1218783606165611,,
+2026-11-17,SEMIS,returns,1 year,0.5967409016838674,,
+2026-11-17,SEMIS,returns,3 years,1.7831850028403715,,
+2026-11-17,SEMIS,returns,volatility,0.4449434913096673,,"over one year, yearly"
+2026-11-17,SEMIS,trend,short,-0.06800081164713645,down,Price above its 20-day average: no (-6.8%); 1-month return positive: no (-12.2%)
+2026-11-17,SEMIS,trend,medium,-0.1441355407936048,down,Price above its 50-day average: no (-14.4%); 3-month return positive: no (-12.3%)
+2026-11-17,SEMIS,trend,long,-0.07187857762139982,neutral,Price above its 200-day average: no (-7.2%); 12-month return positive: yes (+81.8%)
+2026-11-17,SEMIS,macro,tech ai semis,-0.2,headwind,"Today's view: -0.2 (+1 means AI and semiconductor cycle strengthening). Despite strong fundamentals, negative news flow regarding executive leadership and export restrictions is hurting sentiment."
+2026-11-17,SEMIS,macro,risk appetite,-0.54,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,SEMIS,macro,growth recession,-0.18,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,SILVER MINERS,returns,1 month,-0.13298865431566853,,
+2026-11-17,SILVER MINERS,returns,1 year,0.08345297918162231,,
+2026-11-17,SILVER MINERS,returns,3 years,1.8514075193651993,,
+2026-11-17,SILVER MINERS,returns,volatility,0.550535400101392,,"over one year, yearly"
+2026-11-17,SILVER MINERS,trend,short,-0.061375208924476454,down,Price above its 20-day average: no (-6.1%); 1-month return positive: no (-13.3%)
+2026-11-17,SILVER MINERS,trend,medium,-0.14154729097522611,down,Price above its 50-day average: no (-14.2%); 3-month return positive: no (-22.6%)
+2026-11-17,SILVER MINERS,trend,long,-0.17749410233161422,neutral,Price above its 200-day average: no (-17.7%); 12-month return positive: yes (+25.0%)
+2026-11-17,SILVER MINERS,macro,gold silver,-0.27,headwind,Today's view: -0.3 (+1 means gold and silver higher). Rising US interest rate expectations are pressuring non-yielding precious metals and leading to ETF outflows.
+2026-11-17,SILVER MINERS,macro,eurusd,0.1,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,SILVER MINERS,macro,copper metals,0.12,supportive,Today's view: +0.3 (+1 means copper and strategic metals higher). Physical supply squeezes and strategic inventory interventions are creating upward price volatility.
+2026-11-17,SPACE,returns,1 month,0.0053165780570323395,,
+2026-11-17,SPACE,returns,1 year,0.2585720048406617,,
+2026-11-17,SPACE,returns,3 years,2.154382772217167,,
+2026-11-17,SPACE,returns,volatility,0.4792358939181754,,"over one year, yearly"
+2026-11-17,SPACE,trend,short,-0.009272196113298659,neutral,Price above its 20-day average: no (-0.9%); 1-month return positive: yes (+0.5%)
+2026-11-17,SPACE,trend,medium,-0.057962481544216904,down,Price above its 50-day average: no (-5.8%); 3-month return positive: no (-16.6%)
+2026-11-17,SPACE,trend,long,-0.1829177431245279,neutral,Price above its 200-day average: no (-18.3%); 12-month return positive: yes (+25.2%)
+2026-11-17,SPACE,macro,risk appetite,-0.48,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,SPACE,macro,eurusd,0.1,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,SPACE,macro,tech ai semis,-0.1,headwind,"Today's view: -0.2 (+1 means AI and semiconductor cycle strengthening). Despite strong fundamentals, negative news flow regarding executive leadership and export restrictions is hurting sentiment."
+2026-11-17,STAPLES,returns,1 month,0.07536514118792592,,
+2026-11-17,STAPLES,returns,1 year,0.26404944488955007,,
+2026-11-17,STAPLES,returns,3 years,0.4126375031977487,,
+2026-11-17,STAPLES,returns,volatility,0.14685890048699798,,"over one year, yearly"
+2026-11-17,STAPLES,trend,short,0.04421164101206454,up,Price above its 20-day average: yes (+4.4%); 1-month return positive: yes (+7.5%)
+2026-11-17,STAPLES,trend,medium,0.10665979931019165,up,Price above its 50-day average: yes (+10.7%); 3-month return positive: yes (+15.0%)
+2026-11-17,STAPLES,trend,long,0.1465696864997752,up,Price above its 200-day average: yes (+14.7%); 12-month return positive: yes (+17.5%)
+2026-11-17,STAPLES,macro,eurusd,0.08000000000000002,watch,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,STAPLES,macro,fed us rates,-0.27,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,STAPLES,macro,risk appetite,0.18,supportive,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,STOXX SHORT,returns,1 month,-0.046500704556129646,,
+2026-11-17,STOXX SHORT,returns,1 year,-0.2443699981388423,,
+2026-11-17,STOXX SHORT,returns,3 years,-0.5877335499593825,,
+2026-11-17,STOXX SHORT,returns,volatility,0.32271384381211604,,"over one year, yearly"
+2026-11-17,STOXX SHORT,trend,short,-0.0410279424616764,down,Price above its 20-day average: no (-4.1%); 1-month return positive: no (-4.7%)
+2026-11-17,STOXX SHORT,trend,medium,-0.0360461748127886,neutral,Price above its 50-day average: no (-3.6%); 3-month return positive: yes (+3.0%)
+2026-11-17,STOXX SHORT,trend,long,-0.08907132392040351,down,Price above its 200-day average: no (-8.9%); 12-month return positive: no (-20.8%)
+2026-11-17,STOXX SHORT,macro,risk appetite,0.84,supportive,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,STOXX SHORT,macro,growth recession,0.36,supportive,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,STOXX SHORT,macro,ecb rates,0.42,supportive,"Today's view: +0.7 (+1 means ECB more hawkish, euro rates higher). Governing Council members and recent polling indicate a December rate hike is highly probable to combat persistent inflation."
+2026-11-17,URANIUM,returns,1 month,-0.11742660836976881,,
+2026-11-17,URANIUM,returns,1 year,-0.26658361881033943,,
+2026-11-17,URANIUM,returns,3 years,0.5844359721910743,,
+2026-11-17,URANIUM,returns,volatility,0.3931417590508597,,"over one year, yearly"
+2026-11-17,URANIUM,trend,short,-0.07008884501480739,down,Price above its 20-day average: no (-7.0%); 1-month return positive: no (-11.7%)
+2026-11-17,URANIUM,trend,medium,-0.1498256330279203,down,Price above its 50-day average: no (-15.0%); 3-month return positive: no (-23.5%)
+2026-11-17,URANIUM,trend,long,-0.26090092672457765,down,Price above its 200-day average: no (-26.1%); 12-month return positive: no (-16.9%)
+2026-11-17,URANIUM,macro,uranium,0.6,supportive,"Today's view: +0.6 (+1 means uranium higher). Structural electricity supply shortfalls, driven by data center demand, are forcing focus onto nuclear as a baseload source."
+2026-11-17,URANIUM,macro,risk appetite,-0.3,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,URANIUM,macro,eurusd,0.08000000000000002,watch,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,US TREASURY 20Y,returns,1 month,0.03980146537461593,,
+2026-11-17,US TREASURY 20Y,returns,1 year,-0.009516690794228233,,
+2026-11-17,US TREASURY 20Y,returns,3 years,0.040229259965100184,,
+2026-11-17,US TREASURY 20Y,returns,volatility,0.08719235971663557,,"over one year, yearly"
+2026-11-17,US TREASURY 20Y,trend,short,0.005270391777594918,up,Price above its 20-day average: yes (+0.5%); 1-month return positive: yes (+4.0%)
+2026-11-17,US TREASURY 20Y,trend,medium,0.028861152621965758,up,Price above its 50-day average: yes (+2.9%); 3-month return positive: yes (+3.9%)
+2026-11-17,US TREASURY 20Y,trend,long,0.016130500036724227,neutral,Price above its 200-day average: yes (+1.6%); 12-month return positive: no (-4.7%)
+2026-11-17,US TREASURY 20Y,macro,fed us rates,-0.81,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,US TREASURY 20Y,macro,inflation,-0.48,headwind,"Today's view: +0.8 (+1 means inflation rising). Recent CPI data showed a 0.4% increase, confirming that inflationary pressures remain embedded in the US economy."
+2026-11-17,US TREASURY 20Y,macro,growth recession,0.18,supportive,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,WORLD,returns,1 month,-0.004328175271947288,,
+2026-11-17,WORLD,returns,1 year,0.17891156462585034,,
+2026-11-17,WORLD,returns,3 years,0.6597497126803729,,
+2026-11-17,WORLD,returns,volatility,0.10891166138214121,,"over one year, yearly"
+2026-11-17,WORLD,trend,short,-0.000561331200787496,down,Price above its 20-day average: no (-0.1%); 1-month return positive: no (-0.4%)
+2026-11-17,WORLD,trend,medium,0.0038586480520623745,up,Price above its 50-day average: yes (+0.4%); 3-month return positive: yes (+2.4%)
+2026-11-17,WORLD,trend,long,0.06229451119230145,up,Price above its 200-day average: yes (+6.2%); 12-month return positive: yes (+18.4%)
+2026-11-17,WORLD,macro,risk appetite,-0.42,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,WORLD,macro,growth recession,-0.18,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,WORLD,macro,eurusd,0.1,supportive,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,WORLD ENERGY,returns,1 month,-0.031128942999446574,,
+2026-11-17,WORLD ENERGY,returns,1 year,0.4655226535523702,,
+2026-11-17,WORLD ENERGY,returns,3 years,0.6291729673141795,,
+2026-11-17,WORLD ENERGY,returns,volatility,0.2423792593317043,,"over one year, yearly"
+2026-11-17,WORLD ENERGY,trend,short,-0.01970253718285231,down,Price above its 20-day average: no (-2.0%); 1-month return positive: no (-3.1%)
+2026-11-17,WORLD ENERGY,trend,medium,0.006178160919540376,up,Price above its 50-day average: yes (+0.6%); 3-month return positive: yes (+6.0%)
+2026-11-17,WORLD ENERGY,trend,long,0.11343507360230354,up,Price above its 200-day average: yes (+11.3%); 12-month return positive: yes (+51.3%)
+2026-11-17,WORLD ENERGY,macro,oil,-0.54,headwind,"Today's view: -0.6 (+1 means oil price higher). Market concerns are shifting toward a global supply surplus as production recovers, outweighing geopolitical risks."
+2026-11-17,WORLD ENERGY,macro,eurusd,0.08000000000000002,watch,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,WORLD ENERGY,macro,energy weather,0.27999999999999997,supportive,"Today's view: +0.7 (+1 means European energy and gas prices higher (cold weather, low storage, supply cuts)). Cold weather forecasts in Europe combined with Strait of Hormuz supply risks are driving up gas prices."
+2026-11-17,WORLD MIN VOL,returns,1 month,0.05294033481184712,,
+2026-11-17,WORLD MIN VOL,returns,1 year,0.16809523809523808,,
+2026-11-17,WORLD MIN VOL,returns,3 years,0.4022484756097562,,
+2026-11-17,WORLD MIN VOL,returns,volatility,0.08053177766456418,,"over one year, yearly"
+2026-11-17,WORLD MIN VOL,trend,short,0.02563745200381895,up,Price above its 20-day average: yes (+2.6%); 1-month return positive: yes (+5.3%)
+2026-11-17,WORLD MIN VOL,trend,medium,0.06233398775840171,up,Price above its 50-day average: yes (+6.2%); 3-month return positive: yes (+9.3%)
+2026-11-17,WORLD MIN VOL,trend,long,0.11711744533957535,up,Price above its 200-day average: yes (+11.7%); 12-month return positive: yes (+10.9%)
+2026-11-17,WORLD MIN VOL,macro,eurusd,0.08000000000000002,watch,Today's view: -0.2 (+1 means euro stronger against the dollar). Aggressive US rate hike expectations are providing strong tailwinds for the USD against the Euro.
+2026-11-17,WORLD MIN VOL,macro,fed us rates,-0.27,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
+2026-11-17,WORLD MIN VOL,macro,growth recession,-0.06,watch,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,WORLD SMALL CAP,returns,1 month,0.019512195121951237,,
+2026-11-17,WORLD SMALL CAP,returns,1 year,0.22809829059829045,,
+2026-11-17,WORLD SMALL CAP,returns,3 years,0.5888044229440219,,
+2026-11-17,WORLD SMALL CAP,returns,volatility,0.13084523791557706,,"over one year, yearly"
+2026-11-17,WORLD SMALL CAP,trend,short,0.004697913252485586,up,Price above its 20-day average: yes (+0.5%); 1-month return positive: yes (+2.0%)
+2026-11-17,WORLD SMALL CAP,trend,medium,0.013386933964551151,neutral,Price above its 50-day average: yes (+1.3%); 3-month return positive: no (-0.1%)
+2026-11-17,WORLD SMALL CAP,trend,long,0.045086694691718776,up,Price above its 200-day average: yes (+4.5%); 12-month return positive: yes (+20.5%)
+2026-11-17,WORLD SMALL CAP,macro,growth recession,-0.24,headwind,"Today's view: -0.3 (+1 means growth stronger (-1 = recession)). Growth is stalling in China, and US recessionary anxiety is rising, tempering global economic prospects."
+2026-11-17,WORLD SMALL CAP,macro,risk appetite,-0.48,headwind,"Today's view: -0.6 (+1 means risk-on (investors buying risk)). Elevated VIX, reduced tech exposure, and market stress indicators signal a broad risk-off environment."
+2026-11-17,WORLD SMALL CAP,macro,fed us rates,-0.45,headwind,"Today's view: +0.9 (+1 means Fed more hawkish, US rates higher). Strong consensus among officials and market pricing reflects a high probability of additional rate hikes due to hot CPI data."
