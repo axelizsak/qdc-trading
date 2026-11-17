@@ -56,6 +56,19 @@ Dashboard · **Today** (your three reviews) · one page per agent · **Learning*
 **How it works** (the diagram: click a box to see what it does and its code) · Logbook. A finished day is read from
 its files in `logs/`, so any past day can be opened.
 
+## The customer app
+
+`python -m mobile.server`, then http://localhost:8600: a phone-sized app for the customer (light, ReBel style).
+
+- **Bel**, an AI coach on Claude Sonnet, chats with the customer and places them in one of five investor profiles
+  (`data/profiles.py`). With their consent it reads what Belfius already knows, to ask fewer and sharper questions,
+  and it asks smoothly for what is missing.
+- **The code** keeps the suitability sheet (12 answers, one of them a wealth range), decides when it is complete and
+  flags answers that contradict each other: an adviser then looks at the plan first (`agents/profiler.py`).
+- **One approval.** The customer sees the plan of their profile and approves it before anything is invested. The
+  plans are still examples (`data/mock.py`), so the app writes to `logs/mock/`: one portfolio per profile, built by
+  the engine, is the next step.
+
 ## Change the model
 
 Every setting is one line. Test a change on the past first: add a line to `VARIANTS` in
@@ -68,16 +81,18 @@ Every setting is one line. Test a change on the past first: add a line to `VARIA
 | The technical rules and the score of each answer | `agents/strategy_config.py` |
 | How the portfolio is built, its hard limits, Claude's starting share | `agents/portfolio_config.py` |
 | The risk reference levels | `agents/risk_config.py` |
+| The five investor profiles, the suitability sheet and its checks | `data/profiles.py`, `agents/profiler.py` |
 | The macro factors and each ETF's exposure to them | `data/config.py`, `data/macro_exposure.csv` |
-| What Claude is asked | the prompts in `agents/macro_analysts.py`, `agents/macro_llm.py`, `agents/technical_llm.py`, `agents/portfolio_llm.py` |
+| What Claude is asked | the prompts in `agents/macro_analysts.py`, `agents/macro_llm.py`, `agents/technical_llm.py`, `agents/portfolio_llm.py`, `agents/profiler.py` |
 
 ## Repository
 
 ```
-data/       prices, indicators, the 50 ETFs, settings, every shared table (schemas.py) and its mock (mock.py)
-agents/     technical, macro/news, portfolio manager, risk manager, logbook, and the learning rule
+data/       prices, indicators, the 50 ETFs, the 5 investor profiles, settings, every shared table (schemas.py) and its mock (mock.py)
+agents/     technical, macro/news, portfolio manager, risk manager, logbook, the learning rule, and the customer's coach
 graph/      pipeline.py (one day, step by step) and review_loop.py (the learning step)
 app/        the Streamlit cockpit
+mobile/     the customer app: server.py and the phone screens (static/)
 backtest/   the system replayed since 2022 (results in backtest/results/)
 logs/       everything the agents said and the humans decided: graded evidence (logs/README.md)
 tests/      one file per module
@@ -87,7 +102,7 @@ tests/      one file per module
 
 | | Scope |
 |---|---|
-| Axel | Macro / News, pipeline and learning, cockpit, backtest, repo |
+| Axel | Macro / News, pipeline and learning, cockpit, customer app, backtest, repo |
 | Achille | Data agent, technical agent |
 | Alexander | Portfolio Manager, Risk Manager, Logbook |
 

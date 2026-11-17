@@ -7,12 +7,14 @@ import pandas as pd
 
 from data.config import DATA_DIR, MACRO_FACTORS, SIGNAL_AGENTS, TECHNICAL_SIGNALS
 from data.schemas import (
+    CUSTOMER_LOG,
     EX_DIVIDENDS,
     LIST_SEP,
     MACRO_EXPOSURE,
     LOGBOOK,
     ORDER_LOG,
     PM_PORTFOLIOS,
+    PROFILE_PORTFOLIOS,
     RECOMMENDATIONS,
     REVIEWS,
     RISK_CALIBRATION,
@@ -22,6 +24,7 @@ from data.schemas import (
     TECHNICAL_ANSWERS,
     WEIGHTS,
     validate_etf_views,
+    validate_customer_log,
     validate_evidence,
     validate_ex_dividends,
     validate_features,
@@ -35,6 +38,7 @@ from data.schemas import (
     validate_portfolio,
     validate_pm_portfolios,
     validate_prices,
+    validate_profile_portfolios,
     validate_recommendations,
     validate_reviews,
     validate_risk_calibration,
@@ -338,6 +342,49 @@ def mock_ex_dividends(as_of: str = "2026-12-07") -> pd.DataFrame:
     return validate_ex_dividends(pd.DataFrame(rows, columns=EX_DIVIDENDS))
 
 
+# An illustration of one portfolio per investor profile, until the engine builds them: broad ETFs in the core,
+# a few themes in the satellite share. The satellite share of each is 1 - core in data/profiles.py.
+PROFILE_MIXES = {
+    "first_step_starter": {"core": {"WORLD": 0.55, "EUROPE 600": 0.10, "EMMKT": 0.05, "GLOBAL AGG BOND": 0.20},
+                           "satellite": {"ROBOTICS": 0.05, "CLEAN ENERGY": 0.05}},
+    "goal_builder": {"core": {"WORLD": 0.35, "WORLD MIN VOL": 0.10, "GLOBAL AGG BOND": 0.20, "EUR GOVT BOND": 0.10,
+                              "OVERNIGHT CASH": 0.05},
+                     "satellite": {"SEMIS": 0.07, "HEALTH CARE": 0.07, "GOLD": 0.06}},
+    "self_directed_trader": {"core": {"WORLD": 0.40, "S&P 500": 0.15, "EMMKT": 0.10, "WORLD SMALL CAP": 0.05},
+                             "satellite": {"SEMIS": 0.10, "BITCOIN": 0.05, "URANIUM": 0.05, "DEFENSE": 0.05,
+                                           "GOLD": 0.05}},
+    "cautious_saver": {"core": {"GLOBAL AGG BOND": 0.30, "WORLD": 0.20, "EUR GOVT BOND": 0.15, "WORLD MIN VOL": 0.15,
+                                "OVERNIGHT CASH": 0.10},
+                       "satellite": {"GOLD": 0.05, "HEALTH CARE": 0.05}},
+    "late_starter": {"core": {"WORLD": 0.25, "GLOBAL AGG BOND": 0.25, "EUR GOVT BOND": 0.15, "DIVIDEND LEADERS": 0.10,
+                              "WORLD MIN VOL": 0.10, "OVERNIGHT CASH": 0.05},
+                     "satellite": {"GOLD": 0.05, "STAPLES": 0.05}},
+}
+
+
+def mock_profile_portfolios(as_of: str = "2026-12-07") -> pd.DataFrame:
+    """One illustrative portfolio per investor profile. Format: Profile portfolios."""
+    day = pd.Timestamp(as_of).date()
+    rows = [(day, profile, ticker, weight, sleeve) for profile, mix in PROFILE_MIXES.items()
+            for sleeve, weights in mix.items() for ticker, weight in weights.items()]
+    return validate_profile_portfolios(pd.DataFrame(rows, columns=PROFILE_PORTFOLIOS))
+
+
+def mock_customer_log() -> pd.DataFrame:
+    """One customer placed in a profile who then approves the plan, and one who starts over. Format: Customer log."""
+    sheet = ('{"goal": "a home deposit", "horizon_years": 4, "amount_eur": 6000, "wealth_range": "10k_50k", '
+             '"monthly_eur": 150, '
+             '"buffer_months": 6, "loss_reaction": "wait", "max_loss_pct": 10, "knowledge_1": "right", '
+             '"knowledge_2": "wrong", "experience": "funds", "preferences": "none"}')
+    why = "You are saving for a home in about four years and want the rest to grow for the long term."
+    rows = [("2026-12-01T09:00:00", "thomas", "profiled", "goal_builder", why, sheet, ""),
+            ("2026-12-01T09:04:00", "thomas", "approved", "goal_builder", why, sheet, ""),
+            ("2026-12-01T10:00:00", "lina", "profiled", "first_step_starter", "You are starting out with a long "
+             "time ahead.", "{}", "Thin buffer: less than 3 months of spending stays in savings"),
+            ("2026-12-01T10:02:00", "lina", "reset", "", "", "{}", "")]
+    return validate_customer_log(pd.DataFrame(rows, columns=CUSTOMER_LOG))
+
+
 MOCKS = {
     "prices": mock_prices,
     "signals": mock_signals,
@@ -363,6 +410,8 @@ MOCKS = {
     "risk_calibration": mock_risk_calibration,
     "ex_dividends": mock_ex_dividends,
     "logbook": mock_logbook,
+    "profile_portfolios": mock_profile_portfolios,
+    "customer_log": mock_customer_log,
 }
 
 
