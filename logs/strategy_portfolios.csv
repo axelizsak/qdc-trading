@@ -1,0 +1,30 @@
+date,strategy,ticker,target_weight,sleeve
+2026-11-18,defensive,WORLD,0.21,core_equity
+2026-11-18,defensive,EUROPE 600,0.045,core_equity
+2026-11-18,defensive,EMMKT,0.045,core_equity
+2026-11-18,defensive,GLOBAL AGG BOND,0.24,bonds
+2026-11-18,defensive,EUR GOVT BOND,0.16,bonds
+2026-11-18,defensive,GOLD,0.1,gold
+2026-11-18,defensive,HEALTH CARE,0.05,satellites
+2026-11-18,defensive,STAPLES,0.05,satellites
+2026-11-18,defensive,OVERNIGHT CASH,0.1,cash
+2026-11-18,balanced,WORLD,0.35,core_equity
+2026-11-18,balanced,EUROPE 600,0.075,core_equity
+2026-11-18,balanced,EMMKT,0.075,core_equity
+2026-11-18,balanced,GLOBAL AGG BOND,0.15,bonds
+2026-11-18,balanced,EUR GOVT BOND,0.1,bonds
+2026-11-18,balanced,GOLD,0.1,gold
+2026-11-18,balanced,SEMIS,0.05,satellites
+2026-11-18,balanced,HEALTH CARE,0.05,satellites
+2026-11-18,balanced,OVERNIGHT CASH,0.05,cash
+2026-11-18,opportunity,WORLD,0.385,core_equity
+2026-11-18,opportunity,EUROPE 600,0.0825,core_equity
+2026-11-18,opportunity,EMMKT,0.0825,core_equity
+2026-11-18,opportunity,GLOBAL AGG BOND,0.06,bonds
+2026-11-18,opportunity,EUR GOVT BOND,0.04,bonds
+2026-11-18,opportunity,GOLD,0.05,gold
+2026-11-18,opportunity,SEMIS,0.06,satellites
+2026-11-18,opportunity,NASDAQ,0.06,satellites
+2026-11-18,opportunity,URANIUM,0.06,satellites
+2026-11-18,opportunity,DEFENSE,0.06,satellites
+2026-11-18,opportunity,BITCOIN,0.06,satellites
