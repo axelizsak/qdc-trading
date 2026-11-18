@@ -20,7 +20,7 @@ Work in your own modules. To build against someone else's, use the mocks in `dat
 | Axel | `agents/macro_news.py`, `agents/macro_llm.py`, `agents/macro_analysts.py`, `agents/macro_tape.py`, `agents/macro_sources/`, `agents/learning.py`, `agents/profiler.py`, `agents/model_portfolios.py`, `agents/etf_sheets.py`, `agents/llm.py`, `agents/web_search.py`, `graph/morning.py`, `graph/pipeline.py`, `graph/review_loop.py`, `backtest/`, `app/`, `mobile/`, repo config (`.github/`, `.claude/`, `scripts/`, `docs/`, `README.md`, `CLAUDE.md`) |
 | Achille | `data/data_agent.py`, `data/features.py`, `data/dividends.py`, `data/symbols.py`, `data/universe.py`, `agents/technical.py`, `agents/technical_llm.py`, `agents/strategy_config.py` |
 | Alexander | `agents/portfolio*.py`, `agents/risk*.py`, `agents/logbook.py` |
-| Shared (say so in the PR) | `data/schemas.py`, `data/config.py`, `data/profiles.py`, `data/mock.py`, `tests/` |
+| Shared (say so in the PR) | `data/schemas.py`, `data/config.py`, `data/profiles.py`, `data/lessons.py`, `data/mock.py`, `tests/` |
 
 ## Shared data formats
 

@@ -1,4 +1,5 @@
 """The LangGraph pipeline on mocks: three human reviews, feedback loops, fallbacks and replay from the logs."""
+import json
 from datetime import date
 
 import numpy as np
@@ -19,6 +20,11 @@ def logs(tmp_path):
 
 def _boom(*args, **extra):
     raise RuntimeError("API down")
+
+
+def _another_machine(logs):
+    """The same logs (pulled from git) on a machine that never ran the day: no saved graph state."""
+    (logs / "checkpoints.sqlite").unlink()
 
 
 def _state(logs, day=DAY):
@@ -193,16 +199,57 @@ def test_failing_risk_manager_still_reaches_the_risk_review(logs, monkeypatch):
     assert "The Risk Manager gave no assessment" in pending["summary"]
 
 
-def test_rerun_reads_signals_from_logs_instead_of_calling_agents(logs, monkeypatch):
-    pipeline.run_day(DAY, logs)
-    monkeypatch.setitem(pipeline.MOCK, "technical", _boom)
-    monkeypatch.setitem(pipeline.MOCK, "macro_news", _boom)
+def test_a_day_is_read_from_the_logs_on_another_machine_never_computed_twice(logs, monkeypatch):
+    first = pipeline.run_day(DAY, logs)
+    frozen = pipeline.proposal_path(logs, DAY, 1)
+    assert frozen.exists() and first["proposed_orders"]
+    _another_machine(logs)
+    for step in ("technical", "macro_news", "portfolio"):  # any call to an agent would be an incident
+        monkeypatch.setitem(pipeline.MOCK, step, _boom)
 
-    pending = pipeline.run_day(DAY, logs, rerun=True)
+    pending = pipeline.run_day(DAY, logs)
 
-    assert pending is not None
+    assert pending["proposed_orders"] == first["proposed_orders"] and pending["memo"] == first["memo"]
+    assert pending["target_weights"] == first["target_weights"]
     assert not (logs / "incidents.csv").exists()
     assert _state(logs)["macro_summary"] == "Mock macro summary."
+
+
+def test_a_finished_day_is_never_run_again(logs, monkeypatch):
+    pipeline.approve_day(DAY, logs)
+    orders = (logs / "orders.csv").read_text()
+    _another_machine(logs)
+    for step in ("technical", "macro_news", "portfolio", "risk"):
+        monkeypatch.setitem(pipeline.MOCK, step, _boom)
+    assert pipeline.run_day(DAY, logs) is None  # done in the logs: nothing runs
+    assert pipeline.day_status(DAY, logs)[0] == "done" and (logs / "orders.csv").read_text() == orders
+    assert pipeline.day_status(date(2026, 12, 10), logs)[0] == "not started"
+
+
+def test_a_revision_is_frozen_with_the_feedback_that_asked_for_it(logs, monkeypatch):
+    pending = pipeline.run_day(DAY, logs)
+    pending = pipeline.resume_day(DAY, {"decision": "revised", "feedback": "less tech"}, logs)
+    saved = json.loads(pipeline.proposal_path(logs, DAY, 2).read_text())
+    assert saved["orders"] == pending["proposed_orders"] and "less tech" in saved["feedback"]
+    assert pipeline.frozen_proposal(logs, DAY, 2, saved["feedback"]) == saved
+    assert pipeline.frozen_proposal(logs, DAY, 2, "more bonds") is None  # other feedback: another proposal
+
+
+def test_a_day_run_before_proposals_were_frozen_is_rebuilt_from_its_logs(logs, monkeypatch):
+    logs.mkdir(parents=True)
+    recs = pipeline.mock.MOCKS["recommendations"]()
+    recs = recs[recs["side"] != "NONE"]  # the run that proposed orders
+    recs.to_csv(logs / "recommendations.csv", index=False)
+    pipeline.mock.MOCKS["pm_portfolios"]().to_csv(logs / "pm_portfolios.csv", index=False)
+    (logs / "memo").mkdir()
+    (logs / "memo" / f"{DAY}.md").write_text("The memo of that day.", encoding="utf-8")
+    monkeypatch.setitem(pipeline.MOCK, "portfolio", _boom)
+
+    pending = pipeline.run_day(DAY, logs)
+
+    latest = recs[(recs["created_at"] == recs["created_at"].max()) & recs["side"].isin(["BUY", "SELL"])]
+    assert [o["ticker"] for o in pending["proposed_orders"]] == latest["ticker"].tolist() == ["WORLD", "GOLD"]
+    assert pending["memo"] == "The memo of that day." and not (logs / "incidents.csv").exists()
 
 
 def test_next_day_starts_from_the_executed_orders(logs):
@@ -363,9 +410,10 @@ def test_starting_weights_go_only_to_agents_that_gave_a_score(logs, monkeypatch)
     assert _state(logs)["agent_weights"] == {"technical_det": 0.5, "macro_market": 0.25, "macro_etf": 0.25}
     assert not (logs / "incidents.csv").exists()
 
-    # a rerun reads the day's signals back from the logs, even though one technical score is missing
+    # another machine reads the day's signals back from the logs, even though one technical score is missing
     monkeypatch.setitem(pipeline.MOCK, "technical", _boom)
-    assert pipeline.run_day(DAY, logs, rerun=True) is not None
+    _another_machine(logs)
+    assert pipeline.run_day(DAY, logs) is not None
     assert not (logs / "incidents.csv").exists()
 
 
@@ -383,7 +431,8 @@ def test_the_risk_manager_gets_the_ex_dividend_dates(logs, monkeypatch):
 
     # when the dates cannot be read, it is an incident and the Risk Manager is told there are none
     monkeypatch.setitem(pipeline.EX_DIVIDENDS_SOURCE, True, _boom)
-    pending = pipeline.run_day(DAY, logs, rerun=True)
+    _another_machine(logs)
+    pending = pipeline.run_day(DAY, logs)
     assert [i["step"] for i in pending["incidents"]] == ["dividends"] and len(pending["proposed_orders"]) > 0
     pipeline.resume_day(DAY, pipeline.approve(pending), logs)
     assert seen["ex_dividends"] is None

@@ -22,6 +22,12 @@ TREND_WORDS = {"short": "1-month", "medium": "3-month", "long": "12-month"}
 MACRO_LINES = 3  # macro factors shown on a sheet: the ones that matter most for the ETF
 EFFECT = 0.10  # a view times the ETF's exposure beyond this is supportive or a headwind; below it, to watch
 
+# The name of each macro line on screen: a sheet names a factor with spaces for underscores ("risk appetite").
+MACRO_NAMES = {factor.replace("_", " "): label for factor, label in settings.MACRO_FACTOR_LABELS.items()}
+TREND_MONTHS = {"short": 1, "medium": 3, "long": 12}
+TREND_STATE_WORDS = {"up": "Rising", "neutral": "No clear trend", "down": "Falling"}
+LEAN = 0.15  # a news analyst's view beyond this leans one way; within it, no clear edge
+
 EXPLAIN_SYSTEM = """You explain one line of an ETF's sheet to a customer of an investing app, in plain words.
 Use only the numbers and words of the sheet you are given: no other figure, no news, no forecast. Never say to buy, sell or hold. Two or three short sentences, no jargon, no markdown. Answer in the language of the question."""
 
@@ -80,6 +86,57 @@ def build(prices: pd.DataFrame, views: pd.DataFrame, exposure: pd.DataFrame, as_
             lines += _macro(exposures.loc[ticker], views)
         rows += [(as_of, ticker, *line) for line in lines]
     return validate_etf_sheets(pd.DataFrame(rows, columns=ETF_SHEETS))
+
+
+def label(line: dict) -> str:
+    """How a line of a sheet is named on screen."""
+    if line["block"] == "macro":
+        return MACRO_NAMES.get(line["name"], line["name"].capitalize())
+    if line["block"] == "trend":
+        months = TREND_MONTHS.get(line["name"])
+        return f"{months} month{'s' if months > 1 else ''}" if months else line["name"].capitalize()
+    return line["name"].capitalize()
+
+
+def _months(names: list[str]) -> str:
+    numbers = sorted(TREND_MONTHS[name] for name in names)
+    words = [str(n) for n in numbers]
+    return (", ".join(words[:-1]) + " and " + words[-1] if len(words) > 1 else words[0]) + \
+        (" month" if numbers == [1] else " months")
+
+
+def _tone(good: int, bad: int) -> str:
+    return "good" if good > bad else "bad" if bad > good else "wait"
+
+
+def reading(lines: list[dict], news: dict | None = None) -> list[dict]:
+    """What the agents see in an ETF today, in up to three plain lines (trend, macro, news), each with a tone: good,
+    wait or bad. Written by code from the sheet's own lines and the news analyst's view: no model, no new number.
+
+    lines: the sheet's lines, each {"block", "name", "state"}. news: the analyst's view, {"direction", "confidence",
+    "rationale"}, or None."""
+    out = []
+    trends = {line["name"]: line["state"] for line in lines if line["block"] == "trend" and line["name"] in TREND_MONTHS}
+    if trends:
+        parts = [f"{TREND_STATE_WORDS[state]} over {_months([n for n, s in trends.items() if s == state])}"
+                 for state in ("up", "neutral", "down") if state in trends.values()]
+        text = parts[0] + (", " + ", ".join(p[0].lower() + p[1:] for p in parts[1:]) if len(parts) > 1 else "") + "."
+        states = list(trends.values())
+        out.append({"topic": "Trend", "tone": _tone(states.count("up"), states.count("down")), "text": text})
+    macro = [line for line in lines if line["block"] == "macro"]
+    if macro:
+        helps = [label(line) for line in macro if line["state"] == "supportive"]
+        hurts = [label(line) for line in macro if line["state"] == "headwind"]
+        parts = ([f"Tailwind{'s' if len(helps) > 1 else ''}: {', '.join(helps)}."] if helps else []) + \
+                ([f"Headwind{'s' if len(hurts) > 1 else ''}: {', '.join(hurts)}."] if hurts else [])
+        text = " ".join(parts) if parts else "No strong macro force either way today."
+        out.append({"topic": "Macro", "tone": _tone(len(helps), len(hurts)), "text": text})
+    if news:
+        direction = float(news["direction"])
+        lean = "leans positive" if direction >= LEAN else "leans negative" if direction <= -LEAN else "sees no clear edge"
+        out.append({"topic": "News", "tone": "good" if direction >= LEAN else "bad" if direction <= -LEAN else "wait",
+                    "text": f"Our news analyst {lean} for the next few days ({float(news['confidence']):.0%} sure)."})
+    return out
 
 
 def explain(sheet: pd.DataFrame, question: str, client=None) -> str:

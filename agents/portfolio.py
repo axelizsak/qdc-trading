@@ -45,6 +45,7 @@ from agents import learning as agent_learning
 from agents import llm, macro_llm, portfolio_learning, portfolio_llm, portfolio_log
 from agents import portfolio_config as cfg
 from data import config as settings
+from data.profiles import COMPLEX_FAMILIES, EQUITY_SLEEVES, SLEEVE_ETFS, STRATEGIES, sleeve_of
 from data.schemas import ORDERS, PORTFOLIO, validate_orders, validate_portfolio
 from data.universe import load_universe
 
@@ -294,6 +295,73 @@ def apply_constraints(weights: pd.Series, current: pd.Series, priced: set[str], 
     return out[out > 0]
 
 
+def within_strategy(weights: pd.Series, strategy: str | None, universe: pd.DataFrame,
+                    usable: set[str]) -> tuple[pd.Series, list[str]]:
+    """The traded strategy's envelope (data/profiles.py STRATEGIES[strategy]["limits"]) applied to a target, with
+    what it changed in words. Complex products above complex_max are cut (to cash); themes above themes_max are
+    cut and the cut goes to the core ETFs; shares above equity_max are cut and the cut goes to the bonds; then no
+    ETF stays above MAX_POSITION (to cash). Money only goes to `usable` ETFs (priced, not excluded); when none is,
+    it stays in cash. No strategy: the target as it is."""
+    if strategy is None:
+        return weights, []
+    spec = STRATEGIES[strategy]
+    limits, name = spec["limits"], spec["label"]
+    family = universe["family"]
+    out = weights.astype(float).copy()
+    notes = []
+
+    def members(test) -> list[str]:
+        return [t for t in out.index if out[t] > 0 and test(t)]
+
+    def move(cut: float, into: dict[str, float]) -> str:
+        """Gives `cut` to the usable ETFs of `into` (ticker -> share); says where it went."""
+        targets = {t: share for t, share in into.items() if t in usable}
+        if cut <= 0 or not targets:
+            return "kept in cash"
+        total = sum(targets.values())
+        for ticker, share in targets.items():
+            out[ticker] = float(out.get(ticker, 0.0)) + cut * share / total
+        return "moved to " + ", ".join(targets)
+
+    complex_ = members(lambda t: family.get(t) in COMPLEX_FAMILIES)
+    share = float(out[complex_].sum()) if complex_ else 0.0
+    if share > limits["complex_max"] + 1e-9:
+        out[complex_] = out[complex_] * limits["complex_max"] / share
+        notes.append(f"Complex products ({', '.join(complex_)}) cut from {share:.0%} to {limits['complex_max']:.0%}, "
+                     f"the {name} limit: kept in cash.")
+    themes = members(lambda t: sleeve_of(t, family.get(t, "")) == "satellites")
+    share = float(out[themes].sum()) if themes else 0.0
+    if share > limits["themes_max"] + 1e-9:
+        out[themes] = out[themes] * limits["themes_max"] / share
+        where = move(share - limits["themes_max"], SLEEVE_ETFS["core_equity"])
+        notes.append(f"Themes cut from {share:.0%} to {limits['themes_max']:.0%}, the {name} limit: {where}.")
+    equity = members(lambda t: sleeve_of(t, family.get(t, "")) in EQUITY_SLEEVES)
+    share = float(out[equity].sum()) if equity else 0.0
+    if share > limits["equity_max"] + 1e-9:
+        out[equity] = out[equity] * limits["equity_max"] / share
+        where = move(share - limits["equity_max"], SLEEVE_ETFS["bonds"])
+        notes.append(f"Shares cut from {share:.0%} to {limits['equity_max']:.0%}, the {name} limit: {where}.")
+    over = out[out > cfg.MAX_POSITION + 1e-9]
+    if len(over):
+        out = out.clip(upper=cfg.MAX_POSITION)
+        notes.append(f"{', '.join(over.index)} capped at {cfg.MAX_POSITION:.0%} of the portfolio: kept in cash.")
+    out = pd.Series(floor4(out), index=out.index)
+    return out[out > 0], notes
+
+
+def strategy_text(strategy: str | None) -> str:
+    """The traded strategy and its limits, in one paragraph (the LLM's briefing and the memo)."""
+    if strategy is None:
+        return ""
+    spec = STRATEGIES[strategy]
+    limits = spec["limits"]
+    complex_ = (f"at most {limits['complex_max']:.0%} in complex products (leveraged, inverse, crypto)"
+                if limits["complex_max"] else "no complex products (leveraged, inverse, crypto)")
+    return (f"The team trades the {spec['label']} strategy (risk level {spec['level']} of 3: {spec['tagline']}). Its "
+            f"limits: at most {limits['equity_max']:.0%} in shares, {limits['themes_max']:.0%} in themes, {complex_}. "
+            "A portfolio outside them is cut back by the code.")
+
+
 def top_up_with_benchmark(weights: pd.Series, budget: float, priced: set[str], exclude: set[str],
                           pinned: set[str]) -> pd.Series:
     """Put IDLE_TO_BENCHMARK of the budget the portfolio leaves idle into the benchmark ETF, up to BENCHMARK_CAP
@@ -540,9 +608,10 @@ def track_line(trust: float, track: pd.DataFrame) -> str:
 def briefing(as_of: date, status: str, nav: float, cash_eur: float, weights_now: pd.Series, stats: pd.DataFrame,
              used: dict[str, float], table: pd.DataFrame, signals: pd.DataFrame, universe: pd.DataFrame,
              drafts: dict[str, pd.Series], trust: float, track: pd.DataFrame, macro_summary: str, lessons: str,
-             feedback: str) -> str:
+             feedback: str, strategy: str | None = None) -> str:
     """Everything the LLM reads, as text: the numbers the code calculated, never raw instructions."""
     lines = [f"Date: {as_of} ({status}). {timing(as_of)}", f"Portfolio value EUR {nav:,.0f}, cash EUR {cash_eur:,.0f}.",
+             *([strategy_text(strategy)] if strategy else []),
              "Current holdings (share of the portfolio): "
              + (", ".join(f"{t} {w:.1%}" for t, w in weights_now.items()) or "none, all cash"), "",
              "Agent weights (start -> today, learned day by day from what following each agent earned; used in the "
@@ -670,7 +739,7 @@ def write_memo(as_of: date, status: str, nav: float, info: dict, judgement: dict
 def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, holdings: pd.DataFrame,
         cash_eur: float, prices: pd.DataFrame, as_of: date, feedback: str = "", *, macro_summary: str = "",
         logs_dir: Path | str | None = None, client=None, use_llm: bool = True, trust: float | None = None,
-        learning: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame, str]:
+        learning: pd.DataFrame | None = None, strategy: str | None = None) -> tuple[pd.DataFrame, pd.DataFrame, str]:
     """Returns (target weights in the Portfolio format, proposed orders in the Orders format, investment memo).
 
     `feedback` holds one line per time the human sent the day back, e.g.
@@ -681,7 +750,8 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
     Optional, keyword-only: `macro_summary` (the Macro/News report, read by the LLM); `logs_dir` (today's portfolios
     and recommendations are logged there; without it nothing is written); `trust` (how much the LLM's portfolio
     counts, default TRUST_START); `learning` (the learning scoreboard, shown in the memo); `client` (a the LLM client,
-    default: the real one when GEMINI_API_KEY is set); `use_llm=False` (the code's portfolio alone).
+    default: the real one when GEMINI_API_KEY is set); `use_llm=False` (the code's portfolio alone); `strategy` (the
+    strategy the team trades, data/profiles.py: every portfolio stays within its limits, `within_strategy`).
     """
     universe = load_universe().set_index("ticker")
     tickers = universe.index.tolist()
@@ -727,6 +797,7 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
     draft, draft_info = baseline_target(table["final_score"], vol, universe, weights_now, priced, exclude, pinned, {})
     drafts = {"baseline": draft, "optimizer": optimizer_target(table["final_score"], cov, universe, weights_now, priced,
                                                                exclude, pinned, {}, draft_info["exposure"], draft)}
+    drafts = {name: within_strategy(w, strategy, universe, priced - exclude)[0] for name, w in drafts.items()}
 
     # 4. the LLM judges the day and proposes its own portfolio
     judgement, usage, llm_note = dict(portfolio_llm.EMPTY), macro_llm.Usage(), ""
@@ -734,7 +805,7 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
         try:
             client = client or llm.client()
             context = briefing(as_of, status, nav, cash_eur, weights_now, stats, learned, table, signals, universe,
-                               drafts, trust, track, macro_summary, lessons, feedback)
+                               drafts, trust, track, macro_summary, lessons, feedback, strategy)
             judgement = portfolio_llm.judge(client, usage, context, tickers)
             if not judgement["target_weights"]:
                 llm_note = f"the LLM proposed no weights, so the code's {cfg.ANCHOR} portfolio stands."
@@ -758,15 +829,21 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
                                      max_weight)
     optimized = optimizer_target(table["final_score"], cov, universe, weights_now, priced, exclude, pinned,
                                  max_weight, info["exposure"], baseline)
-    portfolios = {"baseline": apply_constraints(baseline, weights_now, priced, exclude, pinned, max_weight),
-                  "optimizer": apply_constraints(optimized, weights_now, priced, exclude, pinned, max_weight)}
+    usable = priced - exclude - pinned
+
+    def constrained(weights: pd.Series) -> pd.Series:
+        """The hard limits, then the traded strategy's envelope (what it cuts does not undo the hard limits)."""
+        kept = apply_constraints(weights, weights_now, priced, exclude, pinned, max_weight)
+        return within_strategy(kept, strategy, universe, usable)[0]
+
+    portfolios = {"baseline": constrained(baseline), "optimizer": constrained(optimized)}
     if llm_used:
-        portfolios["llm"] = apply_constraints(pd.Series(judgement["target_weights"]), weights_now, priced, exclude,
-                                              pinned, max_weight)
+        portfolios["llm"] = constrained(pd.Series(judgement["target_weights"]))
     portfolios["final"] = apply_constraints(blend(portfolios.get("llm"), portfolios[cfg.ANCHOR], trust), weights_now,
                                             priced, exclude, pinned, max_weight)
     if cfg.IDLE_TO_BENCHMARK > 0:
         portfolios["final"] = top_up_with_benchmark(portfolios["final"], info["exposure"], priced, exclude, pinned)
+    portfolios["final"], strategy_notes = within_strategy(portfolios["final"], strategy, universe, usable)
     final = portfolios["final"]
     if logs_dir is not None:
         portfolio_learning.record_portfolios(logs_dir, as_of, portfolios)
@@ -797,4 +874,8 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
     info.update(trust=trust if llm_used else float("nan"), track=track)
     memo = write_memo(as_of, status, nav, info, judgement, llm_note, stats, detail, deferred, portfolios,
                       weights_now, notes, table, [c for c in constraints if c], usage, rec_id, gap_eur, warnings)
+    if strategy:  # the strategy and what its limits changed, right under the title
+        title, _, rest = memo.partition("\n\n")
+        block = f"**Strategy.** {strategy_text(strategy)}" + "".join(f"\n- {n}" for n in strategy_notes)
+        memo = f"{title}\n\n{block}\n\n{rest}"
     return target_frame, orders, memo

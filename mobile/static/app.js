@@ -1,15 +1,26 @@
-// ReBel customer app: one phone, six views (welcome, consent, chat, reveal, plan, done).
-// The server holds the logic (mobile/server.py); this file shows it and sends the customer's answers.
+// ReBel customer app: one phone. Welcome, consent, chat with Lena, the result (risk level and style), then the app
+// itself in three tabs (Portfolio, Explore, Learn) and the sheet of each ETF.
+// The server holds the logic (mobile/server.py, mobile/wallet.py); this file shows it and sends what the customer does.
+// ReBel is execution-only: the app informs, the customer places every order.
 
 const eur = new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+const eur2 = new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = (weight) => `${Math.round(weight * 100)}%`;
+const signed = (x, digits = 1) => (Math.abs(x) * 10 ** (digits + 2) < 0.5 ? `${(0).toFixed(digits)}%`
+  : `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(digits)}%`);
+const tone = (x) => (x > 0.0005 ? "up" : x < -0.0005 ? "down" : "flat");
 const $ = (id) => document.getElementById(id);
 const sum = (items, value) => items.reduce((total, item) => total + value(item), 0);
+const day = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
-// The sleeves of a model portfolio: the colour follows the sleeve, never its rank.
+// The sleeves: the colour follows the sleeve, never its rank. An ETF outside the reference takes its family's sleeve.
 const COLOR = { core_equity: "--shares", bonds: "--bonds", gold: "--gold", satellites: "--crypto", cash: "--cash" };
-// What a state of an ETF sheet looks like: an arrow and a tone, so that it never rests on colour alone.
+const FAMILY_SLEEVE = { broad_equity: "core_equity", bonds: "bonds", gold: "gold", cash: "cash" };
+// A state of an ETF sheet, or a tone of the AI reading: an arrow and a tone, so that it never rests on colour alone.
 const STATE = { up: ["↗", "good"], supportive: ["↗", "good"], neutral: ["→", "wait"], watch: ["!", "wait"], down: ["↘", "bad"], headwind: ["↘", "bad"] };
+const TONE = { good: "↗", wait: "→", bad: "↘" };
+const RANGES = [["1M", 30], ["3M", 91], ["1Y", 365], ["Max", 100000]]; // days back; the chart starts at the last point on or before
+const RANGE_WORDS = { "1M": "over 1 month", "3M": "over 3 months", "1Y": "over 1 year", Max: "since" };
 
 const svg = (size, body, width = 2) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
@@ -20,8 +31,12 @@ const ICON = {
   bigCheck: svg(46, '<path d="M4.5 10.5l3.6 3.8 7.4-8.6"/>', 2.2),
   cross: svg(16, '<path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/>', 2.4),
   alert: svg(16, '<path d="M10 3 2.5 16h15L10 3zM10 8.5v3.5M10 14.4v.1"/>'),
-  lock: svg(16, '<rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/>'),
+  lock: svg(14, '<rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/>'),
   person: svg(16, '<circle cx="10" cy="7" r="3.2"/><path d="M3.5 17a6.5 6.5 0 0 1 13 0"/>'),
+  pie: svg(22, '<path d="M10 2.5a7.5 7.5 0 1 0 7.5 7.5H10z"/><path d="M12.5 2.9v4.6h4.6a7.5 7.5 0 0 0-4.6-4.6z"/>', 1.8),
+  compass: svg(22, '<circle cx="10" cy="10" r="7.5"/><path d="m12.8 7.2-1.7 4-4 1.7 1.7-4z"/>', 1.8),
+  book: svg(22, '<path d="M3.5 4.5c2.5-1 4.7-.8 6.5.6v11c-1.8-1.4-4-1.6-6.5-.6zM16.5 4.5c-2.5-1-4.7-.8-6.5.6v11c1.8-1.4 4-1.6 6.5-.6z"/>', 1.8),
+  spark: svg(16, '<path d="M10 2.5l1.8 4.7 4.7 1.8-4.7 1.8L10 15.5l-1.8-4.7L3.5 9l4.7-1.8z"/>', 1.6),
 };
 const LINE = "M0 150 28 138 52 146 80 118 104 128 132 96 158 110 186 78 212 92 240 58 266 74 296 40 322 56 352 24 390 34";
 const HERO_ART = `<svg viewBox="0 0 390 190" preserveAspectRatio="none" fill="none" aria-hidden="true">
@@ -32,17 +47,21 @@ const HERO_ART = `<svg viewBox="0 0 390 190" preserveAspectRatio="none" fill="no
   <path class="stroke" d="${LINE}"/></svg>`;
 
 const blank = () => ({ consent: true, answers: {}, question: null, picked: [], odds: null, seen: [], sheet: [], flags: [],
-  left: null, profile: null, why: "", decision: null, decided_at: null, plan: null, busy: false });
-const state = { customers: [], profiles: {}, sleeves: {}, questions: 0, accountData: [], coach: "", id: null, known: {}, ...blank() };
+  left: null, archetype: null, why: "", strategy: null, strategy_why: [], orders: [], unlocked: false, lessons: {},
+  reference: null, etfs: null, portfolio: null, tab: "explore", busy: false });
+// lessonBook: every lesson as the server sends it; lessons: this customer's progress, lesson -> answered right.
+const state = { customers: [], strategies: {}, archetypes: {}, sleeves: {}, quiz: [], lessonBook: {}, traded: "",
+  questions: 0, accountData: [], coach: "", id: null, known: {}, ...blank() };
 let run = 0; // grows when the customer changes, so a late answer for the previous one is dropped
+let charts = 0; // gives each chart its own gradient id
 
-/** Builds an element. Text children are set as text, never as HTML: what Claude or the customer wrote stays text. */
+/** Builds an element. Text children are set as text, never as HTML: what a model or the customer wrote stays text. */
 function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
     if (value == null || value === false) continue;
     if (key === "class") el.className = value;
-    else if (key === "icon") el.innerHTML = value; // only ever one of the ICON strings above
+    else if (key === "icon") el.innerHTML = value; // only ever one of the ICON strings above, or a chart built here
     else if (key.startsWith("on")) el.addEventListener(key.slice(2), value);
     else el.setAttribute(key, value === true ? "" : value);
   }
@@ -62,43 +81,161 @@ async function api(path, body) {
 }
 
 const me = () => state.customers.find((c) => c.id === state.id);
-const profile = () => state.profiles[state.profile];
+const strategy = () => state.strategies[state.strategy];
+const archetype = () => state.archetypes[state.archetype];
 const avatar = (c) => h("span", { class: "avatar" }, c.first_name[0]);
-const when = (iso) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const sleeveOf = (etf) => etf.sleeve || FAMILY_SLEEVE[etf.family] || "satellites";
 
 function go(name) {
   closeSheet();
   for (const view of document.querySelectorAll(".view")) view.classList.toggle("is-active", view.id === `view-${name}`);
 }
 
-// ---- Bottom sheet -------------------------------------------------------------------------------------------
+// ---- Bottom sheet and toast -----------------------------------------------------------------------------------
 function openSheet(...children) {
   $("sheet").replaceChildren(...children);
   $("sheet").hidden = $("backdrop").hidden = false;
+  $("sheet").scrollTop = 0;
 }
 function closeSheet() {
   $("sheet").hidden = $("backdrop").hidden = true;
 }
+function toast(text) {
+  const el = h("div", { class: "toast pop", role: "status" }, h("span", { icon: ICON.check }), text);
+  $("screen").append(el);
+  setTimeout(() => el.remove(), 2600);
+}
+
+// ---- Small pieces -----------------------------------------------------------------------------------------------
+const section = (title, ...children) => h("div", { class: "section" }, h("p", { class: "eyebrow" }, title), ...children);
+const ticks = (items, icon = ICON.check) => h("ul", { class: "ticks" }, items.map((text) => h("li", {}, h("span", { icon }), text)));
+const delta = (x, digits = 1) => h("span", { class: `delta is-${tone(x)}` }, signed(x, digits));
+const note = (text) => h("p", { class: "fine" }, text);
+const PAST = "Past performance is not a reliable indicator of future results.";
+const NOT_ADVICE = "Information, not advice: you decide and place each order.";
+
+function initials(ticker) {
+  const words = ticker.replace(/[^A-Za-z0-9 ]/g, "").split(" ").filter(Boolean);
+  return (words.length > 1 ? words[0][0] + words[1][0] : words[0].slice(0, 2)).toUpperCase();
+}
+const token = (etf) => h("span", { class: "token" }, initials(etf.ticker), h("i", { style: `background:var(${COLOR[sleeveOf(etf)]})` }));
+
+// ---- Charts -----------------------------------------------------------------------------------------------------
+/** A line chart of a price or a portfolio's value, with its change in % over the range picked (1M, 3M, 1Y, Max).
+ * Drag or hover to read any day. `money`: an amount to show what it would have become; `price`: show the price. */
+function lineChart(points, { money = null, price = false, caption = PAST } = {}) {
+  const id = `g${(charts += 1)}`;
+  const W = 360, H = 150, PAD = 10;
+  const head = h("div", { class: "chart-head" });
+  const box = h("div", { class: "chart-box" });
+  const tabs = h("div", { class: "ranges", role: "tablist" });
+  const axis = h("div", { class: "chart-axis" });
+  if (!points || points.length < 2) {
+    return h("div", { class: "chart is-empty" }, h("p", { class: "fine" }, "No chart yet: the morning run has not been done."));
+  }
+  let range = "1Y";
+  let shown = [];
+  const pick = () => {
+    const end = new Date(points[points.length - 1].date);
+    const from = new Date(end);
+    from.setDate(from.getDate() - RANGES.find((r) => r[0] === range)[1]);
+    const first = points.reduce((at, p, i) => (new Date(p.date) <= from ? i : at), 0);
+    shown = points.slice(first);
+    if (shown.length < 2) shown = points.slice(-2);
+  };
+  const header = (at) => {
+    const first = shown[0].value;
+    const point = shown[at ?? shown.length - 1];
+    const change = point.value / first - 1;
+    const words = at == null ? (range === "Max" ? `since ${day(shown[0].date)}` : RANGE_WORDS[range]) : `${day(shown[0].date)} to ${day(point.date)}`;
+    const main = price ? eur2.format(point.value) : signed(change);
+    const sub = money ? `${eur.format(money)} would have become ${eur.format(money * (1 + change))}` : null;
+    head.replaceChildren(...[
+      h("div", { class: "chart-figure" }, h("b", { class: price ? "" : `is-${tone(change)}` }, main),
+        price ? delta(change) : null, h("small", {}, words)),
+      sub ? h("p", { class: "chart-sub" }, sub) : null].filter(Boolean));
+  };
+  const draw = () => {
+    pick();
+    const t0 = new Date(shown[0].date).getTime(), t1 = new Date(shown[shown.length - 1].date).getTime();
+    const values = shown.map((p) => p.value);
+    let lo = Math.min(...values), hi = Math.max(...values);
+    const pad = (hi - lo || hi || 1) * 0.08;
+    lo -= pad; hi += pad;
+    const x = (p) => ((new Date(p.date).getTime() - t0) / (t1 - t0 || 1)) * W;
+    const y = (v) => PAD + (1 - (v - lo) / (hi - lo)) * (H - 2 * PAD);
+    const line = shown.map((p, i) => `${i ? "L" : "M"}${x(p).toFixed(1)} ${y(p.value).toFixed(1)}`).join(" ");
+    const way = tone(shown[shown.length - 1].value / shown[0].value - 1);
+    box.className = `chart-box is-${way}`;
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="fill-top"/><stop offset="1" class="fill-bottom"/></linearGradient></defs>
+      <line class="base" x1="0" x2="${W}" y1="${y(shown[0].value).toFixed(1)}" y2="${y(shown[0].value).toFixed(1)}"/>
+      <path class="area" d="${line} L${W} ${H} L0 ${H}Z" fill="url(#${id})"/>
+      <path class="line" d="${line}"/>
+      <line class="cursor" x1="0" x2="0" y1="0" y2="${H}" visibility="hidden"/>
+      <circle class="dot" r="4.5" cx="${W}" cy="${y(shown[shown.length - 1].value).toFixed(1)}"/></svg>`;
+    const svgEl = box.querySelector("svg"), cursor = box.querySelector(".cursor"), dot = box.querySelector(".dot");
+    const reset = () => { cursor.setAttribute("visibility", "hidden"); dot.setAttribute("cx", W); dot.setAttribute("cy", y(shown[shown.length - 1].value)); header(); };
+    const move = (event) => {
+      const rect = svgEl.getBoundingClientRect();
+      const t = t0 + ((event.clientX - rect.left) / rect.width) * (t1 - t0);
+      let best = 0;
+      shown.forEach((p, i) => { if (Math.abs(new Date(p.date).getTime() - t) < Math.abs(new Date(shown[best].date).getTime() - t)) best = i; });
+      const px = x(shown[best]);
+      cursor.setAttribute("x1", px); cursor.setAttribute("x2", px); cursor.setAttribute("visibility", "visible");
+      dot.setAttribute("cx", px); dot.setAttribute("cy", y(shown[best].value));
+      header(best);
+    };
+    svgEl.addEventListener("pointermove", move);
+    svgEl.addEventListener("pointerdown", move);
+    svgEl.addEventListener("pointerleave", reset);
+    axis.replaceChildren(h("span", {}, day(shown[0].date)), h("span", {}, day(shown[shown.length - 1].date)));
+    header();
+    tabs.replaceChildren(...RANGES.map(([name]) => h("button", { class: name === range ? "range is-on" : "range", type: "button",
+      role: "tab", "aria-selected": String(name === range), onclick: () => { range = name; draw(); } }, name)));
+  };
+  draw();
+  return h("div", { class: "chart" }, head, box, axis, tabs, caption ? note(caption) : null);
+}
+
+/** A donut of shares (each {name, weight, color}) with the % printed beside each, and a figure in the middle. */
+function donut(parts, middle, under, amount = null) {
+  const r = 54, c = 2 * Math.PI * r, gap = parts.length > 1 ? 2.5 : 0;
+  let offset = 0;
+  const rings = parts.map((p) => {
+    const length = Math.max(p.weight * c - gap, 0.5);
+    const ring = `<circle r="${r}" cx="70" cy="70" fill="none" stroke="var(${p.color})" stroke-width="20"
+      stroke-dasharray="${length.toFixed(2)} ${(c - length).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}"/>`;
+    offset += p.weight * c;
+    return ring;
+  }).join("");
+  const art = h("div", { class: "donut-art", icon: `<svg viewBox="0 0 140 140" aria-hidden="true"><g transform="rotate(-90 70 70)">${rings}</g></svg>` },
+    h("div", { class: "donut-mid" }, h("b", {}, middle), under ? h("small", {}, under) : null));
+  const legend = h("ul", { class: "donut-legend" }, parts.map((p) => h("li", {}, h("i", { style: `background:var(${p.color})` }),
+    h("span", {}, p.name), h("b", {}, pct(p.weight)), amount != null ? h("small", {}, eur.format(amount * p.weight)) : null)));
+  return h("div", { class: "donut", role: "img", "aria-label": parts.map((p) => `${p.name} ${pct(p.weight)}`).join(", ") }, art, legend);
+}
+const sleeveParts = (sleeves) => sleeves.map((s) => ({ name: s.name, weight: s.weight, color: COLOR[s.key] }));
 
 // ---- Welcome ------------------------------------------------------------------------------------------------
 function renderWelcome() {
   const c = me();
-  const back = Boolean(state.profile);
-  const status = state.decision === "approved" ? "is approved" : "is waiting for your approval";
+  const back = Boolean(state.strategy);
   $("view-welcome").replaceChildren(
     h("div", { class: "welcome-top" },
       h("p", { class: "wordmark" }, "ReBel"),
       h("h2", { class: "display welcome-title" },
         ...(back ? ["Welcome back, ", h("em", {}, `${c.first_name}.`)] : ["Investing that fits ", h("em", {}, "you.")])),
-      h("p", { class: "welcome-sub" }, back ? `Your ${profile().label} plan ${status}.`
-        : `Three minutes with ${state.coach}. A plan built for your life. One tap to approve it.`)),
+      h("p", { class: "welcome-sub" }, back
+        ? `${strategy().label} risk level · ${state.orders.length ? `${state.orders.length} order${state.orders.length > 1 ? "s" : ""} placed` : "nothing invested yet"}.`
+        : `Three minutes with ${state.coach}. Your risk level, what fits it, and AI that explains every ETF. You decide.`)),
     h("div", { class: "hero-art", icon: HERO_ART }),
     h("div", { class: "grow" }),
     h("div", { class: "welcome-bottom" },
       h("div", { class: "signed" }, avatar(c),
         h("div", {}, h("b", {}, `${c.first_name}, ${c.age}`), h("small", {}, `Signed in · ${c.city}`))),
-      h("button", { class: "btn btn-primary", type: "button", onclick: back ? openPlan : () => go("consent") },
-        back ? "See my plan" : "Get started")));
+      h("button", { class: "btn btn-primary", type: "button", onclick: back ? () => openMain(state.orders.length ? "portfolio" : "explore") : () => go("consent") },
+        back ? "Open ReBel" : "Get started")));
 }
 
 // ---- Consent ------------------------------------------------------------------------------------------------
@@ -143,15 +280,21 @@ function setTyping(on) {
 }
 
 /** The answers to tap for the question asked. The customer's rules take several: tap them, then confirm. */
-function showChoices() {
+function showChoices(again = false) {
   const question = state.question;
-  const chip = (label, onclick, on) => h("button", { class: on ? "chip pop is-on" : "chip pop", type: "button", onclick }, label);
+  // `again`: the same chips drawn again after a tap, so they do not bounce in a second time
+  const chip = (label, onclick, look = "") => h("button", { class: `chip${again ? "" : " pop"}${look ? ` ${look}` : ""}`, type: "button",
+    onclick, "aria-pressed": look === "is-on" ? "true" : look === "is-off" ? "false" : null }, label);
   let chips = [];
   if (question?.kind === "rules") {
-    const toggle = (value) => { state.picked = state.picked.includes(value) ? state.picked.filter((v) => v !== value) : [...state.picked, value]; showChoices(); };
-    chips = [...question.choices.map((c) => chip(c.label, () => toggle(c.value), state.picked.includes(c.value))),
-      chip(state.picked.length ? "That is all" : "No, nothing", () => answer(state.picked,
-        state.picked.length ? question.choices.filter((c) => state.picked.includes(c.value)).map((c) => c.label).join(", ") : "No, nothing"))];
+    // Several answers: each tap ticks or unticks one, then the last chip confirms them all at once.
+    const toggle = (value) => { state.picked = state.picked.includes(value) ? state.picked.filter((v) => v !== value) : [...state.picked, value]; showChoices(true); };
+    const labels = question.choices.filter((c) => state.picked.includes(c.value)).map((c) => c.label);
+    chips = [h("p", { class: "chips-hint" }, state.picked.length ? `${state.picked.length} ticked · tap again to untick` : "Tick all that apply, then confirm"),
+      ...question.choices.map((c) => chip(state.picked.includes(c.value) ? `✓ ${c.label}` : c.label, () => toggle(c.value),
+        state.picked.includes(c.value) ? "is-on" : "is-off")),
+      chip(state.picked.length ? `Confirm: never ${labels.join(", ").toLowerCase()}` : "No, nothing", () => answer(state.picked,
+        state.picked.length ? labels.join(", ") : "No, nothing"), "is-confirm")];
   } else if (question) {
     chips = question.choices.map((c) => chip(c.label, () => answer(c.value, c.label)));
   }
@@ -186,15 +329,17 @@ async function turn(reply) {
   try {
     const next = await api("/api/chat", { customer: state.id, consent: state.consent, answers: state.answers, reply });
     if (mine !== run) return;
+    const again = Boolean(reply) && next.question?.id === reply.question;  // not understood: the same question stays
     Object.assign(state, { answers: next.answers, question: next.question, picked: [], odds: next.odds, seen: next.seen,
-      sheet: next.sheet, flags: next.flags, left: next.left, profile: next.profile, why: next.why });
+      sheet: next.sheet, flags: next.flags, left: next.left, archetype: next.archetype, why: next.why,
+      strategy: next.strategy, strategy_why: next.strategy_why, orders: [], unlocked: false, lessons: {} });
     setTyping(false);
     for (const line of next.said) addBubble("coach", line);
-    if (next.question) {
+    if (next.question && !again) {
       addBubble("coach", next.question.text);
-    } else {
-      addToChat(h("div", { class: "ready pop" }, h("b", {}, "Your profile is ready"),
-        h("p", {}, "I found the one that fits your answers, and the plan that goes with it."),
+    } else if (!next.question) {
+      addToChat(h("div", { class: "ready pop" }, h("b", {}, "Your result is ready"),
+        h("p", {}, "Your risk level, set by fixed rules on your answers, and the kind of investor you are."),
         h("button", { class: "btn btn-primary", type: "button", onclick: () => { renderReveal(); go("reveal"); } }, "Show me")));
     }
   } catch (error) {
@@ -214,229 +359,494 @@ function adviserSheet() {
     h("button", { class: "btn btn-ghost", type: "button", onclick: closeSheet }, "Close"));
 }
 
-// ---- Profile reveal -----------------------------------------------------------------------------------------
-const section = (title, ...children) => h("div", { class: "section" }, h("p", { class: "eyebrow" }, title), ...children);
-const ticks = (items, icon = ICON.check) => h("ul", { class: "ticks" }, items.map((text) => h("li", {}, h("span", { icon }), text)));
-const tile = (label, value, wide) => h("div", { class: wide ? "tile wide" : "tile" }, h("small", {}, label), h("b", {}, value));
+/** ReBel is execution-only. Who wants someone else to decide is sent to Belfius: advice or a managed portfolio. */
+function handoffSheet() {
+  openSheet(h("h3", {}, "Rather have someone decide?"),
+    h("p", {}, "In ReBel you decide and place each order yourself. If you would rather not, Belfius can take over:"),
+    h("div", { class: "options" },
+      h("div", { class: "option" }, h("b", {}, "Belfius advises, you decide"), h("small", {}, "An adviser proposes, you approve each move. MyPortfolio, funds.")),
+      h("div", { class: "option" }, h("b", {}, "Belfius manages it for you"), h("small", {}, "A managed portfolio: Belfius decides within your risk level, for a fee."))),
+    h("p", {}, `What you told ${state.coach} goes with you, so you never start again. This is a prototype: nothing is sent.`),
+    h("button", { class: "btn btn-ghost", type: "button", onclick: closeSheet }, "Close"));
+}
+const handoffCard = () => h("button", { class: "handoff", type: "button", onclick: handoffSheet },
+  h("span", { class: "handoff-icon", icon: ICON.person }),
+  h("span", { class: "grow" }, h("b", {}, "Rather have someone decide for you?"), h("small", {}, "Belfius advice or a managed portfolio")), h("span", { class: "chev" }, "›"));
+
+// ---- Result: risk level and style ----------------------------------------------------------------------------
+const levelDots = (level) => h("span", { class: "dots", "aria-label": `level ${level} of 3` }, [1, 2, 3].map((n) => h("i", { class: n <= level ? "is-on" : "" })));
 const flagsPanel = () => h("div", { class: "panel is-warn" },
   h("b", {}, "An adviser looks at this with you first"), ticks(state.flags, ICON.alert));
 
 function renderReveal() {
-  const p = profile();
+  const s = strategy(), a = archetype();
   $("view-reveal").replaceChildren(
     h("div", { class: "scroll" },
-      h("div", { class: `reveal-hero p-${state.profile}` },
-        h("p", { class: "eyebrow" }, "Your investor profile"), h("h2", { class: "display" }, p.label), h("p", {}, p.tagline)),
-      h("div", { class: "tiles" }, tile("Horizon", p.horizon), tile("Risk level", `${p.level} of 5`), tile("Style", p.risk, true)),
-      section("Why this one", h("div", { class: "panel" }, h("p", {}, state.why))),
+      h("div", { class: `reveal-hero s-${state.strategy}` },
+        h("p", { class: "eyebrow" }, "Your risk level"),
+        h("h2", { class: "display" }, s.label),
+        h("p", {}, s.tagline), h("div", { class: "level" }, levelDots(s.level), h("small", {}, `level ${s.level} of 3`))),
+      section("Set by rules on your answers", h("div", { class: "panel" }, ticks(state.strategy_why))),
       state.flags.length ? section("Before you invest", flagsPanel()) : null,
-      section("How your money is handled", h("div", { class: "panel" }, ticks(p.rules))),
+      h("div", { class: `style-card p-${state.archetype}` },
+        h("p", { class: "eyebrow" }, "Your investor style"),
+        h("b", {}, a.label), h("p", {}, a.tagline),
+        h("small", {}, state.why)),
+      section(`${state.coach} helps you first with`, h("div", { class: "panel" },
+        ticks(a.lessons.map((key) => state.lessonBook[key].title), ICON.spark))),
+      h("p", { class: "fine pad-x" }, "Your risk level decides what you are shown and what you can buy. Your style only decides how we help."),
       h("div", { style: "height:14px" })),
     h("div", { class: "footer" },
-      h("button", { class: "btn btn-primary", type: "button", onclick: openPlan }, "See my plan"),
+      h("button", { class: "btn btn-primary", type: "button", onclick: () => openMain("explore") }, `See what fits ${s.label}`),
       h("button", { class: "btn btn-text", type: "button", onclick: startOver }, "Redo the questions")));
 }
 
-// ---- Plan ---------------------------------------------------------------------------------------------------
-async function openPlan() {
-  state.plan = await api(`/api/plan?customer=${state.id}`);
-  renderPlan();
-  go("plan");
+// ---- The app: three tabs ---------------------------------------------------------------------------------------
+async function load() {
+  const [reference, etfs, portfolio] = await Promise.all([
+    api(`/api/reference?customer=${state.id}`), api(`/api/etfs?customer=${state.id}`), api(`/api/portfolio?customer=${state.id}`)]);
+  Object.assign(state, { reference, etfs: etfs.etfs, portfolio });
 }
 
-/** One whole split into its sleeves: a 28px bar with the share printed in each block wide enough for it. */
-function allocation(lines, amount) {
-  const groups = Object.entries(state.sleeves).map(([key, name]) => ({ key, name, color: COLOR[key],
-    weight: sum(lines.filter((l) => l.sleeve === key), (l) => l.weight) })).filter((group) => group.weight > 0);
-  const tip = h("div", { class: "tip", hidden: true });
-  const bar = h("div", { class: "bar", role: "img", "aria-label": groups.map((g) => `${g.name} ${pct(g.weight)}`).join(", ") });
-  for (const group of groups) {
-    const part = h("div", { class: "part", tabindex: "0", style: `flex:${group.weight} 0 0;background:var(${group.color});color:var(${group.color.replace("--", "--on-")})`,
-      "aria-label": `${group.name}: ${pct(group.weight)}, ${eur.format(amount * group.weight)}` }, group.weight >= 0.1 ? pct(group.weight) : "");
-    const show = () => {
-      tip.replaceChildren(h("b", {}, group.name), ` · ${pct(group.weight)} · ${eur.format(amount * group.weight)}`);
-      tip.hidden = false;
-      const middle = part.offsetLeft + part.offsetWidth / 2;
-      tip.style.left = `${Math.min(Math.max(middle, tip.offsetWidth / 2), bar.offsetWidth - tip.offsetWidth / 2)}px`;
-    };
-    const hide = () => { tip.hidden = true; };
-    for (const [event, action] of [["mouseenter", show], ["focus", show], ["mouseleave", hide], ["blur", hide]]) part.addEventListener(event, action);
-    bar.append(part);
+async function openMain(tab) {
+  state.tab = tab || state.tab;
+  await load();
+  renderMain();
+  go("main");
+  renderWelcome();
+}
+
+function renderMain() {
+  const tabs = [["portfolio", "Portfolio", ICON.pie], ["explore", "Explore", ICON.compass], ["learn", "Learn", ICON.book]];
+  const body = { portfolio: portfolioTab, explore: exploreTab, learn: learnTab }[state.tab]();
+  $("view-main").replaceChildren(
+    h("div", { class: "scroll", id: "main-scroll" }, body, h("div", { style: "height:90px" })),
+    h("nav", { class: "tabbar" }, tabs.map(([key, name, icon]) => h("button", { class: key === state.tab ? "tab is-on" : "tab", type: "button",
+      "aria-current": key === state.tab ? "page" : null, onclick: () => { state.tab = key; renderMain(); $("main-scroll").scrollTop = 0; } },
+      h("span", { icon }), h("small", {}, name)))));
+}
+
+const pageHead = (title, aside) => h("div", { class: "page-head" }, h("h2", { class: "display" }, title), aside || null);
+const strategyBadge = () => h("span", { class: `badge s-${state.strategy}` }, `${strategy().label} · level ${strategy().level} of 3`);
+
+// Portfolio: what the customer holds, its value and its mix against the reference.
+function portfolioTab() {
+  const p = state.portfolio;
+  if (!p.lines.length) {
+    return h("div", {}, pageHead("Portfolio", strategyBadge()),
+      h("div", { class: "empty" }, h("div", { class: "empty-art", icon: ICON.pie }),
+        h("b", {}, "Nothing invested yet"),
+        h("p", {}, `Your ${strategy().label} reference shows a mix that fits your risk level. You choose what to buy, ETF by ETF.`),
+        h("button", { class: "btn btn-primary", type: "button", onclick: () => { state.tab = "explore"; renderMain(); } }, "See your reference")),
+      h("div", { class: "section" }, handoffCard()));
   }
-  const legend = h("ul", { class: "legend" }, groups.map((g) => h("li", {}, h("i", { style: `background:var(${g.color})` }), g.name,
-    h("span", {}, g.weight >= 0.1 ? eur.format(amount * g.weight) : `${pct(g.weight)} · ${eur.format(amount * g.weight)}`))));
-  return h("div", { class: "alloc" }, tip, bar, legend);
+  const gain = p.value - p.invested;
+  return h("div", {},
+    pageHead("Portfolio", strategyBadge()),
+    h("div", { class: "balance" }, h("small", {}, "Total value"), h("b", {}, eur2.format(p.value)),
+      h("span", { class: "balance-delta" }, delta(p.gain), h("small", {}, `${gain >= 0 ? "+" : "−"}${eur2.format(Math.abs(gain))} since you bought`))),
+    p.history && p.history.length > 1 ? h("div", { class: "card-flat" }, lineChart(p.history, {
+      caption: "What the ETFs you hold today, in today's units, did before. " + PAST })) : null,
+    section("Your mix", h("div", { class: "panel" }, donut(sleeveParts(p.sleeves), eur.format(p.value), `${p.lines.length} ETF${p.lines.length > 1 ? "s" : ""}`, p.value))),
+    section("Against your reference", h("div", { class: "panel" },
+      h("div", { class: "health" }, p.health.map((row) => h("div", { class: `health-row is-${row.state}` },
+        h("span", { class: "k" }, row.name),
+        h("span", { class: "bars" }, h("i", { class: "held", style: `width:${Math.min(row.held, 1) * 100}%` }), h("i", { class: "target", style: `left:${Math.min(row.target, 1) * 100}%` })),
+        h("span", { class: "v" }, `${pct(row.held)} / ${pct(row.target)}`),
+        h("span", { class: "state" }, { ok: "OK", watch: "Watch", gap: "Gap" }[row.state])))),
+      p.ideas.length ? h("div", { class: "ideas" }, h("b", {}, "To get closer to your reference, look at"), ticks(p.ideas, ICON.spark),
+        note("Kinds of assets to look at, never an order. You pick the ETFs, or none.")) : h("p", { class: "fine" }, "You are close to your reference."))),
+    section("Holdings", h("div", { class: "lines" }, p.lines.map((line) => h("button", { class: "line", type: "button", onclick: () => openEtf(line.ticker) },
+      token(line), h("span", { class: "name" }, h("b", {}, line.ticker), h("small", {}, `${pct(line.weight)} · ${line.theme}`)),
+      h("span", { class: "figures" }, h("b", {}, eur2.format(line.value)), delta(line.gain)))))),
+    h("div", { class: "section" }, handoffCard()));
 }
 
-function initials(ticker) {
-  const words = ticker.replace(/[^A-Za-z0-9 ]/g, "").split(" ").filter(Boolean);
-  return (words.length > 1 ? words[0][0] + words[1][0] : words[0].slice(0, 2)).toUpperCase();
+// Explore: the strategy's reference portfolio (information), then every ETF of the universe.
+function exploreTab() {
+  const ref = state.reference, s = strategy();
+  const open = ref.lines.filter((l) => !l.lock), locked = ref.lines.filter((l) => l.lock);
+  const groups = [];
+  for (const etf of state.etfs) {
+    const group = groups.find((g) => g.theme === etf.theme) || (groups.push({ theme: etf.theme, items: [] }), groups[groups.length - 1]);
+    group.items.push(etf);
+  }
+  return h("div", {},
+    pageHead("Explore", strategyBadge()),
+    h("div", { class: `ref-card s-${state.strategy}` },
+      h("p", { class: "eyebrow" }, "Your reference portfolio"),
+      h("b", {}, `${s.label}`), h("p", {}, `A mix that fits ${s.fits}. Fixed rules, the same for every ${s.label} customer.`)),
+    h("div", { class: "card-flat" }, lineChart(ref.history, { money: ref.amount || 10000,
+      caption: `The ${s.label} reference, put back to its weights each month. ${PAST}` })),
+    section("Where the money goes", h("div", { class: "panel" }, donut(sleeveParts(ref.sleeves), "100%", `${ref.lines.length} ETFs`, ref.amount || null))),
+    ...Object.keys(state.sleeves).map((key) => refSleeve(ref.lines, key)),
+    ref.left_out.length ? section("Your rules", h("div", { class: "panel" },
+      ticks(ref.left_out.map((out) => `No ${out.rule.toLowerCase()}: ${out.ticker} is left out, its ${pct(out.weight)} goes to ${ref.lines[0].ticker}`)))) : null,
+    h("div", { class: "section" },
+      h("button", { class: "btn btn-primary", type: "button", onclick: basketSheet, disabled: !open.length }, "Buy this mix myself"),
+      note(`${NOT_ADVICE}${locked.length ? ` ${locked.length} locked ETF${locked.length > 1 ? "s are" : " is"} left out.` : ""}`)),
+    h("div", { class: "section" }, handoffCard()),
+    section("All ETFs", note("The whole ReBel selection: open one to see what our AI reads in it."),
+      ...groups.map((g) => h("div", { class: "group" }, h("p", { class: "group-name" }, g.theme),
+        h("div", { class: "lines" }, g.items.map(catalogueRow))))));
 }
 
-function lineRow(line) {
-  return h("button", { class: "line", type: "button", onclick: () => openEtf(line) },
-    h("span", { class: "token" }, initials(line.ticker), h("i", { style: `background:var(${COLOR[line.sleeve]})` })),
-    h("span", { class: "name" }, h("b", {}, line.ticker), h("small", {}, line.theme)),
-    h("span", { class: "figures" }, h("b", {}, pct(line.weight)), h("small", {}, eur.format(line.eur))));
-}
-
-function sleeve(lines, key) {
+function refSleeve(lines, key) {
   const mine = lines.filter((line) => line.sleeve === key);
   if (!mine.length) return null;
   return h("div", { class: "section" },
-    h("div", { class: "sleeve-head" }, h("b", {}, `${state.sleeves[key]} · ${pct(sum(mine, (l) => l.weight))}`),
+    h("div", { class: "sleeve-head" }, h("b", {}, h("i", { class: "swatch", style: `background:var(${COLOR[key]})` }), `${state.sleeves[key]} · ${pct(sum(mine, (l) => l.weight))}`),
       h("small", {}, mine.length > 1 ? `${mine.length} ETFs` : "1 ETF")),
-    h("div", { class: "lines" }, mine.map(lineRow)));
+    h("div", { class: "lines" }, mine.map((line) => h("button", { class: line.lock ? "line is-locked" : "line", type: "button", onclick: () => openEtf(line.ticker) },
+      token(line), h("span", { class: "name" }, h("b", {}, line.ticker, line.lock ? h("span", { class: "lock", icon: ICON.lock }) : null),
+        h("small", {}, line.lock || line.theme)),
+      h("span", { class: "figures" }, h("b", {}, pct(line.weight)),
+        line.returns["1 year"] != null ? h("small", {}, delta(line.returns["1 year"]), " 1Y") : null)))));
+}
+
+function catalogueRow(etf) {
+  const year = etf.returns["1 year"];
+  return h("button", { class: etf.lock ? "line is-locked" : "line", type: "button", onclick: () => openEtf(etf.ticker) },
+    token(etf), h("span", { class: "name" }, h("b", {}, etf.ticker, etf.lock ? h("span", { class: "lock", icon: ICON.lock }) : null),
+      h("small", {}, etf.lock || etf.name)),
+    h("span", { class: "figures" }, year != null ? delta(year) : h("small", {}, "—"), h("small", {}, "1 year")));
+}
+
+// Learn: what the coach helps with first, the check that opens complex products, and the way to a person.
+function learnTab() {
+  const s = strategy(), a = archetype();
+  const firsts = a.lessons.filter((key) => state.lessons[key]).length;
+  const others = Object.keys(state.lessonBook).filter((key) => !a.lessons.includes(key));
+  const check = !s.complex
+    ? h("div", { class: "panel" }, h("b", {}, "Leveraged, inverse and crypto ETFs"),
+      h("p", {}, `They are not part of the ${s.label} risk level, so they stay locked. Your risk level follows your answers.`))
+    : state.unlocked
+      ? h("div", { class: "panel is-good" }, h("b", {}, "Complex products unlocked"),
+        h("p", {}, "You passed the check on leveraged, inverse and crypto ETFs. They can fall fast: keep them a small part."))
+      : h("div", { class: "panel" }, h("b", {}, "Unlock leveraged, inverse and crypto ETFs"),
+        h("p", {}, "Three questions on what can go wrong. Every answer must be right: the check is recorded."),
+        h("button", { class: "btn btn-primary", type: "button", onclick: quizSheet }, "Take the 3-question check"));
+  return h("div", {},
+    pageHead("Learn", h("span", { class: `badge p-${state.archetype}` }, a.label)),
+    h("div", { class: `style-card p-${state.archetype}` }, h("p", { class: "eyebrow" }, "Your investor style"),
+      h("b", {}, a.label), h("p", {}, a.tagline)),
+    section(`${state.coach} helps you first with`,
+      h("div", { class: "learn-progress" }, h("span", { class: "track" }, h("i", { style: `width:${(firsts / a.lessons.length) * 100}%` })),
+        h("small", {}, `${firsts} of ${a.lessons.length} done`)),
+      h("div", { class: "lessons" }, a.lessons.map((key, i) => lessonRow(key, i + 1)))),
+    section("Good to know", h("div", { class: "panel" }, ticks(a.tips, ICON.spark))),
+    section("More to learn", h("div", { class: "lessons" }, others.map((key) => lessonRow(key)))),
+    section("Products", check),
+    h("div", { class: "section" }, handoffCard()));
+}
+
+/** One lesson in a list: its number (a tick once answered right), its title, then a minute or "Done". */
+function lessonRow(key, n = null) {
+  const done = Boolean(state.lessons[key]);
+  return h("button", { class: done ? "lesson is-done" : "lesson", type: "button", onclick: () => lessonSheet(key) },
+    h("span", { class: "lesson-n", icon: done ? ICON.check : null }, done ? null : n ? String(n) : "·"),
+    h("span", { class: "grow" }, state.lessonBook[key].title), h("small", {}, done ? "Done" : "1 min"), h("span", { class: "chev" }, "›"));
+}
+
+/** A lesson: a few plain sentences, one question, then why the answer is right or wrong. A wrong answer can be tried again. */
+function lessonSheet(key) {
+  const lesson = state.lessonBook[key];
+  const feedback = h("div", { class: "lesson-feedback", hidden: true });
+  const choices = h("div", { class: "quiz-choices" });
+  const ask = () => {
+    choices.replaceChildren(...lesson.choices.map((c) => {
+      const chip = h("button", { class: "choice", type: "button" }, c.label);
+      chip.addEventListener("click", async () => {
+        for (const other of choices.children) other.disabled = true;
+        chip.classList.add("is-on");
+        try {
+          const out = await api("/api/lesson", { customer: state.id, lesson: key, answer: c.value });
+          state.lessons = out.state.lessons;
+          chip.classList.replace("is-on", out.right ? "is-right" : "is-wrong");
+          feedback.className = `lesson-feedback ${out.right ? "is-good" : "is-wait"}`;
+          const why = out.why.replace(/^(Right|No): /, "");
+          feedback.replaceChildren(...[h("b", {}, out.right ? "Right." : "Not quite."), h("p", {}, why.charAt(0).toUpperCase() + why.slice(1)),
+            out.right ? null : h("p", {}, `The right answer: ${out.right_answer}.`),
+            out.right ? h("button", { class: "btn btn-primary", type: "button", onclick: () => { closeSheet(); renderMain(); } }, "Done")
+              : h("button", { class: "btn btn-ghost", type: "button", onclick: () => { feedback.hidden = true; ask(); } }, "Try again")].filter(Boolean));
+          feedback.hidden = false;
+          renderMain();
+          sync();
+        } catch (error) {
+          feedback.replaceChildren(h("p", {}, error.message));
+          feedback.hidden = false;
+        }
+      });
+      return chip;
+    }));
+  };
+  ask();
+  openSheet(h("p", { class: "eyebrow" }, "Lesson · 1 minute"), h("h3", {}, lesson.title),
+    h("div", { class: "lesson-text" }, lesson.text.map((line) => h("p", {}, line))),
+    h("div", { class: "quiz-q" }, h("b", {}, lesson.question), choices), feedback,
+    h("button", { class: "btn btn-text", type: "button", onclick: closeSheet }, "Close"));
 }
 
 // ---- ETF sheet ----------------------------------------------------------------------------------------------
-const shownValue = (line) => (line.block === "returns" ? `${line.value >= 0 && line.name !== "volatility" ? "+" : ""}${(line.value * 100).toFixed(1)}%` : line.state);
+const shownValue = (line) => (line.block === "returns" ? signed(line.value) : line.state);
+const host = (url) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } };
 
-/** Opens the sheet of one ETF of the plan: what it did, where its trend stands, what macro means for it. */
-async function openEtf(line) {
+/** Opens the sheet of one ETF: its chart, what our AI reads in it, its returns, trends, macro and news. */
+async function openEtf(ticker) {
   let sheet = null;
-  try { sheet = await api(`/api/etf?ticker=${encodeURIComponent(line.ticker)}`); } catch (error) { sheet = { missing: error.message }; }
-  renderEtf(line, sheet);
+  try { sheet = await api(`/api/etf?ticker=${encodeURIComponent(ticker)}`); } catch (error) { sheet = { missing: error.message }; }
+  const etf = (state.etfs || []).find((e) => e.ticker === ticker) || { ticker, lock: "" };
+  const line = (state.reference?.lines || []).find((l) => l.ticker === ticker);
+  renderEtf(etf, line, sheet);
   go("etf");
+  $("etf-scroll").scrollTop = 0;
 }
 
-function renderEtf(line, sheet) {
+function renderEtf(etf, line, sheet) {
   const detail = h("div", { class: "section", id: "tile-detail" });
   const pick = (item) => {
     const checks = item.detail.split("; ").filter(Boolean);
-    const answer = h("p", { class: "why", hidden: true });
+    const answerEl = h("p", { class: "why", hidden: true });
     const ask = h("button", { class: "btn btn-ghost", type: "button" }, `Ask ${state.coach} why`);
     ask.addEventListener("click", async () => {
       ask.disabled = true;
       ask.textContent = `${state.coach} is reading the sheet...`;
-      try { answer.textContent = (await api("/api/why", { ticker: line.ticker, block: item.block, name: item.name })).answer; } catch (error) { answer.textContent = error.message; }
-      answer.hidden = false;
+      try { answerEl.textContent = (await api("/api/why", { ticker: etf.ticker, block: item.block, name: item.name })).answer; } catch (error) { answerEl.textContent = error.message; }
+      answerEl.hidden = false;
       ask.remove();
     });
-    detail.replaceChildren(h("p", { class: "eyebrow" }, `${item.block} · ${item.name}`),
+    detail.replaceChildren(h("p", { class: "eyebrow" }, `${item.block} · ${item.label}`),
       h("div", { class: "panel" }, h("ul", { class: "ticks" }, (checks.length ? checks : [shownValue(item)]).map((text) =>
-        h("li", { class: text.includes(": no") ? "is-no" : "" }, h("span", { icon: text.includes(": no") ? ICON.cross : ICON.check }), text))), answer, ask));
+        h("li", { class: text.includes(": no") ? "is-no" : "" }, h("span", { icon: text.includes(": no") ? ICON.cross : ICON.check }), text))), answerEl, ask));
     detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
   const tiles = (block, title) => {
     const items = (sheet.lines || []).filter((l) => l.block === block);
     if (!items.length) return null;
     return section(title, h("div", { class: "sheet-tiles" }, items.map((item) => {
-      const [arrow, tone] = STATE[item.state] || ["", "plain"];
-      return h(block === "returns" ? "div" : "button", { class: `sheet-tile is-${tone}`, type: block === "returns" ? null : "button", onclick: block === "returns" ? null : () => pick(item) },
-        h("small", {}, item.name), h("b", {}, arrow ? `${arrow} ${item.state}` : shownValue(item)));
+      if (block === "returns") {
+        const t = item.name === "volatility" ? "plain" : { up: "good", down: "bad", flat: "plain" }[tone(item.value)];
+        return h("div", { class: `sheet-tile is-${t}` }, h("small", {}, item.label),
+          h("b", {}, item.name === "volatility" ? pct(item.value) : signed(item.value)));
+      }
+      const [arrow, look] = STATE[item.state] || ["", "plain"];
+      return h("button", { class: `sheet-tile is-${look}`, type: "button", onclick: () => pick(item) },
+        h("small", {}, item.label), h("b", {}, `${arrow} ${item.state}`));
     })));
   };
+  const news = sheet.news;
+  const lean = news ? (news.direction >= 0.15 ? ["Leans positive", "good"] : news.direction <= -0.15 ? ["Leans negative", "bad"] : ["No clear edge", "wait"]) : null;
+  const buy = etf.lock
+    ? h("div", { class: "footer" }, h("div", { class: "locked-note" }, h("span", { icon: ICON.lock }), etf.lock),
+      state.strategy && strategy().complex && !state.unlocked && ["crypto", "leveraged_inverse"].includes(etf.family)
+        ? h("button", { class: "btn btn-ghost", type: "button", onclick: quizSheet }, "Take the 3-question check") : null)
+    : h("div", { class: "footer" }, h("button", { class: "btn btn-primary", type: "button", onclick: () => buySheet(etf, line, sheet) }, `Buy ${etf.ticker}`));
   $("view-etf").replaceChildren(
     h("div", { class: "topbar" },
-      h("button", { class: "icon-btn", type: "button", "aria-label": "Back to my plan", icon: ICON.back, onclick: () => go("plan") }),
-      h("b", {}, line.ticker), h("span", { style: "width:40px" })),
-    h("div", { class: "scroll" },
-      h("div", { class: "amount" }, h("span", { class: "badge profile" }, state.sleeves[line.sleeve]),
-        h("h2", { class: "display etf-name" }, line.name),
-        h("p", {}, `${pct(line.weight)} of your plan · ${eur.format(line.eur)} · ISIN ${line.isin}`)),
+      h("button", { class: "icon-btn", type: "button", "aria-label": "Back", icon: ICON.back, onclick: () => { renderMain(); go("main"); } }),
+      h("b", {}, etf.ticker), h("span", { style: "width:40px" })),
+    h("div", { class: "scroll", id: "etf-scroll" },
+      h("div", { class: "etf-head" }, token(etf), h("div", {}, h("h2", { class: "etf-name" }, sheet.name || etf.ticker),
+        h("small", {}, [sheet.theme, sheet.isin].filter(Boolean).join(" · ")))),
       sheet.missing ? h("p", { class: "note" }, sheet.missing) : null,
-      tiles("returns", "Returns"), tiles("trend", "Trend · tap a tile"), tiles("macro", "Macro · tap a tile"), detail,
-      sheet.as_of ? h("p", { class: "quiet center" }, `Computed by the morning run of ${sheet.as_of}. Information, not advice.`) : null,
-      h("div", { style: "height:14px" })));
-}
-
-function planFooter() {
-  if (state.decision === "approved") {
-    return h("div", { class: "footer" },
-      h("div", { class: "decided is-approved" }, h("span", { icon: ICON.check }), `Approved · ${when(state.decided_at)}`),
-      h("button", { class: "btn btn-text", type: "button", onclick: startOver }, "Start over"));
-  }
-  const note = state.decision === "declined" ? `You said not now on ${when(state.decided_at)}.`
-    : state.flags.length ? "An adviser confirms the points flagged before anything is bought."
-    : "Nothing is invested before you approve.";
-  return h("div", { class: "footer" }, h("small", {}, note),
-    h("button", { class: "btn btn-primary", type: "button", onclick: approveSheet }, "Approve plan"),
-    h("button", { class: "btn btn-text", type: "button", onclick: () => decide("declined") }, "Not now"));
-}
-
-function renderPlan() {
-  const { lines, amount } = state.plan;
-  const monthly = state.answers.monthly;
-  $("view-plan").replaceChildren(
-    h("div", { class: "topbar" },
-      h("button", { class: "icon-btn", type: "button", "aria-label": "Back to my profile", icon: ICON.back, onclick: () => { renderReveal(); go("reveal"); } }),
-      h("b", {}, "Your plan"), h("span", { style: "width:40px" })),
-    h("div", { class: "scroll" },
-      h("div", { class: "amount" }, h("span", { class: "badge profile" }, `${profile().label} · risk level ${profile().level} of 5`),
-        h("div", { class: "hero-number" }, eur.format(amount)),
-        h("p", {}, monthly ? `to invest now · then ${eur.format(monthly)} a month` : "to invest now")),
-      section("Where it goes", h("div", { class: "panel" }, allocation(lines, amount))),
-      ...Object.keys(state.sleeves).map((key) => sleeve(lines, key)),
-      state.plan.left_out.length ? section("Your rules", h("div", { class: "panel" },
-        ticks(state.plan.left_out.map((out) => `No ${out.rule.toLowerCase()}: ${out.ticker} is left out, its ${pct(out.weight)} goes to ${lines[0].ticker}`)))) : null,
-      state.flags.length ? section("Before you invest", flagsPanel()) : null,
-      section("How your money is handled", h("div", { class: "panel" }, ticks(profile().rules))),
+      sheet.history ? h("div", { class: "card-flat" }, lineChart(sheet.history, { price: true })) : null,
+      line ? h("p", { class: "in-ref" }, `${pct(line.weight)} of your ${strategy().label} reference · ${eur.format(line.eur)} of your ${eur.format(state.reference.amount)}`) : null,
+      sheet.reading && sheet.reading.length ? h("div", { class: "section" }, h("div", { class: "ai-card" },
+        h("div", { class: "ai-head" }, h("span", { class: "orb small" }), h("b", {}, "What our AI sees today"), h("small", {}, day(sheet.as_of))),
+        h("ul", { class: "ai-lines" }, sheet.reading.map((r) => h("li", { class: `is-${r.tone}` },
+          h("span", { class: "ai-arrow" }, TONE[r.tone]), h("span", {}, h("b", {}, r.topic), r.text)))),
+        h("p", { class: "fine" }, "Written by code from the agents' numbers. Information, not advice."))) : null,
+      tiles("returns", "Returns"), tiles("trend", "Trend · tap one"), tiles("macro", "Macro today · tap one"), detail,
+      news ? section("In the news", h("div", { class: "panel news" },
+        h("div", { class: "news-head" }, h("span", { class: `lean is-${lean[1]}` }, `${TONE[lean[1]]} ${lean[0]}`),
+          h("small", {}, `${pct(news.confidence)} sure · next few days · ${day(news.date)}`)),
+        h("p", {}, news.rationale),
+        news.counter ? h("div", { class: "counter" }, h("b", {}, "The other side"), h("p", {}, news.counter)) : null,
+        news.sources.length ? h("div", { class: "sources" }, h("small", {}, "Sources"),
+          news.sources.map((url) => h("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, host(url)))) : null)) : null,
+      sheet.as_of ? h("p", { class: "quiet center" }, `From the morning run of ${day(sheet.as_of)}. ${NOT_ADVICE}`) : null,
       h("div", { style: "height:14px" })),
-    planFooter());
+    buy);
 }
 
-function approveSheet() {
-  const { lines, amount } = state.plan;
-  openSheet(h("h3", {}, "Approve this plan?"),
-    h("p", {}, `${eur.format(amount)} across ${lines.length} ETFs, as shown. Nothing is bought without this approval.`),
-    h("div", { class: "stack" },
-      h("button", { class: "btn btn-primary", type: "button", onclick: () => decide("approved") }, "Approve"),
-      h("button", { class: "btn btn-text", type: "button", onclick: closeSheet }, "Cancel")));
+// ---- Orders: the customer's own -------------------------------------------------------------------------------
+function buySheet(etf, line, sheet) {
+  const last = sheet.history && sheet.history.length ? sheet.history[sheet.history.length - 1] : null;
+  const start = line ? Math.max(Math.round(line.eur), 1) : 100;
+  const input = h("input", { class: "amount-input", type: "number", min: "1", step: "1", value: String(start), inputmode: "decimal", "aria-label": "Amount in euros" });
+  const units = h("small", { class: "units" });
+  const error = h("p", { class: "form-error", hidden: true });
+  const update = () => {
+    const amount = Number(input.value);
+    units.textContent = last && amount > 0 ? `≈ ${(amount / last.value).toFixed(4)} units at ${eur2.format(last.value)}, last close of ${day(last.date)}` : "";
+  };
+  input.addEventListener("input", update);
+  update();
+  const place = h("button", { class: "btn btn-primary", type: "button" }, "Place order");
+  place.addEventListener("click", async () => {
+    place.disabled = true;
+    try {
+      await placeOrders([{ ticker: etf.ticker, eur: Number(input.value) }]);
+      toast(`Order placed: ${eur.format(Number(input.value))} of ${etf.ticker}`);
+    } catch (e) {
+      error.textContent = e.message;
+      error.hidden = false;
+      place.disabled = false;
+    }
+  });
+  openSheet(h("h3", {}, `Buy ${etf.ticker}`), h("p", {}, sheet.name || etf.name || ""),
+    h("label", { class: "amount-field" }, h("span", {}, "€"), input), units,
+    h("div", { class: "quick" }, [100, 250, 500, 1000].map((v) => h("button", { class: "chip", type: "button", onclick: () => { input.value = String(v); update(); } }, eur.format(v)))),
+    error, h("p", { class: "fine" }, `You decide. ReBel places your order, it does not advise you.`),
+    h("div", { class: "stack" }, place, h("button", { class: "btn btn-text", type: "button", onclick: closeSheet }, "Cancel")));
 }
 
-async function decide(decision) {
-  const { state: now } = await api("/api/decision", { customer: state.id, decision });
-  Object.assign(state, { decision: now.decision, decided_at: now.decided_at });
-  renderPlan();
+/** The reference mix as orders the customer reviews line by line: untick any, then place them. */
+function basketSheet() {
+  const ref = state.reference;
+  const open = ref.lines.filter((l) => !l.lock);
+  const chosen = new Set(open.map((l) => l.ticker));
+  const total = h("b", {});
+  const place = h("button", { class: "btn btn-primary", type: "button" });
+  const error = h("p", { class: "form-error", hidden: true });
+  const refresh = () => {
+    const picked = open.filter((l) => chosen.has(l.ticker));
+    total.textContent = eur.format(sum(picked, (l) => l.eur));
+    place.textContent = picked.length ? `Place ${picked.length} order${picked.length > 1 ? "s" : ""}` : "Pick at least one";
+    place.disabled = !picked.length;
+  };
+  const rows = open.map((l) => {
+    const box = h("input", { type: "checkbox", checked: true, "aria-label": `Buy ${l.ticker}` });
+    box.addEventListener("change", () => { if (box.checked) chosen.add(l.ticker); else chosen.delete(l.ticker); refresh(); });
+    return h("label", { class: "basket-row" }, box, token(l), h("span", { class: "grow" }, h("b", {}, l.ticker), h("small", {}, state.sleeves[l.sleeve])), h("b", {}, eur.format(l.eur)));
+  });
+  place.addEventListener("click", async () => {
+    place.disabled = true;
+    const orders = open.filter((l) => chosen.has(l.ticker)).map((l) => ({ ticker: l.ticker, eur: l.eur }));
+    try {
+      await placeOrders(orders);
+      toast(`${orders.length} order${orders.length > 1 ? "s" : ""} placed`);
+    } catch (e) {
+      error.textContent = e.message;
+      error.hidden = false;
+      refresh();
+    }
+  });
+  refresh();
+  const locked = ref.lines.filter((l) => l.lock);
+  openSheet(h("h3", {}, "Buy this mix yourself"),
+    h("p", {}, `Your ${strategy().label} reference for ${eur.format(ref.amount)}. Untick what you do not want: each line is your own order.`),
+    h("div", { class: "basket" }, rows),
+    locked.length ? h("p", { class: "fine" }, `Locked, not included: ${locked.map((l) => `${l.ticker} (${l.lock.toLowerCase()})`).join(", ")}.`) : null,
+    h("div", { class: "basket-total" }, h("span", {}, "Total"), total), error,
+    h("p", { class: "fine" }, "You decide. ReBel places your orders at the next close, it does not advise you."),
+    h("div", { class: "stack" }, place, h("button", { class: "btn btn-text", type: "button", onclick: closeSheet }, "Cancel")));
+}
+
+async function placeOrders(orders) {
+  const out = await api("/api/order", { customer: state.id, orders });
+  Object.assign(state, { orders: out.state.orders, unlocked: out.state.unlocked, portfolio: out.portfolio, tab: "portfolio" });
+  renderMain();
   renderWelcome();
-  if (decision === "approved") {
-    renderDone();
-    go("done");
-  } else {
-    closeSheet();
-  }
+  go("main");
   sync();
 }
 
-// ---- Done ---------------------------------------------------------------------------------------------------
-function renderDone() {
-  $("view-done").replaceChildren(
-    h("div", { class: "done-check", icon: ICON.bigCheck }),
-    h("h2", { class: "display done-title" }, "Plan approved."),
-    h("p", { class: "done-body" }, "Your approval is recorded. Your orders go out on the next trading day."),
-    h("div", { class: "done-actions" }, h("button", { class: "btn btn-ghost", type: "button", onclick: () => go("plan") }, "Back to my plan")));
+// ---- The check that opens complex products -------------------------------------------------------------------------
+function quizSheet() {
+  const picked = {};
+  const submit = h("button", { class: "btn btn-primary", type: "button", disabled: true }, "Check my answers");
+  const result = h("div", { class: "quiz-result", hidden: true });
+  const blocks = state.quiz.map((q, i) => {
+    const notes = h("p", { class: "quiz-note", hidden: true });
+    const chips = h("div", { class: "quiz-choices" }, q.choices.map((c) => {
+      const chip = h("button", { class: "choice", type: "button" }, c.label);
+      chip.addEventListener("click", () => {
+        picked[q.id] = c.value;
+        for (const other of chips.children) other.classList.toggle("is-on", other === chip);
+        submit.disabled = Object.keys(picked).length < state.quiz.length;
+      });
+      return chip;
+    }));
+    return { id: q.id, notes, el: h("div", { class: "quiz-q" }, h("b", {}, `${i + 1}. ${q.text}`), chips, notes) };
+  });
+  submit.addEventListener("click", async () => {
+    submit.disabled = true;
+    try {
+      const out = await api("/api/quiz", { customer: state.id, answers: picked });
+      blocks.forEach((b, i) => { b.notes.textContent = out.notes[i]; b.notes.hidden = false; });
+      result.hidden = false;
+      if (out.passed) {
+        state.unlocked = true;
+        await load();
+        renderMain();
+        result.replaceChildren(h("b", {}, "Unlocked."), h("p", {}, "Leveraged, inverse and crypto ETFs are open to you. They can fall fast: keep them small."),
+          h("button", { class: "btn btn-ghost", type: "button", onclick: closeSheet }, "Close"));
+        result.className = "quiz-result is-good";
+      } else {
+        result.replaceChildren(h("b", {}, `${out.right} of ${state.quiz.length} right.`), h("p", {}, "Read the notes, then try again whenever you like."),
+          h("button", { class: "btn btn-ghost", type: "button", onclick: quizSheet }, "Try again"));
+        result.className = "quiz-result is-wait";
+      }
+      sync();
+    } catch (e) {
+      result.replaceChildren(h("p", {}, e.message));
+      result.hidden = false;
+    }
+  });
+  openSheet(h("h3", {}, "Complex products: 3 questions"),
+    h("p", {}, "Leveraged, inverse and crypto ETFs can lose a lot, fast. Show you know how, and they open."),
+    ...blocks.map((b) => b.el), result, h("div", { class: "stack" }, submit, h("button", { class: "btn btn-text", type: "button", onclick: closeSheet }, "Not now")));
 }
 
 // ---- The presenter's side panels ---------------------------------------------------------------------------
 const card = (title, aside, ...children) => h("div", { class: "card" }, h("h3", {}, title, aside ? h("span", {}, aside) : null), ...children);
 const rowsOf = (pairs) => h("div", { class: "rows" }, pairs.map(([k, v]) => h("div", {}, h("span", { class: "k" }, k), h("span", { class: "v" }, v))));
 
-/** The probability of each profile: one bar each, in the same order from start to end, the leader in colour. */
+/** The probability of each archetype: one bar each, in the same order from start to end, the leader in colour. */
 function oddsCard() {
-  if (!state.odds) return card("Probability of each profile", null, h("p", { class: "quiet" }, "Starts with the first question."));
+  if (!state.odds && state.archetype) {
+    return card("Style: archetype", archetype().label, h("p", { class: "quiet" }, state.why || "Found in the chat."));
+  }
+  if (!state.odds) return card("Style: probability of each archetype", null, h("p", { class: "quiet" }, "Starts with the first question."));
   const top = Math.max(...Object.values(state.odds));
   const bars = Object.entries(state.odds).map(([key, p]) => h("div", { class: p === top ? "odd is-top" : "odd" },
-    h("span", { class: "k" }, state.profiles[key].label), h("span", { class: "track" }, h("i", { style: `width:${Math.max(p * 100, 1)}%` })),
+    h("span", { class: "k" }, state.archetypes[key].label), h("span", { class: "track" }, h("i", { style: `width:${Math.max(p * 100, 1)}%` })),
     h("span", { class: "v" }, pct(p))));
   const from = state.seen.map(([name, value]) => `${name}: ${value}`).join(" · ");
-  return card("Probability of each profile", state.profile ? "final" : "after each answer", h("div", { class: "odds" }, bars),
-    h("p", { class: "quiet" }, `Starts from: ${from}`));
+  return card("Style: probability of each archetype", state.archetype ? "final" : "after each answer", h("div", { class: "odds" }, bars),
+    h("p", { class: "quiet" }, `Starts from: ${from || "nothing known"}`));
 }
 
-/** What the code holds right now: the probabilities, the suitability sheet and the contradictions. */
+function levelCard() {
+  if (!state.strategy) {
+    return card("Risk level: fixed rules", null, h("p", { class: "quiet" }, "Set once the answers are in: horizon, reaction to a fall, knowledge, buffer. Never by the AI."));
+  }
+  return card("Risk level: fixed rules", strategy().label,
+    h("div", { class: "level-row" }, ["defensive", "balanced", "opportunity"].map((key) =>
+      h("span", { class: key === state.strategy ? `lvl is-on s-${key}` : "lvl" }, state.strategies[key].label))),
+    ticks(state.strategy_why), state.traded === state.strategy ? h("p", { class: "quiet" }, "The strategy our team trades in the competition.") : null);
+}
+
+/** What the code holds right now: the archetype's probabilities, the risk level, the suitability sheet, the checks. */
 function sync() {
   const asked = state.left == null ? 0 : state.questions - state.left;
   if ($("progress")) $("progress").style.width = `${Math.round((asked / state.questions) * 100)}%`;
   if ($("send")) $("send").disabled = state.busy || !state.question;
-  if ($("input")) $("input").placeholder = state.profile ? "Your profile is ready" : "Or type your answer";
+  if ($("input")) $("input").placeholder = state.strategy ? "Your result is ready" : "Or type your answer";
   $("inspector").replaceChildren(
+    levelCard(),
     oddsCard(),
     card("Suitability sheet", state.sheet.length ? `${state.sheet.length} answers` : null,
       state.sheet.length ? rowsOf(state.sheet) : h("p", { class: "quiet" }, "Filled by the same questions.")),
     card("Checks by code", null, state.flags.length
       ? state.flags.map((flag) => h("div", { class: "flag" }, h("span", { icon: ICON.alert }), flag))
-      : h("div", { class: "ok-line" }, h("span", { icon: ICON.check }), "No contradiction found")));
+      : h("div", { class: "ok-line" }, h("span", { icon: ICON.check }), "No contradiction found")),
+    state.strategy ? card("What the customer did", null, rowsOf([
+      ["Orders placed", String(state.orders.length)],
+      ["Invested", eur.format(sum(state.orders, (o) => o.eur))],
+      ["Complex products", strategy().complex ? (state.unlocked ? "unlocked by the check" : "locked until the check") : "not at this level"],
+      ["Lessons right", `${Object.values(state.lessons || {}).filter(Boolean).length} of ${Object.keys(state.lessonBook).length}`]])) : "");
   $("people").replaceChildren(...state.customers.map((c) =>
     h("button", { class: c.id === state.id ? "person is-on" : "person", type: "button", onclick: () => selectCustomer(c.id) },
       avatar(c), h("span", {}, h("b", {}, `${c.first_name}, ${c.age}`), h("small", {}, c.status)))));
@@ -461,8 +871,9 @@ async function startOver() {
 
 async function boot() {
   const start = await api("/api/start");
-  Object.assign(state, { customers: start.customers, profiles: start.profiles, questions: start.questions,
-    accountData: start.account_data, coach: start.coach, sleeves: start.sleeves });
+  Object.assign(state, { customers: start.customers, strategies: start.strategies, archetypes: start.archetypes, traded: start.traded,
+    questions: start.questions, accountData: start.account_data, coach: start.coach, sleeves: start.sleeves, quiz: start.quiz,
+    lessonBook: start.lessons });
   let last = null;
   try { last = localStorage.getItem("rebel.customer"); } catch { /* private window */ }
   await selectCustomer(state.customers.some((c) => c.id === last) ? last : state.customers[0].id);

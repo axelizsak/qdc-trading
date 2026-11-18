@@ -1,7 +1,8 @@
 """QDC Trading cockpit (local). Run:  streamlit run app/streamlit_app.py
 
-Every page works on mock data until the real logs exist. Your three reviews of the day happen on the Today page:
-it resumes the paused LangGraph day and writes logs/orders.csv (logs/mock/ while steps are on mocks).
+Every page works on mock data until the real logs exist. The whole day happens on the Today page, top to bottom: run
+the agents, your three reviews (it resumes the paused LangGraph day and writes logs/orders.csv, logs/mock/ while
+steps are on mocks), the export for the Belfius form, then the portfolio.
 """
 import sys
 from pathlib import Path
@@ -14,16 +15,15 @@ from app import ui  # noqa: E402
 
 st.set_page_config(page_title="QDC Trading", page_icon=":material/candlestick_chart:", layout="wide")
 navigation = st.navigation({
-    "Day": [st.Page("views/dashboard.py", title="Dashboard", icon=":material/space_dashboard:", default=True),
-            st.Page("views/today.py", title="Today", icon=":material/fact_check:"),
-            st.Page("views/profiles.py", title="Profiles", icon=":material/groups:")],
+    "": [st.Page("views/today.py", title="Today", icon=":material/fact_check:", default=True),
+         st.Page("views/strategies.py", title="Strategies", icon=":material/groups:")],
     "Agents": [st.Page("views/technical.py", title="Technical", icon=":material/show_chart:"),
                st.Page("views/macro.py", title="Macro / News", icon=":material/public:"),
                st.Page("views/portfolio.py", title="Portfolio Manager", icon=":material/pie_chart:"),
                st.Page("views/risk.py", title="Risk Manager", icon=":material/shield:")],
-    "System": [st.Page("views/learning.py", title="Learning", icon=":material/insights:"),
-               st.Page("views/how_it_works.py", title="How it works", icon=":material/account_tree:"),
-               st.Page("views/logbook.py", title="Logbook", icon=":material/menu_book:")],
+    "More": [st.Page("views/learning.py", title="Learning", icon=":material/insights:"),
+             st.Page("views/how_it_works.py", title="How it works", icon=":material/account_tree:"),
+             st.Page("views/logbook.py", title="Logbook", icon=":material/menu_book:")],
 }, position="top")
 ui.header()
 navigation.run()
