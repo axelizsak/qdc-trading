@@ -555,9 +555,9 @@ button.sheet-tile:hover { border-color: rgba(217, 19, 95, 0.4); }
 .proposal > p { color: var(--text-2); font-size: 14px; }
 .proposal .changes { box-shadow: none; padding: 10px 12px; }
 .proposal .btn { height: 48px; }
-.side { padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
-.side.is-buy { color: var(--up); background: var(--up-soft); }
-.side.is-sell { color: var(--down); background: var(--down-soft); }
+.order-side { padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
+.order-side.is-buy { color: var(--up); background: var(--up-soft); }
+.order-side.is-sell { color: var(--down); background: var(--down-soft); }
 
 /* ---- Smaller windows: the notes go, the phone stays; on a real phone it fills the screen --------------------- */
 @media (max-width: 1180px) { .side-right { display: none; } .stage { grid-template-columns: minmax(240px, 320px) auto; } }

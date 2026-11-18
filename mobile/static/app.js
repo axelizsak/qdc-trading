@@ -755,7 +755,7 @@ function ordersSheet(title, intro, orders, footnote = null) {
     const why = o.target != null ? `${pct(o.now)} → ${pct(o.target)} of your portfolio` : state.sleeves[o.sleeve] || etf.theme || "";
     return h("label", { class: "basket-row" }, box, token(etf),
       h("span", { class: "grow" }, h("b", {}, o.ticker), h("small", {}, why)),
-      h("span", { class: `side is-${(o.side || "BUY").toLowerCase()}` }, o.side === "SELL" ? "Sell" : "Buy"), h("b", {}, eur.format(o.eur)));
+      h("span", { class: `order-side is-${(o.side || "BUY").toLowerCase()}` }, o.side === "SELL" ? "Sell" : "Buy"), h("b", {}, eur.format(o.eur)));
   });
   place.addEventListener("click", async () => {
     place.disabled = true;
