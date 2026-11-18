@@ -71,7 +71,7 @@ click **Run the day**: it reads the morning's Macro/News back instead of running
 scores and portfolios are logged before your first review, which is all the learning needs. Doing the three reviews
 on practice days adds evidence of human judgement. Then commit `logs/` with `scripts/ship.sh "Add the days of …"`.
 
-**Automatically, on Axel's Mac:** `scripts/install_morning.sh` installs a launchd job that runs `scripts/morning.sh` (the morning run, then the day up to the orders review) Monday to Friday at 7:30 and at each login. The three reviews stay human, in the cockpit. With the project in the Desktop folder, macOS asks for Full Disk Access for `/bin/bash` once. Output: `~/Library/Logs/qdc-morning.log`.
+**In one command:** `scripts/morning.sh` runs the morning run, then the day up to the orders review; the three reviews stay yours, in the cockpit. It is run by hand, never on a schedule.
 
 **A day is run once, and its logs are the record.** The signals are read back from `logs/`, and each round of the
 Portfolio Manager is frozen in `logs/proposals/<date>-round<n>.json`: whoever opens the day, on whichever machine
