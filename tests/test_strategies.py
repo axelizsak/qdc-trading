@@ -113,3 +113,36 @@ def test_the_pipeline_trades_the_strategy_chosen_for_the_day(tmp_path, monkeypat
     (logs / "checkpoints.sqlite").unlink()
     pipeline.run_day(DAY, logs)
     assert seen == ["balanced"]  # the day was run: it keeps its strategy, nothing is asked again
+
+
+FAMILIES = dict(zip(UNIVERSE.index, UNIVERSE["family"]))
+
+
+def test_a_reference_starts_from_its_fixed_mix_then_follows_the_published_versions(tmp_path):
+    start, version = model_portfolios.current(tmp_path, "balanced")
+    assert version is None and start == model_portfolios.weights("balanced")
+    near = pd.Series({t: w for t, (_, w) in start.items()}) * 0.98  # 2% of noise: not worth bothering customers
+    assert model_portfolios.publish(tmp_path, DAY, {"balanced": near}, FAMILIES) == {}
+    engine = pd.Series({"SEMIS": 0.20, "WORLD": 0.30, "GLOBAL AGG BOND": 0.30, "GOLD": 0.10, "ROBOTICS": 0.015})
+    published = model_portfolios.publish(tmp_path, DAY, {"balanced": engine}, FAMILIES)
+    assert list(published) == ["balanced"] and published["balanced"] >= model_portfolios.PUBLISH_TURNOVER
+    now, version = model_portfolios.current(tmp_path, "balanced")
+    assert version == DAY.isoformat() and "ROBOTICS" not in now  # dust goes to cash
+    assert now["OVERNIGHT CASH"] == ("cash", pytest.approx(0.10)) and now["SEMIS"] == ("satellites", 0.2)
+    assert sum(w for _, w in now.values()) == pytest.approx(1)
+    assert model_portfolios.previous(tmp_path, "balanced", version) == start
+    assert model_portfolios.current(tmp_path, "balanced", date(2026, 12, 4)) == (start, None)  # before the version
+    assert model_portfolios.current(tmp_path, "defensive")[1] is None  # each strategy its own versions
+    again = model_portfolios.publish(tmp_path, DAY, {"balanced": engine}, FAMILIES)  # the same day run again
+    assert again == published and len(model_portfolios.versions(tmp_path)) == len(now)
+
+
+def test_a_signed_off_day_moves_the_references_and_a_stopped_one_does_not(tmp_path):
+    logs = tmp_path / "logs"
+    pipeline.approve_day(DAY, logs)
+    found = model_portfolios.versions(logs)
+    assert set(found["strategy"]) == set(STRATEGIES) and set(found["date"]) == {DAY.isoformat()}
+    other = date(2026, 12, 10)
+    pending = pipeline.run_day(other, logs)
+    pipeline.resume_day(other, {"decision": "stopped", "feedback": "Fed tonight"}, logs)
+    assert set(model_portfolios.versions(logs)["date"]) == {DAY.isoformat()}  # no trade, no new version

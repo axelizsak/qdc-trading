@@ -161,8 +161,9 @@ mean-reversion and momentum answers by what each earned since 2022, so this find
 
 ## 7. The reference portfolio of each strategy
 
-The customer app shows each risk level (strategy) one fixed reference portfolio (`data/profiles.py`): a share per
-sleeve, the same core ETFs for everyone, the strategy's own themes. Nothing in it follows the market. The strategy
+Each risk level (strategy) starts from a fixed mix (`data/profiles.py`): a share per sleeve, the same core ETFs for
+everyone, the strategy's own themes. From there the reference follows our engine, within the strategy's limits (new
+versions after the days the team signs off); the table measures the starting mixes. The strategy
 comes from rules on the customer's answers; the five archetypes only change how the coach helps. This is what each
 would have done from December 2021 to 17 November 2026, put back to its weights at the start of each month
 (`python -m agents.model_portfolios` prints the table again):

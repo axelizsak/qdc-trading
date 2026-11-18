@@ -33,7 +33,8 @@ open to you. Your investor style (one of five) only changes how Lena helps you.
 macro, the news, with sources and the other side of the argument. Information, not advice.
 
 **You decide, you place each order.** ReBel is execution-only. Buy one ETF, or your reference mix line by line, then
-follow your portfolio against the reference. Leveraged and crypto ETFs open only after a 3-question check. Rather
+follow your portfolio against the reference. The reference follows our agents: when it changes, you see what changed
+and the orders that would follow it, and you decide. Leveraged and crypto ETFs open only after a 3-question check. Rather
 have someone decide for you? Belfius advice or a managed portfolio is one tap away.
 
 ## Behind the screen

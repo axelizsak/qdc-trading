@@ -2,8 +2,9 @@
 
 1. Prices of the 50 ETFs (data agent).
 2. The day's Macro/News run, unless it is already in the logs: it is the slow part, at the free tier's pace.
-3. The three reference portfolios (fixed rules), the sheet of each ETF, and the points of the app's charts.
-The results go to logs/. The customer app only reads them, so a customer never waits for an agent.
+3. The sheet of each ETF, and the points of the app's charts.
+The results go to logs/. The customer app only reads them, so a customer never waits for an agent. The reference
+portfolios are not made here: a new version is published when the team signs a day off (agents/model_portfolios.py).
 
 Run:  python -m graph.morning            (today)
       python -m graph.morning --date 2026-12-07
@@ -14,15 +15,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from agents import etf_sheets, macro_news, model_portfolios
+from agents import etf_sheets, macro_news
 from data import config as settings
 from data import data_agent
-from data.profiles import STRATEGIES
-from data.schemas import (CHART_HISTORY, MACRO_VIEWS, validate_chart_history, validate_etf_sheets, validate_macro_views,
-                          validate_strategy_portfolios)
+from data.schemas import CHART_HISTORY, MACRO_VIEWS, validate_chart_history, validate_etf_sheets, validate_macro_views
 
 HISTORY_DAYS = 1150  # calendar days of prices: three years of sessions for the 3-year return
-PORTFOLIOS, SHEETS, HISTORY = "strategy_portfolios.csv", "etf_sheets.csv", "chart_history.csv"
+SHEETS, HISTORY = "etf_sheets.csv", "chart_history.csv"
 DAILY_POINTS = 70  # the charts' last sessions kept day by day (about three months); one point a week before
 
 
@@ -48,15 +47,12 @@ def sampled(series: pd.Series) -> pd.Series:
 
 
 def chart_history(prices: pd.DataFrame, as_of: date) -> pd.DataFrame:
-    """The points of the app's charts: each ETF's adjusted close and each strategy's reference portfolio, up to
-    `as_of`. Format: Chart history."""
+    """The points of the app's charts: each ETF's adjusted close up to `as_of` (the app draws a reference portfolio
+    from its ETFs' points, mobile/wallet.py `mix_curve`). Format: Chart history."""
     prices = prices[prices["date"].astype(str) <= as_of.isoformat()]
     closes = prices.pivot(index="date", columns="ticker", values="adj_close_eur").sort_index()
     rows = [(str(day)[:10], "etf", ticker, float(value)) for ticker in closes.columns
             for day, value in sampled(closes[ticker]).items()]
-    for strategy in STRATEGIES:
-        path = model_portfolios.curve(prices, strategy)
-        rows += [(str(day)[:10], "strategy", strategy, float(value)) for day, value in sampled(path).items()]
     return validate_chart_history(pd.DataFrame(rows, columns=CHART_HISTORY))
 
 
@@ -83,13 +79,11 @@ def run(as_of: date, logs: Path | None = None, fetch=data_agent.fetch_prices, ne
         except Exception as exc:  # no key, quota used, no network: the sheets show the last views there are
             note = f"Macro/News did not run ({type(exc).__name__}: {exc}): the sheets show the latest views in the logs"
         views = macro_views(logs, as_of)
-    portfolios = model_portfolios.build(as_of)
     sheets = etf_sheets.build(prices, views, macro_news.load_exposure(), as_of)
     history = chart_history(prices, as_of)
-    save(logs, PORTFOLIOS, portfolios, validate_strategy_portfolios)
     save(logs, SHEETS, sheets, validate_etf_sheets)
     history.to_csv(logs / HISTORY, index=False)  # only the latest run's points: they can be computed again any day
-    return {"portfolios": portfolios, "sheets": sheets, "history": history, "note": note,
+    return {"sheets": sheets, "history": history, "note": note,
             "views_of": str(views["date"].iloc[0]) if len(views) else None}
 
 
@@ -99,8 +93,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--logs-dir", type=Path, default=settings.LOGS_DIR)
     args = parser.parse_args(argv)
     out = run(args.date, args.logs_dir)
-    print(f"Morning run of {args.date}: {out['portfolios']['strategy'].nunique()} reference portfolios, "
-          f"{out['sheets']['ticker'].nunique()} ETF sheets, macro views of {out['views_of'] or 'no day yet'}.")
+    print(f"Morning run of {args.date}: {out['sheets']['ticker'].nunique()} ETF sheets and their charts, "
+          f"macro views of {out['views_of'] or 'no day yet'}.")
     if out["note"]:
         print(out["note"])
 

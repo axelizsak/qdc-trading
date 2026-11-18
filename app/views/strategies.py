@@ -20,14 +20,20 @@ _, state, _ = pipeline.day_status(as_of, logs)
 with st.spinner("Loading the prices..."):
     prices, prices_mock = data.day_prices(as_of, state)
 TRADED = model_portfolios.traded(logs, as_of)  # the strategy the team trades on this day
-ui.page("Strategies", "The three reference portfolios customers see in the app, and the one the agents trade for us.")
+# Each reference as customers see it today: its latest version, else its fixed starting mix
+NOW = {key: model_portfolios.current(logs, key, as_of) for key in STRATEGIES}
+ui.page("Strategies", "The three reference portfolios customers see in the app, and the one the agents trade for us. "
+                      "Each follows our engine within its limits: a new version when we sign a day off and enough "
+                      "of it changes.")
 ui.mock_note(prices_mock, "no prices for this day yet: run the day")
 
 for column, (key, spec) in zip(st.columns(len(STRATEGIES)), STRATEGIES.items()):
     traded = " · <span class='wait'>traded by the team</span>" if key == TRADED else ""
+    version = NOW[key][1]
+    since = f"version of {pd.Timestamp(version):%d %b}" if version else "starting mix, no version yet"
     column.markdown(f"<div class='qdc-kpi'><div class='l'>Risk level {spec['level']} of {len(STRATEGIES)}{traded}</div>"
-                    f"<div class='v'>{escape(spec['label'])}</div><div class='d'>{escape(spec['tagline'])}</div></div>",
-                    unsafe_allow_html=True)
+                    f"<div class='v'>{escape(spec['label'])}</div><div class='d'>{escape(spec['tagline'])} · "
+                    f"{since}</div></div>", unsafe_allow_html=True)
 
 ui.label("The strategy we trade", f"on {as_of:%a %d %b} and every day after, until the next choice")
 limits = {key: spec["limits"] for key, spec in STRATEGIES.items()}
@@ -57,12 +63,12 @@ if len(made):
                  hide_index=True, width="stretch", column_config={
         "date": "From", "strategy": "Strategy", "reason": st.column_config.TextColumn("Why", width="large")})
 
-curves = {key: model_portfolios.curve(prices, key) for key in STRATEGIES}
+curves = {key: model_portfolios.curve(prices, key, {t: w for t, (_, w) in NOW[key][0].items()}) for key in STRATEGIES}
 start = settings.START_CAPITAL_EUR
 sessions = len(next(iter(curves.values())))
 table = pd.DataFrame([{
     "Strategy": spec["label"] + (" (traded)" if key == TRADED else ""), "Risk level": spec["level"],
-    **{name: spec["sleeves"][sleeve] for sleeve, name in SLEEVES.items()},
+    **{name: sum(w for s, w in NOW[key][0].values() if s == sleeve) for sleeve, name in SLEEVES.items()},
     "Return": curves[key].iloc[-1] - 1,
     "Volatility a year": curves[key].pct_change().std() * np.sqrt(model_portfolios.YEAR),
     "Worst fall": (curves[key] / curves[key].cummax() - 1).min(),
@@ -95,7 +101,7 @@ ui.label("Inside one strategy", "its ETFs and their share of the portfolio")
 pick = st.selectbox("Strategy", list(STRATEGIES), index=list(STRATEGIES).index(TRADED),
                     format_func=lambda key: STRATEGIES[key]["label"], label_visibility="collapsed")
 held = pd.DataFrame([{"ticker": ticker, "sleeve": SLEEVES[sleeve], "target_weight": weight}
-                     for ticker, (sleeve, weight) in model_portfolios.weights(pick).items()])
+                     for ticker, (sleeve, weight) in NOW[pick][0].items()])
 left, right = st.columns([3, 2], gap="large")
 with left:
     st.altair_chart(charts.hbars(held, "target_weight", "ticker", ".0%", ["ticker", "sleeve", "target_weight"],
@@ -107,3 +113,25 @@ with right:
                 f"{spec['tagline']} Fits {spec['fits']}.\n\n"
                 + ("Complex products (leveraged, inverse, crypto) open after the customer's 3-question check."
                    if spec["complex"] else "No complex products (leveraged, inverse, crypto) at this level."))
+    version = NOW[pick][1]
+    if version:
+        before = model_portfolios.previous(logs, pick, version)
+        moved = model_portfolios.turnover({t: w for t, (_, w) in before.items()},
+                                          {t: w for t, (_, w) in NOW[pick][0].items()})
+        st.markdown(f"Version of **{pd.Timestamp(version):%a %d %b}**: {moved:.0%} of the reference changed. "
+                    "Customers who hold it see the orders that follow it, and decide.")
+    else:
+        st.caption("No version yet: customers see the starting mix until the team signs a day off and the engine "
+                   f"moves at least {model_portfolios.PUBLISH_TURNOVER:.0%} of it.")
+
+made = model_portfolios.versions(logs)
+if len(made):
+    ui.label("Versions", "each time a reference moved, after a day we signed off")
+    dated = made.groupby(["date", "strategy"]).size().reset_index()[["date", "strategy"]]
+    dated["Changed"] = [model_portfolios.turnover(
+        {t: w for t, (_, w) in model_portfolios.previous(logs, r.strategy, r.date).items()},
+        {t: float(w) for t, w in made[(made["date"] == r.date) & (made["strategy"] == r.strategy)]
+         [["ticker", "target_weight"]].values}) for r in dated.itertuples()]
+    st.dataframe(dated.assign(strategy=dated["strategy"].map(lambda k: STRATEGIES[k]["label"])).iloc[::-1],
+                 hide_index=True, width="stretch", column_config={
+        "date": "Date", "strategy": "Strategy", "Changed": st.column_config.NumberColumn("Changed", format="percent")})

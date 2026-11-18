@@ -68,7 +68,8 @@ from data.schemas import (
     SIDES, SIGNALS, validate_ex_dividends, validate_features, validate_holdings, validate_incidents, validate_order_log,
     validate_orders, validate_portfolio, validate_prices, validate_reviews, validate_risk_report, validate_signals,
 )
-from data.universe import tickers
+from data.profiles import STRATEGIES
+from data.universe import load_universe, tickers
 from graph import review_loop
 
 TECHNICAL_AGENTS = ["technical_det", "technical_llm"]
@@ -734,6 +735,26 @@ def summary_review_step(state: DayState) -> dict:
     return _review(state, "summary", {"summary": state["summary"], "approved_orders": state["approved_orders"]})[1]
 
 
+def publish_references(state: DayState, as_of: date, logs: Path) -> list[dict]:
+    """Once the team has signed the day off: each strategy's reference for the customers follows the engine. The
+    code's portfolio of the Portfolio Manager (no LLM) is built for each strategy from the day's scores and learned
+    weights, inside its limits, and published as a new version when enough of it changes (agents/model_portfolios.py).
+    Returns the incidents (a failure never stops the day)."""
+    try:
+        signals, prices = _frame(state["signals"], SIGNALS), _frame(state["prices"], PRICES)
+        targets = {}
+        for strategy in STRATEGIES:
+            target, _, _ = _call("portfolio", signals, state.get("agent_weights") or {}, "",
+                                 pd.DataFrame(columns=HOLDINGS), settings.START_CAPITAL_EUR, prices, as_of, "",
+                                 use_llm=False, strategy=strategy)
+            targets[strategy] = target.set_index("ticker")["target_weight"]
+        families = dict(zip(load_universe()["ticker"], load_universe()["family"]))
+        model_portfolios.publish(logs, as_of, targets, families)
+        return []
+    except Exception as exc:
+        return [_incident(logs, as_of, "references", exc)]
+
+
 def order_log_step(state: DayState, config: RunnableConfig) -> dict:
     as_of, logs = _day(state, config)
     proposed = _frame(state["proposed_orders"], ORDERS)
@@ -747,12 +768,15 @@ def order_log_step(state: DayState, config: RunnableConfig) -> dict:
     other_days = lambda old: old["date"].astype(str) != as_of.isoformat()  # noqa: E731
     _replace_rows(logs / "orders.csv", build_order_log(as_of, proposed, decisions), other_days)
     _replace_rows(logs / "reviews.csv", validate_reviews(_frame(state["reviews"], REVIEWS)), other_days)
+    incidents = []
     if outcome == "approved":
         path = logs / "summary" / f"{as_of.isoformat()}.md"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(state["summary"], encoding="utf-8", newline="\n")
+        incidents = publish_references(state, as_of, logs)
     # last: the logbook joins everything the day wrote into the audit trail, and computes the fills and the value
-    return {"outcome": outcome, "incidents": _book(logs, as_of, logbook.record_day, _frame(state["prices"], PRICES))}
+    return {"outcome": outcome,
+            "incidents": incidents + _book(logs, as_of, logbook.record_day, _frame(state["prices"], PRICES))}
 
 
 def _after(next_step: str):

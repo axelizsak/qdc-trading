@@ -39,10 +39,9 @@ def answers(shared: Path | None = None) -> dict:
         references[strategy] = {"+".join(some): {k: v for k, v in server.reference(strategy, 1, some, shared).items()
                                                  if k != "history"} for some in chosen}
     sheets = {ticker: server.etf_sheet(shared, ticker) for ticker in server.universe()}
-    history = server.chart_points(shared)
     return {"start": server.start(shared), "known": {customer: known(customer, True) for customer in CUSTOMERS},
             "rules": rules, "python": BROWSER_FILES, "references": references,
-            "strategy_history": {strategy: server.points(history, "strategy", strategy) for strategy in STRATEGIES},
+            "strategy_history": {strategy: server.reference(strategy, 1, [], shared)["history"] for strategy in STRATEGIES},
             "etfs": server.catalogue(shared),
             "sheets": {ticker: {key: value for key, value in sheet.items() if key != "rows"}
                        for ticker, sheet in sheets.items() if sheet}}

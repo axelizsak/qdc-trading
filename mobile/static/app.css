@@ -540,6 +540,25 @@ button.sheet-tile:hover { border-color: rgba(217, 19, 95, 0.4); }
 .lvl { flex: 1; text-align: center; padding: 4px 0; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface-2); }
 .lvl.is-on { color: #1f1125; }
 
+/* ---- The reference follows our agents: versions, changes, proposals ----------------------------------------- */
+.ref-version { display: flex; gap: 6px; align-items: flex-start; margin-top: 6px; font-size: 13px !important; font-weight: 600; color: rgba(31, 17, 37, 0.75) !important; }
+.ref-version svg { flex: none; margin-top: 1px; }
+.changes { display: grid; gap: 8px; padding: 12px 16px; }
+.change { display: flex; align-items: center; gap: 8px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.change-arrow { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; font-weight: 800; font-size: 12px; }
+.change-arrow.is-up { color: var(--up); background: var(--up-soft); }
+.change-arrow.is-down { color: var(--down); background: var(--down-soft); }
+.change-from { color: var(--muted); }
+.proposal { padding: 16px 18px; border-radius: 22px; background: linear-gradient(135deg, #fff, #fbf2ff); border: 1px solid rgba(143, 92, 240, 0.3); box-shadow: var(--shadow); display: grid; gap: 10px; }
+.proposal-head { display: flex; align-items: center; gap: 10px; }
+.proposal-head b { font-size: 15.5px; line-height: 1.3; }
+.proposal > p { color: var(--text-2); font-size: 14px; }
+.proposal .changes { box-shadow: none; padding: 10px 12px; }
+.proposal .btn { height: 48px; }
+.side { padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
+.side.is-buy { color: var(--up); background: var(--up-soft); }
+.side.is-sell { color: var(--down); background: var(--down-soft); }
+
 /* ---- Smaller windows: the notes go, the phone stays; on a real phone it fills the screen --------------------- */
 @media (max-width: 1180px) { .side-right { display: none; } .stage { grid-template-columns: minmax(240px, 320px) auto; } }
 @media (max-width: 800px) { .side-left { display: none; } .stage { grid-template-columns: auto; padding: 16px; } }

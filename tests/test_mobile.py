@@ -237,3 +237,31 @@ def test_the_page_calls_routes_that_exist(tmp_path):
     called = set(re.findall(r'"(/api/\w+)|`(/api/\w+)', script))
     assert called and {a or b for a, b in called} <= routes
     assert set(wallet.RULED_OUT) == set(__import__("agents.profiler").profiler.QUESTIONS["rules"]["answers"])
+
+
+def test_the_reference_follows_its_versions_and_the_customer_gets_the_orders_to_follow_it(tmp_path):
+    phone = app(tmp_path)
+    morning_run(tmp_path)
+    place(phone, "thomas", SCRIPTS["thomas"][2])  # Defensive
+    ref = phone.get("/api/reference", params={"customer": "thomas"}).json()
+    assert ref["version"] is None and ref["changes"] == [] and ref["history"]  # the starting mix, drawn from its ETFs
+    phone.post("/api/order", json={"customer": "thomas", "orders": [{"ticker": l["ticker"], "eur": l["eur"]} for l in ref["lines"]]})
+    held = phone.get("/api/portfolio", params={"customer": "thomas"}).json()
+    assert held["proposal"] == {"version": None, "changes": [], "new": False, "orders": []}  # bought exactly the reference
+
+    families = {t: etf["family"] for t, etf in server.universe().items()}  # the team signs a day off: a new version
+    engine = pd.Series({"WORLD": 0.20, "EUR GOVT BOND": 0.50, "GOLD": 0.20, "STAPLES": 0.10})
+    assert model_portfolios.publish(tmp_path, date.today(), {"defensive": engine}, families)
+    ref = phone.get("/api/reference", params={"customer": "thomas"}).json()
+    assert ref["version"] == date.today().isoformat() and ref["changes"][0]["ticker"] == "EUR GOVT BOND"
+    proposal = phone.get("/api/portfolio", params={"customer": "thomas"}).json()["proposal"]
+    assert proposal["new"] and proposal["orders"] and proposal["orders"][0]["side"] == "SELL"
+    sides = [o["side"] for o in proposal["orders"]]
+    assert sides == sorted(sides, key=lambda side: side != "SELL")  # sales first: they fund the buys
+
+    too_much = phone.post("/api/order", json={"customer": "thomas", "orders": [{"ticker": "WORLD", "eur": 99_999, "side": "SELL"}]})
+    assert too_much.status_code == 400 and "You hold" in too_much.json()["error"]
+    follow = [{"ticker": o["ticker"], "eur": o["eur"], "side": o["side"]} for o in proposal["orders"]]
+    after = phone.post("/api/order", json={"customer": "thomas", "orders": follow}).json()["portfolio"]
+    assert after["proposal"]["orders"] == []  # back on the reference
+    assert {l["ticker"] for l in after["lines"]} == {"WORLD", "EUR GOVT BOND", "GOLD", "STAPLES"}

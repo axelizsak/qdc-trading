@@ -61,8 +61,13 @@ def call(module, name, args):
     const etfs = Object.fromEntries(data.etfs.map((etf) => [etf.ticker, etf]));
     const last = Object.fromEntries(data.etfs.map((etf) => [etf.ticker, data.sheets[etf.ticker]?.history?.slice(-1)[0]?.value]).filter(([, v]) => v));
     const held = Object.fromEntries(now.orders.map((o) => [o.ticker, data.sheets[o.ticker]?.history || []]));
-    const out = await run("wallet", "holdings", now.orders, last, etfs, (await reference(now)).lines);
-    return { ...out, history: await run("wallet", "mix_history", now.orders, held) };
+    const ref = await reference(now);
+    const target = await run("wallet", "decorate", ref.lines, now.strategy, now.unlocked, rules(now));
+    const out = await run("wallet", "holdings", now.orders, last, etfs, target);
+    const lastOrder = now.orders.reduce((latest, o) => (o.time.slice(0, 10) > latest ? o.time.slice(0, 10) : latest), "");
+    return { ...out, history: await run("wallet", "mix_history", now.orders, held),
+      proposal: { version: ref.version, changes: ref.changes, new: Boolean(now.orders.length && ref.version && ref.version >= lastOrder),
+        orders: out.lines.length ? await run("wallet", "rebalance", out.lines, target) : [] } };
   };
 
   const routes = {
@@ -107,14 +112,16 @@ def call(module, name, args):
       const now = placed(customer);
       if (!Array.isArray(orders) || !orders.length) throw problem(400, "no order to place");
       const etfs = Object.fromEntries((await prepared).etfs.map((etf) => [etf.ticker, etf]));
+      const held = now.orders.length ? Object.fromEntries((await portfolio(now)).lines.map((l) => [l.ticker, l.value])) : {};
       for (const item of orders) {
-        const wrong = await run("wallet", "check_order", etfs[item.ticker] || null, item.eur, now.strategy, now.unlocked, rules(now));
+        const wrong = await run("wallet", "check_order", etfs[item.ticker] || null, item.eur, now.strategy, now.unlocked, rules(now),
+          item.side || "BUY", held[item.ticker] || 0);
         if (wrong) throw problem(400, `${item.ticker}: ${wrong}`);
       }
-      for (const item of orders) {
+      for (const item of [...orders].sort((a, b) => (a.side === "SELL" ? 0 : 1) - (b.side === "SELL" ? 0 : 1))) {
         const price = await lastPrice(item.ticker);
         const eur = Math.round(Number(item.eur) * 100) / 100;
-        now.orders.push({ ticker: item.ticker, eur, units: price ? Math.round((eur / price.value) * 1e6) / 1e6 : null,
+        now.orders.push({ ticker: item.ticker, side: item.side || "BUY", eur, units: price ? Math.round((eur / price.value) * 1e6) / 1e6 : null,
           price: price ? price.value : null, as_of: price ? price.date : null, time: new Date().toISOString().slice(0, 19) });
       }
       return { state: now, portfolio: await portfolio(now) };
