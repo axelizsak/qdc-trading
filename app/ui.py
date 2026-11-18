@@ -10,7 +10,8 @@ from data.schemas import REVIEW_GATES
 from graph import pipeline
 
 STEP_LABELS = {"data": "Data", "technical": "Technical", "macro_news": "Macro / News", "portfolio": "Portfolio",
-               "risk": "Risk", "logbook": "Logbook", "learning": "Learning", "dividends": "Ex-dividend dates"}
+               "risk": "Risk", "logbook": "Logbook", "learning": "Learning", "dividends": "Ex-dividend dates",
+               "references": "Customer references"}
 FACTOR_LABELS = settings.MACRO_FACTOR_LABELS
 
 # Light palette. In the data: blue = up / buy, red = down / sell, grey = neutral; amber = waiting for you.

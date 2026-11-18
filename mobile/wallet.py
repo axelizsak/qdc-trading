@@ -19,6 +19,9 @@ RULED_OUT = {
 }
 CLOSE, FAR = 0.05, 0.15  # a sleeve this close to the reference is fine; beyond FAR it is a gap
 MIN_ORDER_EUR = 1
+MIN_PROPOSAL = 0.01  # an order to follow the reference is proposed only above this share of the portfolio...
+MIN_PROPOSAL_EUR = 10  # ...and this amount
+SIDES = ("BUY", "SELL")
 
 
 def rule_name(rule: str) -> str:
@@ -48,12 +51,18 @@ def decorate(lines: list[dict], strategy: str, unlocked: bool, rules: list[str] 
     return [{**line, "lock": lock(line, strategy, unlocked, rules)} for line in lines]
 
 
-def check_order(etf: dict | None, eur, strategy: str, unlocked: bool, rules: list[str] | None = None) -> str:
-    """What is wrong with an order, in words, or "" when it can be placed."""
+def check_order(etf: dict | None, eur, strategy: str, unlocked: bool, rules: list[str] | None = None,
+                side: str = "BUY", held_eur: float = 0.0) -> str:
+    """What is wrong with an order, in words, or "" when it can be placed. A buy must be open to the customer; a sell
+    must not be above what they hold (`held_eur`, at the last close)."""
     if etf is None:
         return "Unknown ETF"
+    if side not in SIDES:
+        return "An order is a buy or a sell"
     if isinstance(eur, bool) or not isinstance(eur, (int, float)) or not eur >= MIN_ORDER_EUR:
         return f"The amount must be at least EUR {MIN_ORDER_EUR}"
+    if side == "SELL":
+        return "" if eur <= held_eur + 0.01 else f"You hold EUR {held_eur:,.2f} of it"
     return lock(etf, strategy, unlocked, rules)
 
 
@@ -68,18 +77,26 @@ def sleeve_of(etf: dict, reference: list[dict]) -> str:
 def holdings(orders: list[dict], last: dict[str, float], etfs: dict[str, dict], reference: list[dict]) -> dict:
     """What the customer holds, valued at the last close, compared with the reference portfolio.
 
-    orders: the customer's orders, each {"ticker", "eur", "units"} (units None when no price was known: then the
-    position is worth what was paid). last: ticker -> last close. etfs: ticker -> {"ticker", "name", "theme",
-    "family"}. reference: the lines of the strategy's reference portfolio, each {"ticker", "sleeve", "weight"}.
+    orders: the customer's orders, each {"ticker", "eur", "units", "side"} (side BUY when missing; units None when
+    no price was known: then the position is worth what was paid). A sale takes off its share of what was paid.
+    last: ticker -> last close. etfs: ticker -> {"ticker", "name", "theme", "family"}. reference: the lines of the
+    strategy's reference portfolio, each {"ticker", "sleeve", "weight"}.
     """
     book = {}
     for order in orders:
         line = book.setdefault(order["ticker"], {"eur": 0.0, "units": 0.0, "priced": True})
+        if order.get("side", "BUY") == "SELL":
+            units = order.get("units") or 0.0
+            part = min(units / line["units"], 1.0) if line["units"] else min(order["eur"] / line["eur"], 1.0) if line["eur"] else 1.0
+            line["eur"] -= line["eur"] * part
+            line["units"] -= units if line["units"] else 0.0
+            continue
         line["eur"] += order["eur"]
         if order.get("units"):
             line["units"] += order["units"]
         else:
             line["priced"] = False
+    book = {t: line for t, line in book.items() if line["eur"] > 0.005 and (line["units"] > 1e-9 or not line["priced"])}
     lines = []
     for ticker, line in book.items():
         etf = etfs[ticker]
@@ -139,3 +156,49 @@ def mix_history(orders: list[dict], histories: dict[str, list[dict]]) -> list[di
         if len(last) == len(units):
             out.append({"date": date, "value": round(fixed + sum(units[t] * last[t] for t in units), 2)})
     return out
+
+
+def mix_curve(weights: dict[str, float], histories: dict[str, list[dict]]) -> list[dict]:
+    """What 1 in a mix became, point by point of the ETFs' charts, put back to its weights at every point: [{"date",
+    "value"}]. An ETF without a price at a point counts as cash at 0% there (one not listed yet, for instance)."""
+    series = {t: {p["date"]: p["value"] for p in histories.get(t, [])} for t, w in weights.items() if w > 0}
+    dates = sorted({d for points in series.values() for d in points})
+    value, last, out = 1.0, {}, []
+    for date in dates:
+        step = 0.0
+        for ticker, w in weights.items():
+            price = series.get(ticker, {}).get(date)
+            if price is not None:
+                if ticker in last:
+                    step += w * (price / last[ticker] - 1)
+                last[ticker] = price
+        value *= 1 + step
+        out.append({"date": date, "value": round(value, 6)})
+    return out
+
+
+def changes(before: dict[str, float], after: dict[str, float]) -> list[dict]:
+    """What moved between two versions of a reference, biggest move first: [{"ticker", "before", "after"}]. Moves
+    under half a percent are left out."""
+    moved = [{"ticker": t, "before": round(before.get(t, 0.0), 4), "after": round(after.get(t, 0.0), 4)}
+             for t in set(before) | set(after) if abs(after.get(t, 0.0) - before.get(t, 0.0)) >= 0.005]
+    return sorted(moved, key=lambda m: (-abs(m["after"] - m["before"]), m["ticker"]))
+
+
+def rebalance(held: list[dict], reference: list[dict], extra_eur: float = 0.0) -> list[dict]:
+    """The orders that bring what the customer holds back to their reference: [{"ticker", "side", "eur", "now",
+    "target"}], sells first (they fund the buys). held: lines of `holdings` ({"ticker", "value"}); reference: lines
+    with {"ticker", "weight", "lock"}. A locked ETF is never bought: its share stays in cash. Orders under
+    MIN_PROPOSAL of the portfolio or MIN_PROPOSAL_EUR are left out. `extra_eur`: cash the customer adds."""
+    total = sum(line["value"] for line in held) + extra_eur
+    if total <= 0:
+        return []
+    now = {line["ticker"]: line["value"] for line in held}
+    target = {line["ticker"]: line["weight"] * total for line in reference if not line.get("lock")}
+    orders = []
+    for ticker in sorted(set(now) | set(target)):
+        gap = target.get(ticker, 0.0) - now.get(ticker, 0.0)
+        if abs(gap) >= max(MIN_PROPOSAL * total, MIN_PROPOSAL_EUR):
+            orders.append({"ticker": ticker, "side": "BUY" if gap > 0 else "SELL", "eur": round(abs(gap), 2),
+                           "now": round(now.get(ticker, 0.0) / total, 4), "target": round(target.get(ticker, 0.0) / total, 4)})
+    return sorted(orders, key=lambda o: (o["side"] != "SELL", -o["eur"]))

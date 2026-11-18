@@ -174,3 +174,10 @@ def test_the_strategy_is_chosen_on_the_strategies_page_with_a_reason(logs):
     assert not at.exception
     assert model_portfolios.traded(logs, DAY) == "balanced"
     assert model_portfolios.choices(logs)["reason"].tolist() == ["A calmer start before the Fed"]
+
+
+def test_the_strategies_page_shows_the_versions_after_a_signed_off_day(logs):
+    pipeline.approve_day(DAY, logs)
+    at = open_page("strategies")
+    assert any("Versions" in m.value for m in at.markdown)
+    assert any("version of" in m.value for m in at.markdown)

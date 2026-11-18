@@ -65,8 +65,8 @@ streamlit run app/streamlit_app.py                                    # the cock
 ```
 
 **Every weekday morning:** run `python -m graph.morning` first. It computes once what every customer shares: the
-prices, the day's Macro/News (the slow part, about 10 minutes at the free tier's pace), the three reference portfolios,
-the sheet of each ETF and the points of the app's charts. The customer app only reads the result, so a customer never waits. Then open the cockpit and
+prices, the day's Macro/News (the slow part, about 10 minutes at the free tier's pace), the sheet of each ETF and the
+points of the app's charts. The customer app only reads the result, so a customer never waits. Then open the cockpit and
 click **Run the day**: it reads the morning's Macro/News back instead of running it again. The
 scores and portfolios are logged before your first review, which is all the learning needs. Doing the three reviews
 on practice days adds evidence of human judgement. Then commit `logs/` with `scripts/ship.sh "Add the days of …"`.
@@ -85,8 +85,8 @@ Two pages up front, the rest in two menus:
 
 - **Today**: the whole day on one page, top to bottom. Key figures, then five steps (run the agents, orders, risk,
   sign off, export) with one action at a time, then the portfolio against the MSCI World.
-- **Strategies**: the three reference portfolios side by side, what each did, which archetype usually ends in which
-  strategy, and **the strategy the team trades**: pick one, say why, and from that day on the agents trade within its
+- **Strategies**: the three reference portfolios as customers see them today (their latest version), what each mix
+  did, their versions, which archetype usually ends in which strategy, and **the strategy the team trades**: pick one, say why, and from that day on the agents trade within its
   limits (at most so much in shares, in themes and in complex products: `data/profiles.py`). The code cuts back what
   goes beyond them (`agents/portfolio.py` `within_strategy`) and the memo says what it cut. The choice is logged
   (`logs/strategy_choices.csv`): every machine trades the same one, and a day already run keeps its strategy.
@@ -110,9 +110,15 @@ A finished day is read from its files in `logs/`, so any past day can be opened.
   knowledge question right and keeps a buffer; Balanced otherwise. The reasons are shown.
 - **The same answers** fill the suitability sheet (a wealth range is asked when Belfius cannot show the savings). The
   code flags answers that contradict each other: an adviser then looks first. The LLM only reads typed answers.
-- **Explore**: the strategy's fixed reference portfolio (`agents/model_portfolios.py`) with its chart (1M, 3M, 1Y,
-  Max, what €10,000 would have become), a donut of its sleeves, each ETF's return, and the whole 50-ETF selection.
-  The customer's rules leave ETFs out. Locked lines say why: ruled out, not part of the risk level, or the check.
+- **Explore**: the strategy's reference portfolio with its chart (1M, 3M, 1Y, Max, what €10,000 would have become),
+  a donut of its sleeves, each ETF's return, and the whole 50-ETF selection. The customer's rules leave ETFs out.
+  Locked lines say why: ruled out, not part of the risk level, or the check.
+- **The references follow our engine** (`agents/model_portfolios.py`). Each starts from a fixed mix. When the team
+  signs a day off in the cockpit, the code's portfolio of the Portfolio Manager (no LLM) is built for each strategy
+  from the same scores and learned weights, inside its limits; it becomes a new version when at least 10% of the
+  reference changes (`logs/strategy_portfolios.csv`). The app shows what changed, and the customer's Portfolio tab
+  offers the orders (sales first, then buys) that follow it; the customer decides on each line. A customer who
+  drifted from the reference gets the same offer.
 - **ETF sheets** (`agents/etf_sheets.py`): the price chart, then "What our AI sees today" in three plain lines (trend,
   macro, news, written by code from the agents' numbers), the returns, the three trends with the two checks behind
   each, today's macro, and the news analyst's view with its sources and the other side. Lena explains any line from

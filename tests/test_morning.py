@@ -100,8 +100,8 @@ def test_the_charts_keep_recent_days_and_one_point_a_week_before():
     assert points.index.is_monotonic_increasing
     history = morning.chart_history(made_up_prices(), DAY)
     validate_chart_history(history)
-    assert set(history[history["kind"] == "strategy"]["name"]) == set(STRATEGIES)
-    assert set(history[history["kind"] == "etf"]["name"]) == {"WORLD", "GOLD", "OVERNIGHT CASH"}
+    assert set(history["kind"]) == {"etf"}  # a reference is drawn by the app from its ETFs' points
+    assert set(history["name"]) == {"WORLD", "GOLD", "OVERNIGHT CASH"}
 
 
 def test_a_line_is_explained_from_the_sheet_only():
@@ -127,13 +127,14 @@ def test_the_morning_run_writes_what_the_app_reads(tmp_path):
 
     out = morning.run(DAY, tmp_path, fetch=lambda start, end: made_up_prices(), news=news)
     assert asked == [DAY] and out["views_of"] == DAY.isoformat() and out["note"] == ""
-    portfolios, sheets = pd.read_csv(tmp_path / morning.PORTFOLIOS), pd.read_csv(tmp_path / morning.SHEETS, keep_default_na=False)
-    assert set(portfolios["strategy"]) == set(STRATEGIES) and set(sheets["ticker"]) == {"WORLD", "GOLD", "OVERNIGHT CASH"}
+    sheets = pd.read_csv(tmp_path / morning.SHEETS, keep_default_na=False)
+    assert set(sheets["ticker"]) == {"WORLD", "GOLD", "OVERNIGHT CASH"}
+    assert not (tmp_path / "strategy_portfolios.csv").exists()  # the references follow the signed-off days, not this run
     history = validate_chart_history(pd.read_csv(tmp_path / morning.HISTORY))
     assert history["date"].max() <= DAY.isoformat() and len(history) == len(out["history"])
     morning.run(DAY, tmp_path, fetch=lambda start, end: made_up_prices(), news=news)
     assert asked == [DAY]  # the day's views are in the logs: Macro/News is not run twice
-    assert len(pd.read_csv(tmp_path / morning.PORTFOLIOS)) == len(portfolios)  # a second run replaces the day, it adds nothing
+    assert len(pd.read_csv(tmp_path / morning.SHEETS)) == len(sheets)  # a second run replaces the day, it adds nothing
 
 
 def test_the_morning_run_goes_on_when_the_news_cannot_run(tmp_path):

@@ -27,7 +27,7 @@ from starlette.staticfiles import StaticFiles
 from agents import etf_sheets, model_portfolios, profiler
 from data import config as settings
 from data.lessons import LESSONS
-from data.profiles import ARCHETYPES, SLEEVES, STRATEGIES
+from data.profiles import ARCHETYPES, SLEEVE_ETFS, SLEEVES, STRATEGIES
 from data.schemas import (CUSTOMER_LOG, LIST_SEP, split_list, validate_chart_history, validate_customer_log,
                           validate_etf_sheets, validate_etf_views)
 from data.universe import load_universe
@@ -138,12 +138,15 @@ def returns_by_ticker(sheets: pd.DataFrame) -> dict[str, dict[str, float]]:
     return out
 
 
-def reference(strategy: str, amount: float, rules: list[str] | None = None, shared: Path | None = None) -> dict:
-    """The strategy's reference portfolio in euros for this amount: one line per ETF, sleeve by sleeve, with what each
-    did and the strategy's own chart. An ETF the customer's rules leave out gives its share to the largest core
-    equity ETF; `left_out` says which. Locks are added by mobile/wallet.py (`decorate`)."""
+def reference(strategy: str, amount: float, rules: list[str] | None = None, shared: Path | None = None,
+              chart: bool = True) -> dict:
+    """The strategy's reference portfolio today (its latest version, agents/model_portfolios.py) in euros for this
+    amount: one line per ETF, sleeve by sleeve, with what each did, the chart of this mix, the date of the version
+    (None: the starting mix) and what changed from the version before. An ETF the customer's rules leave out gives
+    its share to the largest core equity ETF; `left_out` says which. Locks are added by mobile/wallet.py."""
     etfs = universe()
-    rows = [(ticker, sleeve, weight) for ticker, (sleeve, weight) in model_portfolios.weights(strategy).items()]
+    held, version = model_portfolios.current(shared, strategy)
+    rows = [(ticker, sleeve, weight) for ticker, (sleeve, weight) in held.items()]
     rows.sort(key=lambda r: (list(SLEEVES).index(r[1]), -r[2]))
     left_out = []
     for ticker, _, weight in rows:
@@ -159,9 +162,16 @@ def reference(strategy: str, amount: float, rules: list[str] | None = None, shar
              for i, (ticker, sleeve, weight) in enumerate(kept)]
     sleeves = [{"key": key, "name": name, "weight": round(sum(l["weight"] for l in lines if l["sleeve"] == key), 6)}
                for key, name in SLEEVES.items()]
-    history = points(chart_points(shared), "strategy", strategy) if shared else []
+    mix = {ticker: weight for ticker, (_, weight) in held.items()}
+    history = []
+    if shared and chart:
+        found = chart_points(shared)
+        history = wallet.mix_curve(mix, {t: points(found, "etf", t) for t in mix})
+    before = model_portfolios.previous(shared, strategy, version) if version else {}
+    moved = wallet.changes({t: w for t, (_, w) in before.items()}, mix) if version else []
     return {"strategy": strategy, "amount": amount, "lines": lines, "left_out": left_out,
-            "sleeves": [s for s in sleeves if s["weight"] > 0], "history": history}
+            "sleeves": [s for s in sleeves if s["weight"] > 0], "history": history, "version": version,
+            "changes": moved}
 
 
 def catalogue(shared: Path) -> list[dict]:
@@ -223,17 +233,26 @@ def start(shared: Path | None = None) -> dict:
     return {"customers": people, "strategies": STRATEGIES, "archetypes": ARCHETYPES,
             "traded": model_portfolios.traded(shared, date.today()),
             "account_data": list(ACCOUNT.values()), "coach": profiler.COACH, "questions": profiler.MAX_QUESTIONS,
-            "sleeves": SLEEVES, "quiz": quiz_questions(), "lessons": lessons()}
+            "sleeves": SLEEVES, "core_etfs": {t: sleeve for sleeve, etfs in SLEEVE_ETFS.items() for t in etfs},
+            "quiz": quiz_questions(), "lessons": lessons()}
 
 
 def portfolio(state: dict, shared: Path) -> dict:
-    """What the customer holds, valued at the last close, against their strategy's reference portfolio."""
+    """What the customer holds, valued at the last close, against their strategy's reference portfolio, and the
+    orders that would follow the reference (`proposal`): the customer decides on each. `proposal["new"]`: the
+    reference changed since the customer's last order."""
     last = {ticker: p["price"] for ticker, p in last_prices(shared).items()}
-    target = reference(state["strategy"], 1, state["answers"].get("rules"))["lines"]
+    rules = state["answers"].get("rules")
+    ref = reference(state["strategy"], 1, rules, shared, chart=False)
+    target = wallet.decorate(ref["lines"], state["strategy"], state["unlocked"], rules)
     history = chart_points(shared)
     held = {order["ticker"] for order in state["orders"]}
-    return {**wallet.holdings(state["orders"], last, universe(), target),
-            "history": wallet.mix_history(state["orders"], {t: points(history, "etf", t) for t in held})}
+    book = wallet.holdings(state["orders"], last, universe(), target)
+    last_order = max((order.get("time", "")[:10] for order in state["orders"]), default="")
+    return {**book, "history": wallet.mix_history(state["orders"], {t: points(history, "etf", t) for t in held}),
+            "proposal": {"version": ref["version"], "changes": ref["changes"],
+                         "new": bool(state["orders"]) and bool(ref["version"]) and ref["version"] >= last_order,
+                         "orders": wallet.rebalance(book["lines"], target) if book["lines"] else []}}
 
 
 def create_app(client=None, logs: Path | None = None, shared: Path | None = None) -> Starlette:
@@ -320,16 +339,19 @@ def create_app(client=None, logs: Path | None = None, shared: Path | None = None
         if not isinstance(orders, list) or not orders or not all(isinstance(o, dict) for o in orders):
             return error("no order to place", 400)
         rules = current["answers"].get("rules")
+        held = {line["ticker"]: line["value"] for line in portfolio(current, shared)["lines"]} if current["orders"] else {}
         for item in orders:
+            side = item.get("side", "BUY")
             problem = wallet.check_order(universe().get(item.get("ticker")), item.get("eur"), current["strategy"],
-                                         current["unlocked"], rules)
+                                         current["unlocked"], rules, side, held.get(item.get("ticker"), 0.0))
             if problem:
                 return error(f"{item.get('ticker')}: {problem}", 400)
         prices = last_prices(shared)
-        for item in orders:
+        for item in sorted(orders, key=lambda o: o.get("side", "BUY") != "SELL"):  # sells first: they fund the buys
             price = prices.get(item["ticker"])
             eur = round(float(item["eur"]), 2)
-            detail = {"ticker": item["ticker"], "eur": eur, "units": round(eur / price["price"], 6) if price else None,
+            detail = {"ticker": item["ticker"], "side": item.get("side", "BUY"), "eur": eur,
+                      "units": round(eur / price["price"], 6) if price else None,
                       "price": round(price["price"], 4) if price else None, "as_of": price["as_of"] if price else None}
             record(logs, customer, "order", current, detail)
         now = customer_state(logs, customer)
