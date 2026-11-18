@@ -51,7 +51,7 @@ def chart_history(prices: pd.DataFrame, as_of: date) -> pd.DataFrame:
     from its ETFs' points, mobile/wallet.py `mix_curve`). Format: Chart history."""
     prices = prices[prices["date"].astype(str) <= as_of.isoformat()]
     closes = prices.pivot(index="date", columns="ticker", values="adj_close_eur").sort_index()
-    rows = [(str(day)[:10], "etf", ticker, float(value)) for ticker in closes.columns
+    rows = [(str(day)[:10], ticker, float(value)) for ticker in closes.columns
             for day, value in sampled(closes[ticker]).items()]
     return validate_chart_history(pd.DataFrame(rows, columns=CHART_HISTORY))
 

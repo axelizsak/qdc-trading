@@ -43,9 +43,12 @@ def test_every_strategy_has_a_whole_portfolio_of_known_etfs():
     assert safer == sorted(safer)  # the lower the risk level, the more bonds and cash
 
 
-def test_the_reference_portfolios_of_a_day_are_in_the_shared_format():
-    portfolios = model_portfolios.build(DAY)
-    assert set(portfolios["strategy"]) == set(STRATEGIES) and set(portfolios["date"]) == {DAY}
+def test_the_published_references_are_in_the_shared_format(tmp_path):
+    families = dict(zip(load_universe()["ticker"], load_universe()["family"]))
+    engine = pd.Series({"WORLD": 0.5, "SEMIS": 0.2, "GOLD": 0.1})
+    model_portfolios.publish(tmp_path, DAY, {key: engine for key in STRATEGIES}, families)
+    portfolios = model_portfolios.versions(tmp_path)
+    assert set(portfolios["strategy"]) == set(STRATEGIES) and set(portfolios["date"]) == {DAY.isoformat()}
     validate_strategy_portfolios(portfolios)
     with pytest.raises(ValueError, match="unknown sleeve"):
         validate_strategy_portfolios(portfolios.assign(sleeve="core"))
@@ -100,8 +103,7 @@ def test_the_charts_keep_recent_days_and_one_point_a_week_before():
     assert points.index.is_monotonic_increasing
     history = morning.chart_history(made_up_prices(), DAY)
     validate_chart_history(history)
-    assert set(history["kind"]) == {"etf"}  # a reference is drawn by the app from its ETFs' points
-    assert set(history["name"]) == {"WORLD", "GOLD", "OVERNIGHT CASH"}
+    assert set(history["ticker"]) == {"WORLD", "GOLD", "OVERNIGHT CASH"}  # the app draws a reference from its ETFs
 
 
 def test_a_line_is_explained_from_the_sheet_only():

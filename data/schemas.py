@@ -84,10 +84,10 @@ STRATEGY_PORTFOLIOS = ["date", "strategy", "ticker", "target_weight", "sleeve"]
 # logs/strategy_choices.csv: the strategy the team trades, chosen in the cockpit, append-only. From `date` on, every
 # day not run yet is traded within that strategy's limits, until the next choice. reason: why, in a few words.
 STRATEGY_CHOICES = ["date", "strategy", "reason"]
-# logs/chart_history.csv: the points of the app's charts, rewritten by each morning run (graph/morning.py). kind etf:
-# `name` is a ticker and `value` its adjusted close in EUR; kind strategy: `name` is a strategy and `value` what 1
-# invested in its reference portfolio became. Every session of the last weeks, one a week before.
-CHART_HISTORY = ["date", "kind", "name", "value"]
+# logs/chart_history.csv: the points of the app's charts, rewritten by each morning run (graph/morning.py): each ETF's
+# adjusted close in EUR, every session of the last weeks and one a week before. The app draws a reference portfolio
+# from its ETFs' points.
+CHART_HISTORY = ["date", "ticker", "value"]
 # logs/etf_sheets.csv: the sheet of each ETF as the customer app shows it, one row per line of a sheet, written by the
 # morning run (graph/morning.py). block: returns, trend or macro. state: up, neutral or down for a trend; supportive,
 # watch or headwind for a macro factor; empty for a return. detail: the checks or the view behind the line.
@@ -114,7 +114,6 @@ REVIEW_DECISIONS = {"approved", "revised", "stopped"}  # revised: back to the Po
 PM_SOURCES = {"baseline", "optimizer", "llm", "final"}
 RISK_FORECAST_KINDS = {"weight", "forecast"}
 CUSTOMER_EVENTS = {"profiled", "order", "unlocked", "lesson", "reset"}
-CHART_KINDS = {"etf", "strategy"}
 SHEET_STATES = {"returns": {""}, "trend": {"up", "neutral", "down"}, "macro": {"supportive", "watch", "headwind"}}
 LIST_SEP = ";"
 
@@ -492,16 +491,13 @@ def validate_strategy_choices(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def validate_chart_history(df: pd.DataFrame) -> pd.DataFrame:
-    """Chart history: a known kind, a known strategy for kind strategy, a value above 0, one point per (kind, name,
-    date)."""
+    """Chart history: a ticker, a value above 0, one point per (ticker, date)."""
     _require_columns(df, CHART_HISTORY, "chart_history")
-    _require_in(df, "kind", CHART_KINDS, "chart_history")
-    _require_in(df[df["kind"] == "strategy"], "name", set(STRATEGIES), "chart_history")
-    _require_text(df, "name", "chart_history")
+    _require_text(df, "ticker", "chart_history")
     value = pd.to_numeric(df["value"], errors="coerce")
     if not (np.isfinite(value) & (value > 0)).all():
         raise ValueError("chart_history: value must be a finite number above 0")
-    _require_unique(df, ["kind", "name", "date"], "chart_history")
+    _require_unique(df, ["ticker", "date"], "chart_history")
     return df
 
 

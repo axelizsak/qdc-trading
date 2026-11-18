@@ -113,20 +113,21 @@ def chart_points(shared: Path) -> pd.DataFrame:
     """The points of the charts from the latest morning run, or an empty table before it."""
     path = shared / HISTORY
     if not path.exists():
-        return pd.DataFrame(columns=["date", "kind", "name", "value"])
+        return pd.DataFrame(columns=["date", "ticker", "value"])
     return validate_chart_history(pd.read_csv(path)).sort_values("date")
 
 
-def points(history: pd.DataFrame, kind: str, name: str) -> list[dict]:
-    rows = history[(history["kind"] == kind) & (history["name"] == name)]
+def points(history: pd.DataFrame, ticker: str) -> list[dict]:
+    """One ETF's chart points, [{"date", "value"}] in date order."""
+    rows = history[history["ticker"] == ticker]
     return [{"date": str(r.date), "value": round(float(r.value), 6)} for r in rows.itertuples()]
 
 
 def last_prices(shared: Path) -> dict[str, dict]:
     """ticker -> {"price": last adjusted close in EUR, "as_of": its date}, from the charts' points."""
     history = chart_points(shared)
-    etfs = history[history["kind"] == "etf"].groupby("name").tail(1)
-    return {r.name: {"price": float(r.value), "as_of": str(r.date)} for r in etfs.itertuples()}
+    etfs = history.groupby("ticker").tail(1)
+    return {r.ticker: {"price": float(r.value), "as_of": str(r.date)} for r in etfs.itertuples()}
 
 
 def returns_by_ticker(sheets: pd.DataFrame) -> dict[str, dict[str, float]]:
@@ -166,7 +167,7 @@ def reference(strategy: str, amount: float, rules: list[str] | None = None, shar
     history = []
     if shared and chart:
         found = chart_points(shared)
-        history = wallet.mix_curve(mix, {t: points(found, "etf", t) for t in mix})
+        history = wallet.mix_curve(mix, {t: points(found, t) for t in mix})
     before = model_portfolios.previous(shared, strategy, version) if version else {}
     moved = wallet.changes({t: w for t, (_, w) in before.items()}, mix) if version else []
     return {"strategy": strategy, "amount": amount, "lines": lines, "left_out": left_out,
@@ -207,7 +208,7 @@ def etf_sheet(shared: Path, ticker: str) -> dict | None:
               "value": float(r.value), "state": r.state, "detail": r.detail} for r in sheets.itertuples()]
     news = news_view(shared, ticker, as_of)
     return {**universe()[ticker], "as_of": as_of, "rows": sheets, "lines": lines, "news": news,
-            "reading": etf_sheets.reading(lines, news), "history": points(chart_points(shared), "etf", ticker)}
+            "reading": etf_sheets.reading(lines, news), "history": points(chart_points(shared), ticker)}
 
 
 def quiz_questions() -> list[dict]:
@@ -249,7 +250,7 @@ def portfolio(state: dict, shared: Path) -> dict:
     held = {order["ticker"] for order in state["orders"]}
     book = wallet.holdings(state["orders"], last, universe(), target)
     last_order = max((order.get("time", "")[:10] for order in state["orders"]), default="")
-    return {**book, "history": wallet.mix_history(state["orders"], {t: points(history, "etf", t) for t in held}),
+    return {**book, "history": wallet.mix_history(state["orders"], {t: points(history, t) for t in held}),
             "proposal": {"version": ref["version"], "changes": ref["changes"],
                          "new": bool(state["orders"]) and bool(ref["version"]) and ref["version"] >= last_order,
                          "orders": wallet.rebalance(book["lines"], target) if book["lines"] else []}}
