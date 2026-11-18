@@ -280,11 +280,6 @@ ol, ul { list-style: none; }
 .section > .eyebrow { margin: 0 6px 8px; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 16px 18px; box-shadow: var(--shadow); }
 .panel p { color: var(--text-2); font-size: 15px; }
-.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 16px 0; }
-.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 12px 14px 13px; box-shadow: var(--shadow); }
-.tile.wide { grid-column: 1 / -1; }
-.tile small { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
-.tile b { font-size: 14.5px; font-weight: 600; line-height: 1.25; display: block; }
 .ticks { display: grid; gap: 10px; }
 .ticks li { display: flex; gap: 10px; align-items: flex-start; font-size: 14.5px; color: var(--text); }
 .ticks svg { flex: none; margin-top: 2px; color: var(--accent); }
@@ -298,21 +293,8 @@ ol, ul { list-style: none; }
 /* ---- Plan --------------------------------------------------------------------------------------------------- */
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 16px 4px; }
 .topbar b { font-size: 16px; }
-.amount { margin: 12px 22px 0; }
-.amount .hero-number { font-size: 52px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; margin-top: 6px; }
-.amount p { color: var(--text-2); font-size: 14.5px; margin-top: 4px; }
 .badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
-.badge.profile { background: var(--accent-soft); color: var(--accent); }
 .note { margin: 14px 16px 0; padding: 10px 14px; border-radius: 14px; border: 1px dashed rgba(70, 20, 55, 0.28); color: var(--text-2); font-size: 13px; }
-.alloc { position: relative; }
-.bar { display: flex; gap: 2px; height: 28px; }
-.bar .part { height: 100%; border-radius: 4px; min-width: 0; display: flex; align-items: center; padding-left: 7px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; overflow: hidden; }
-.tip { position: absolute; bottom: calc(100% + 8px); transform: translateX(-50%); padding: 7px 10px; border-radius: 10px; background: var(--text); color: #fff; font-size: 12.5px; white-space: nowrap; pointer-events: none; z-index: 5; box-shadow: 0 8px 24px rgba(70, 20, 55, 0.25); }
-.tip b { font-weight: 600; }
-.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-top: 14px; }
-.legend li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-2); }
-.legend i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-.legend span { margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; }
 .sleeve-head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 6px 8px; }
 .sleeve-head b { font-size: 16px; }
 .sleeve-head small { color: var(--muted); font-size: 13px; }
@@ -513,9 +495,6 @@ button.sheet-tile:hover { border-color: rgba(217, 19, 95, 0.4); }
 .locked-note { display: flex; align-items: center; justify-content: center; gap: 8px; height: 48px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-weight: 600; font-size: 14px; }
 
 /* ---- Order sheets -------------------------------------------------------------------------------------------------- */
-.amount-field { display: flex; align-items: baseline; gap: 6px; padding: 8px 4px 4px; border-bottom: 2px solid var(--accent); margin: 6px 0 6px; }
-.amount-field span { font-size: 30px; font-weight: 700; color: var(--muted); }
-.amount-input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 40px; font-weight: 800; letter-spacing: -0.02em; color: var(--text); font-variant-numeric: tabular-nums; }
 .units { display: block; color: var(--muted); font-size: 12.5px; min-height: 18px; }
 .quick { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; }
 .form-error { color: var(--down); font-size: 13.5px; margin-top: 8px; }
@@ -555,9 +534,9 @@ button.sheet-tile:hover { border-color: rgba(217, 19, 95, 0.4); }
 .proposal > p { color: var(--text-2); font-size: 14px; }
 .proposal .changes { box-shadow: none; padding: 10px 12px; }
 .proposal .btn { height: 48px; }
-.side { padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
-.side.is-buy { color: var(--up); background: var(--up-soft); }
-.side.is-sell { color: var(--down); background: var(--down-soft); }
+.order-side { padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
+.order-side.is-buy { color: var(--up); background: var(--up-soft); }
+.order-side.is-sell { color: var(--down); background: var(--down-soft); }
 
 /* ---- Smaller windows: the notes go, the phone stays; on a real phone it fills the screen --------------------- */
 @media (max-width: 1180px) { .side-right { display: none; } .stage { grid-template-columns: minmax(240px, 320px) auto; } }

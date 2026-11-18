@@ -67,13 +67,6 @@ def weights(strategy: str) -> dict[str, tuple[str, float]]:
     return out
 
 
-def build(as_of: date) -> pd.DataFrame:
-    """The three fixed starting mixes, dated `as_of`. Format: Strategy portfolios."""
-    rows = [(as_of, strategy, ticker, weight, sleeve) for strategy in STRATEGIES
-            for ticker, (sleeve, weight) in weights(strategy).items()]
-    return validate_strategy_portfolios(pd.DataFrame(rows, columns=STRATEGY_PORTFOLIOS))
-
-
 def versions(logs: Path) -> pd.DataFrame:
     """Every published version of every reference, oldest first (Strategy portfolios format); empty before the first."""
     path = Path(logs) / VERSIONS

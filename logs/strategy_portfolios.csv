@@ -1,0 +1,23 @@
+date,strategy,ticker,target_weight,sleeve
+2026-11-18,defensive,STAPLES,0.0769,satellites
+2026-11-18,defensive,BEL 20,0.0542,core_equity
+2026-11-18,defensive,EUROPE 600,0.1444,core_equity
+2026-11-18,defensive,WORLD,0.1539,core_equity
+2026-11-18,defensive,GLOBAL AGG BOND,0.247,bonds
+2026-11-18,defensive,EUR GOVT BOND,0.1647,bonds
+2026-11-18,defensive,OVERNIGHT CASH,0.1589,cash
+2026-11-18,balanced,STAPLES,0.1637,satellites
+2026-11-18,balanced,HEALTH CARE,0.0364,satellites
+2026-11-18,balanced,BEL 20,0.0936,core_equity
+2026-11-18,balanced,EUROPE 600,0.2437,core_equity
+2026-11-18,balanced,WORLD,0.1623,core_equity
+2026-11-18,balanced,GLOBAL AGG BOND,0.097,bonds
+2026-11-18,balanced,EUR GOVT BOND,0.0646,bonds
+2026-11-18,balanced,OVERNIGHT CASH,0.1387,cash
+2026-11-18,opportunity,STAPLES,0.2016,satellites
+2026-11-18,opportunity,HEALTH CARE,0.0449,satellites
+2026-11-18,opportunity,BEL 20,0.1153,core_equity
+2026-11-18,opportunity,EUROPE 600,0.3,core_equity
+2026-11-18,opportunity,STOXX SHORT,0.1,satellites
+2026-11-18,opportunity,WORLD,0.0999,core_equity
+2026-11-18,opportunity,OVERNIGHT CASH,0.1383,cash

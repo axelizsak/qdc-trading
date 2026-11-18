@@ -28,7 +28,6 @@ const ICON = {
   back: svg(20, '<path d="M12.5 4.5 7 10l5.5 5.5"/>'),
   up: svg(20, '<path d="M10 15.5v-11M5 9.5l5-5 5 5"/>', 2.4),
   check: svg(16, '<path d="M4 10.5l4 4 8-9"/>', 2.4),
-  bigCheck: svg(46, '<path d="M4.5 10.5l3.6 3.8 7.4-8.6"/>', 2.2),
   cross: svg(16, '<path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/>', 2.4),
   alert: svg(16, '<path d="M10 3 2.5 16h15L10 3zM10 8.5v3.5M10 14.4v.1"/>'),
   lock: svg(14, '<rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/>'),
@@ -755,7 +754,7 @@ function ordersSheet(title, intro, orders, footnote = null) {
     const why = o.target != null ? `${pct(o.now)} → ${pct(o.target)} of your portfolio` : state.sleeves[o.sleeve] || etf.theme || "";
     return h("label", { class: "basket-row" }, box, token(etf),
       h("span", { class: "grow" }, h("b", {}, o.ticker), h("small", {}, why)),
-      h("span", { class: `side is-${(o.side || "BUY").toLowerCase()}` }, o.side === "SELL" ? "Sell" : "Buy"), h("b", {}, eur.format(o.eur)));
+      h("span", { class: `order-side is-${(o.side || "BUY").toLowerCase()}` }, o.side === "SELL" ? "Sell" : "Buy"), h("b", {}, eur.format(o.eur)));
   });
   place.addEventListener("click", async () => {
     place.disabled = true;

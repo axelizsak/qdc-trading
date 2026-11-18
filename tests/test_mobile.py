@@ -265,3 +265,10 @@ def test_the_reference_follows_its_versions_and_the_customer_gets_the_orders_to_
     after = phone.post("/api/order", json={"customer": "thomas", "orders": follow}).json()["portfolio"]
     assert after["proposal"]["orders"] == []  # back on the reference
     assert {l["ticker"] for l in after["lines"]} == {"WORLD", "EUR GOVT BOND", "GOLD", "STAPLES"}
+
+
+def test_a_class_of_the_page_is_defined_once():
+    """Two rules for one class name, written for two things, mix them up: the order badge once named `.side` turned the
+    presenter's side panels into circles."""
+    rules = re.findall(r"^\.([a-z][a-z0-9-]*) \{", (server.STATIC / "app.css").read_text(), flags=re.M)
+    assert sorted({name for name in rules if rules.count(name) > 1}) == []

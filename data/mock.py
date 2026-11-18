@@ -367,17 +367,15 @@ def mock_strategy_choices() -> pd.DataFrame:
 
 
 def mock_chart_history(as_of: str = "2026-12-07", weeks: int = 60) -> pd.DataFrame:
-    """A year of weekly points, then the last ten sessions, for two ETFs and the three strategies. Format: Chart history."""
+    """A year of weekly points, then the last ten sessions, for two ETFs. Format: Chart history."""
     end = pd.Timestamp(as_of)
     days = sorted({*pd.date_range(end=end - pd.Timedelta(days=14), periods=weeks, freq="W-FRI"),
                    *pd.bdate_range(end=end - pd.Timedelta(days=1), periods=10)})
     rng = np.random.default_rng(7)
     rows = []
-    for kind, name, start, drift in [("etf", "WORLD", 100.0, 0.002), ("etf", "GOLD", 60.0, 0.003),
-                                     ("strategy", "defensive", 1.0, 0.001), ("strategy", "balanced", 1.0, 0.0015),
-                                     ("strategy", "opportunity", 1.0, 0.0025)]:
+    for ticker, start, drift in [("WORLD", 100.0, 0.002), ("GOLD", 60.0, 0.003)]:
         path = start * np.cumprod(1 + drift + 0.015 * rng.standard_normal(len(days)))
-        rows += [(day.date().isoformat(), kind, name, float(value)) for day, value in zip(days, path)]
+        rows += [(day.date().isoformat(), ticker, float(value)) for day, value in zip(days, path)]
     return validate_chart_history(pd.DataFrame(rows, columns=CHART_HISTORY))
 
 
