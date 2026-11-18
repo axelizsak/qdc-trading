@@ -5,6 +5,18 @@ How the system is built, how to run it and how to change it. The short version i
 A multi-agent system that trades 50 ETFs for the QTEM Data Challenge (Belfius × QuantumBlack, fall 2026).
 The agents propose, a human approves every order. The same agents inform the customer app.
 
+## The idea in one paragraph
+
+ReBel is execution-only (Belfius session of 27 Oct, slide 6): the customer decides and places every order, the app
+informs. Two layers are kept apart. The **archetype** (the team's five kinds of customer) decides how the coach
+helps; the **strategy** (Defensive, Balanced or Opportunity) is the customer's risk level, set by fixed rules on the
+suitability answers, and decides the reference portfolio shown and the products open. On every ETF the agents'
+reading is shown in plain words: trend, macro, news, with sources and the other side. Complex products (leveraged,
+inverse, crypto) open only at the Opportunity level and after a short check. A customer who wants someone else to
+decide is sent to Belfius (advice or a managed portfolio). In the competition the team is that customer: it chooses
+one of the three strategies in the cockpit (Opportunity to start), the agents trade within its limits, and a human
+approves every order.
+
 ## The competition
 
 - €10,000, no transaction costs, at most 5 orders a day, on Mon 7, Thu 10, Mon 14, Thu 17 and Mon 21 December 2026.
@@ -53,46 +65,71 @@ streamlit run app/streamlit_app.py                                    # the cock
 ```
 
 **Every weekday morning:** run `python -m graph.morning` first. It computes once what every customer shares: the
-prices, the day's Macro/News (the slow part, about 10 minutes at the free tier's pace), the five model portfolios and
-the sheet of each ETF. The customer app only reads the result, so a customer never waits. Then open the cockpit and
+prices, the day's Macro/News (the slow part, about 10 minutes at the free tier's pace), the three reference portfolios,
+the sheet of each ETF and the points of the app's charts. The customer app only reads the result, so a customer never waits. Then open the cockpit and
 click **Run the day**: it reads the morning's Macro/News back instead of running it again. The
 scores and portfolios are logged before your first review, which is all the learning needs. Doing the three reviews
 on practice days adds evidence of human judgement. Then commit `logs/` with `scripts/ship.sh "Add the days of …"`.
+
+**A day is run once, and its logs are the record.** The signals are read back from `logs/`, and each round of the
+Portfolio Manager is frozen in `logs/proposals/<date>-round<n>.json`: whoever opens the day, on whichever machine
+(after a `git pull`), sees the same orders, and no agent is asked twice. A day whose reviews are in
+`logs/reviews.csv` is finished: it is read, never run again. There is no "run again".
 
 Without the cockpit: `python -m graph.pipeline` (runs to the first review), `--approve-all`, or `--answer file.json`.
 To try something without touching the graded logs, point everything at a copy: `QDC_LOGS_DIR=/tmp/trial`.
 
 ## The cockpit
 
-Dashboard · **Today** (your three reviews) · **Profiles** (the five model portfolios side by side, to choose the
-one the team trades) · one page per agent · **Learning** (the weights and the backtest) ·
-**How it works** (the diagram: click a box to see what it does and its code) · Logbook. A finished day is read from
-its files in `logs/`, so any past day can be opened.
+Two pages up front, the rest in two menus:
+
+- **Today**: the whole day on one page, top to bottom. Key figures, then five steps (run the agents, orders, risk,
+  sign off, export) with one action at a time, then the portfolio against the MSCI World.
+- **Strategies**: the three reference portfolios side by side, what each did, which archetype usually ends in which
+  strategy, and **the strategy the team trades**: pick one, say why, and from that day on the agents trade within its
+  limits (at most so much in shares, in themes and in complex products: `data/profiles.py`). The code cuts back what
+  goes beyond them (`agents/portfolio.py` `within_strategy`) and the memo says what it cut. The choice is logged
+  (`logs/strategy_choices.csv`): every machine trades the same one, and a day already run keeps its strategy.
+- **Agents**: one page per agent. **More**: Learning (the weights and the backtest), How it works (the diagram:
+  click a box to see what it does and its code), Logbook.
+
+A finished day is read from its files in `logs/`, so any past day can be opened.
 
 ## The customer app
 
 `python -m mobile.server`, then http://localhost:8600: a phone-sized app for the customer (light, ReBel style).
 
-- **Lena**, the coach, places the customer in one of five investor profiles (`data/profiles.py`) the way Akinator
-  guesses a character: the code keeps a probability for each profile, asks next the question that separates them
-  best, and updates the probabilities with every answer. At most seven questions: five for everyone, one more only
-  while no profile stands out, and the customer's rules. With the customer's consent, what Belfius already knows
-  sets the start and sharpens the questions (`agents/profiler.py`).
-- **The same answers** fill the suitability sheet (a wealth range is asked when Belfius cannot show the savings). The code flags answers that
-  contradict each other: an adviser then looks at the plan first. The last question asks for the customer's own
-  rules (no weapons, no crypto...), and the plan leaves those ETFs out. The LLM only reads typed answers.
-- **One fixed model portfolio per profile** (`data/profiles.py`, `agents/model_portfolios.py`): a share per sleeve
-  (core equity, bonds, gold, themes, cash), the same core ETFs for everyone, the profile's own themes. Nothing in it
-  follows the market. What each would have done since 2022 is in `backtest/README.md`, section 7.
-- **ETF sheets** (`agents/etf_sheets.py`): tap an ETF of the plan to see its returns, its three trends (the
-  technical agent's rule, with the two checks behind each) and what today's macro views mean for it. Lena explains
-  any line in plain words, from the sheet's own numbers only. Information, not advice.
-- **One approval.** The customer approves the plan before anything is invested. The demo customers are synthetic,
-  so what they do is written to `logs/mock/`, not to the committed logs.
+- **Lena**, the coach, asks at most seven questions: five for everyone, one more only while no archetype stands
+  out, and the customer's own rules. With the customer's consent, what Belfius already knows sets the start and
+  sharpens the questions (`agents/profiler.py`).
+- **Two answers, kept apart** (`data/profiles.py`). The **archetype** is guessed the way Akinator guesses a
+  character: a probability for each of the five, the next question is the one that separates them best. It decides
+  what Lena helps with first, never an asset. The **strategy** (risk level) comes from fixed rules on the suitability
+  answers, never from the model: Defensive when the money is needed within 5 years, a fall of a fifth would be sold
+  or a 5% loss costs sleep; Opportunity only for a customer who would invest more after that fall, answered a
+  knowledge question right and keeps a buffer; Balanced otherwise. The reasons are shown.
+- **The same answers** fill the suitability sheet (a wealth range is asked when Belfius cannot show the savings). The
+  code flags answers that contradict each other: an adviser then looks first. The LLM only reads typed answers.
+- **Explore**: the strategy's fixed reference portfolio (`agents/model_portfolios.py`) with its chart (1M, 3M, 1Y,
+  Max, what €10,000 would have become), a donut of its sleeves, each ETF's return, and the whole 50-ETF selection.
+  The customer's rules leave ETFs out. Locked lines say why: ruled out, not part of the risk level, or the check.
+- **ETF sheets** (`agents/etf_sheets.py`): the price chart, then "What our AI sees today" in three plain lines (trend,
+  macro, news, written by code from the agents' numbers), the returns, the three trends with the two checks behind
+  each, today's macro, and the news analyst's view with its sources and the other side. Lena explains any line from
+  the sheet's own numbers. Information, not advice.
+- **The customer places each order**: one ETF at a time, or the reference mix as a list of orders they review line
+  by line. **Portfolio** shows the value, a chart, the mix and how far it is from the reference, sleeve by sleeve,
+  pointing to kinds of assets, never to an order (`mobile/wallet.py`).
+- **Learn**: 15 one-minute lessons (`data/lessons.py`), each a few plain sentences and one question with the reason
+  behind every answer; the archetype's three come first, with a progress bar. Then the 3-question check that opens
+  complex products at the Opportunity level. "Rather have someone decide?" leads to Belfius advice or a managed
+  portfolio.
+- The demo customers are synthetic, so what they do is written to `logs/mock/`, not to the committed logs.
 
 **Online demo: https://axelizsak.github.io/qdc-trading/** The same screens with no server, on GitHub Pages, rebuilt
 at every merge into `main` (`.github/workflows/pages.yml`). The page runs `agents/profiler.py` itself in the browser
-(Pyodide), so Lena's logic exists once; the plans and the ETF sheets of the latest morning run are prepared as data
+(Pyodide), and `mobile/wallet.py` too, so the rules exist once; the reference portfolios, the ETF sheets and the
+charts of the latest morning run are prepared as data
 (`mobile/demo.py`, `mobile/static/demo.js`). It holds no key and calls no model: a typed answer other than an amount,
 and "Ask Lena why", say so. Nothing a visitor enters leaves their browser.
 
@@ -108,8 +145,10 @@ Every setting is one line. Test a change on the past first: add a line to `VARIA
 | The technical rules and the score of each answer | `agents/strategy_config.py` |
 | How the portfolio is built, its hard limits, the LLM's starting share | `agents/portfolio_config.py` |
 | The risk reference levels | `agents/risk_config.py` |
-| The five investor profiles, their model portfolios (sleeves, core ETFs, themes) | `data/profiles.py` |
-| The coach's questions and what each answer says about a profile | `agents/profiler.py` |
+| The three strategies: their reference portfolios (sleeves, core ETFs, themes) and their limits when traded; the five archetypes | `data/profiles.py` |
+| The coach's questions, what each answer says about an archetype, the risk-level rules, the check | `agents/profiler.py` |
+| The lessons of the Learn tab, and which archetype gets which first | `data/lessons.py`, `data/profiles.py` |
+| What a customer may buy, and how their holdings are compared with the reference | `mobile/wallet.py` |
 | The macro factors and each ETF's exposure to them | `data/config.py`, `data/macro_exposure.csv` |
 | The models, the pace of the calls, the trusted sites and the news feeds | `data/config.py` |
 | What the LLM is asked | the prompts in `agents/macro_analysts.py`, `agents/macro_llm.py`, `agents/technical_llm.py`, `agents/portfolio_llm.py`, `agents/profiler.py` |
@@ -117,11 +156,11 @@ Every setting is one line. Test a change on the past first: add a line to `VARIA
 ## Repository
 
 ```
-data/       prices, indicators, the 50 ETFs, the 5 investor profiles, settings, every shared table (schemas.py) and its mock (mock.py)
+data/       prices, indicators, the 50 ETFs, the 3 strategies and 5 archetypes, settings, every shared table (schemas.py) and its mock (mock.py)
 agents/     technical, macro/news, portfolio manager, risk manager, logbook, the learning rule, and the customer's coach
 graph/      morning.py (what every customer shares, once a day), pipeline.py (one day, step by step), review_loop.py (the learning step)
 app/        the Streamlit cockpit
-mobile/     the customer app: server.py, the phone screens (static/) and demo.py (the online demo, a static copy)
+mobile/     the customer app: server.py, wallet.py (what a customer may buy and holds), the phone screens (static/) and demo.py (the online demo)
 backtest/   the system replayed since 2022 (results in backtest/results/)
 logs/       everything the agents said and the humans decided: graded evidence (logs/README.md)
 tests/      one file per module

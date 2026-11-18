@@ -201,6 +201,14 @@ MACRO_FACTOR_MEANING = {
     "crypto": "crypto prices higher",
     "risk_appetite": "risk-on (investors buying risk)",
 }
+# How each factor is named on screen (the cockpit and the customer app).
+MACRO_FACTOR_LABELS = {
+    "ecb_rates": "ECB rates", "fed_us_rates": "Fed / US rates", "inflation": "Inflation",
+    "growth_recession": "Growth", "eurusd": "EUR / USD", "oil": "Oil", "energy_weather": "Energy & weather",
+    "gold_silver": "Gold & silver", "copper_metals": "Copper & metals", "uranium": "Uranium",
+    "geopolitics_defence": "Geopolitics", "china_em": "China & EM", "tech_ai_semis": "Tech, AI & semis",
+    "crypto": "Crypto", "risk_appetite": "Risk appetite",
+}
 MACRO_EXPOSURE_CSV = DATA_DIR / "macro_exposure.csv"
 
 # News searches of one run. They cost nothing, and a model asks for all of its searches in one request.

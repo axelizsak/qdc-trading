@@ -252,3 +252,37 @@ def test_google_news_headlines_fill_in_when_little_is_found(web):
     assert [r["url"] for r in found] == ["https://www.cnbc.com/ecb-holds", "https://news.google.com/rss/articles/abc"]
     assert found[1]["text"] == found[1]["title"] == "ECB rate decision due Thursday - Reuters"  # a headline has no summary
     assert "q=ECB+rates+decision+when:14d" in next(url for url in web.asked if "news.google.com" in url)
+
+
+def test_the_quick_client_takes_the_first_model_that_answers(network, monkeypatch):
+    asked = []
+
+    def answer(self, model, body, search, tries, deadline=None):
+        asked.append((model, deadline is not None))
+        if model == SCARCE:
+            raise llm.Unavailable(f"{model}: busy")
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text=model)], stop_reason="end_turn", usage=None)
+
+    monkeypatch.setattr(llm.Gemini, "_answer", answer)
+    quick = llm.client(quick=True).messages.create
+    reply = quick(model=SCARCE, system="Be brief.", max_tokens=50, messages=[{"role": "user", "content": "Hello"}])
+    assert reply.content[0].text == FAST and sorted(asked) == [(FAST, True), (SCARCE, True)]  # both, at once
+
+    def busy(self, model, *args):
+        raise llm.Unavailable(f"{model}: busy")
+
+    monkeypatch.setattr(llm.Gemini, "_answer", busy)
+    with pytest.raises(llm.Unavailable, match="busy"):
+        quick(model=SCARCE, system="Be brief.", max_tokens=50, messages=[{"role": "user", "content": "Hello"}])
+
+
+def test_a_request_with_a_deadline_never_waits_past_it(network):
+    network.replies += [error(503, "UNAVAILABLE")] * 3
+    body = llm._request("Be brief.", [{"role": "user", "content": "Hello"}], 50, None, 0)
+    with pytest.raises(llm.Unavailable):
+        llm._send(FAST, body, 3, llm.time.monotonic() + 8)
+    assert len(network.sent) == 2  # the third turn would start after the deadline: it is not taken
+    assert sum(network.waits) < 8  # the pace between tries only: no "busy" back-off
+    with pytest.raises(llm.Unavailable, match="no answer in time"):
+        llm._send(FAST, body, 3, llm.time.monotonic())  # no time left: nothing is sent
+    assert len(network.sent) == 2

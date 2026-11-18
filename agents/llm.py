@@ -13,10 +13,15 @@ client for Gemini. The free tier is small, so it also:
   better one alone for a while (settings.LLM_REST_MINUTES);
 - runs the model's web searches: the model asks for a search, the code runs it (agents/web_search.py) and hands the
   results back, up to the number of searches the caller allows (`tools=[{"name": "web_search", "max_uses": 3}]`).
+
+A customer waiting in the app cannot wait like the morning run does: the free tier sometimes answers in a second,
+sometimes says it is busy and then takes minutes. `client(quick=True)` asks the app's model and the fast model at
+the same time, takes the first answer, and gives up after QUICK_SECONDS, so the app answers without the model.
 """
 import json
 import threading
 import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from types import SimpleNamespace
 
 import requests
@@ -30,6 +35,7 @@ SCARCE_TIMEOUT = 75  # the same for the reasoning model: when it is down it hang
 TRIES = 3  # times a request is sent before the model is given up on (the scarce reasoning model: once)
 BUSY_WAIT = 8  # seconds before trying again after "busy", doubled each time
 QUOTA_WAIT = 60  # longest wait the service may ask for when the minute's quota is used
+QUICK_SECONDS = 10  # the most a customer of the app waits for the model, tries included
 REFUSALS = {"SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII"}
 SEARCH_TOOL = {"functionDeclarations": [{
     "name": "web_search",
@@ -59,16 +65,21 @@ def keys() -> list[str]:
     return [key for key in (settings.GEMINI_API_KEY, settings.GEMINI_API_KEY_2, settings.GEMINI_API_KEY_3) if key]
 
 
-def client() -> "Gemini":
-    """The client the agents use. Raises when there is no key."""
+def client(quick: bool = False) -> "Gemini":
+    """The client the agents use. `quick`: for a customer waiting in the app, the model asked for and no other, an
+    answer within QUICK_SECONDS or none (Unavailable). Raises when there is no key."""
     if not keys():
         raise RuntimeError("no GEMINI_API_KEY")
-    return Gemini()
+    return Gemini(quick)
 
 
-def _wait_for_a_turn(model: str) -> str | None:
+LATE = "late"  # what _wait_for_a_turn returns when the next turn comes after the caller's deadline
+
+
+def _wait_for_a_turn(model: str, deadline: float | None = None) -> str | None:
     """Waits until a request to this model may start and returns the key it uses: the one that is free first, among
-    the keys whose daily quota for the model is not used. None when every key's quota is used."""
+    the keys whose daily quota for the model is not used. None when every key's quota is used; LATE, without
+    waiting, when the turn would come after `deadline`."""
     with _pace:
         now = time.monotonic()
         usable = [key for key in keys() if _spent.get((model, key), 0.0) <= now]
@@ -76,27 +87,37 @@ def _wait_for_a_turn(model: str) -> str | None:
             return None
         key = min(usable, key=lambda k: _next_start.get((model, k), 0.0))
         start = max(now, _next_start.get((model, key), 0.0))
+        if deadline is not None and start >= deadline:
+            return LATE
         _next_start[(model, key)] = start + 60 / settings.LLM_REQUESTS_PER_MINUTE
     time.sleep(start - now)
     return key
 
 
-def _send(model: str, body: dict, tries: int = TRIES) -> dict:
+def _send(model: str, body: dict, tries: int = TRIES, deadline: float | None = None) -> dict:
     """One request to one model. Tries again on "busy" and on the minute's quota; raises Unavailable when the model
-    still does not answer or its daily quota is used on every key, RuntimeError when the request itself is refused."""
+    still does not answer or its daily quota is used on every key, RuntimeError when the request itself is refused.
+    `deadline` (time.monotonic): no request goes on past it and no try waits, for a customer who is waiting."""
     error = ""
     if model.startswith("gemma"):  # the open models take no thinking level
         body = {**body, "generationConfig": {k: v for k, v in body["generationConfig"].items() if k != "thinkingConfig"}}
     attempt = 0
     while attempt < tries:
-        key = _wait_for_a_turn(model)
+        if deadline is not None and time.monotonic() >= deadline:
+            error = error or "no answer in time"
+            break
+        key = _wait_for_a_turn(model, deadline)
         if key is None:
             error = error or "the day's free quota is used"
             break
+        if key == LATE:
+            error = error or "no answer in time"
+            break
+        timeout = SCARCE_TIMEOUT if model == settings.LLM_REASONING else TIMEOUT
+        if deadline is not None:
+            timeout = max(1.0, min(timeout, deadline - time.monotonic()))
         try:
-            reply = requests.post(URL.format(model=model), json=body,
-                                  timeout=SCARCE_TIMEOUT if model == settings.LLM_REASONING else TIMEOUT,
-                                  headers={"x-goog-api-key": key})
+            reply = requests.post(URL.format(model=model), json=body, timeout=timeout, headers={"x-goog-api-key": key})
         except requests.RequestException as exc:
             error = type(exc).__name__
             attempt += 1
@@ -110,7 +131,9 @@ def _send(model: str, body: dict, tries: int = TRIES) -> dict:
             # This key's free quota of the day is used: waiting does not help, another key may. Not counted as a try.
             _spent[(model, key)] = time.monotonic() + 60 * settings.LLM_REST_MINUTES
             continue
-        if reply.status_code == 429:  # the minute's quota: the service says how long to wait
+        if reply.status_code in (429, 500, 503, 504) and deadline is not None:
+            pass  # a customer is waiting: try again at once, while there is time
+        elif reply.status_code == 429:  # the minute's quota: the service says how long to wait
             asked = next((d.get("retryDelay", "") for d in problem.get("details", []) if "retryDelay" in d), "")
             time.sleep(min(float(asked.rstrip("s") or BUSY_WAIT), QUOTA_WAIT))
         elif reply.status_code in (500, 503, 504):
@@ -140,13 +163,16 @@ def _request(system: str, messages: list[dict], max_tokens: int, output_config: 
 class Gemini:
     """Answers `messages.create(...)` the way the agents expect, with Gemini behind it."""
 
-    def __init__(self):
+    def __init__(self, quick: bool = False):
+        self.quick = quick
         self.messages = SimpleNamespace(create=self.create)
 
     def create(self, model: str, system: str, messages: list[dict], max_tokens: int, tools: list[dict] | None = None,
                output_config: dict | None = None) -> SimpleNamespace:
         search = next((t for t in tools or [] if t.get("name") == "web_search"), None)
         body = _request(system, messages, max_tokens, output_config, search["max_uses"] if search else 0)
+        if self.quick:
+            return self._race(list(dict.fromkeys([model, settings.LLM_FAST])), body, search)
         models = [model] if model == settings.LLM_FAST else [model, settings.LLM_FAST]
         for name in models:
             if _resting.get(name, 0) > time.monotonic() and name != models[-1]:
@@ -159,7 +185,28 @@ class Gemini:
                 _resting[name] = time.monotonic() + 60 * settings.LLM_REST_MINUTES
                 print(f"  llm: {exc}; {models[-1]} answers instead for {settings.LLM_REST_MINUTES} minutes")
 
-    def _answer(self, model: str, body: dict, search: dict | None, tries: int) -> SimpleNamespace:
+    def _race(self, models: list[str], body: dict, search: dict | None) -> SimpleNamespace:
+        """The first answer of several models asked at the same time, within QUICK_SECONDS. The free tier's delays
+        come and go by the second: two models rarely stall together. Raises Unavailable when none answers in time."""
+        deadline = time.monotonic() + QUICK_SECONDS
+        pool = ThreadPoolExecutor(len(models))
+        pending = {pool.submit(self._answer, name, body, search, TRIES, deadline) for name in models}
+        problems = []
+        try:
+            while pending:
+                done, pending = wait(pending, timeout=max(0.0, deadline - time.monotonic()) + 1, return_when=FIRST_COMPLETED)
+                if not done:
+                    break
+                for future in done:
+                    if future.exception() is None:
+                        return future.result()
+                    problems.append(str(future.exception()))
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)  # a late model finishes on its own, within the deadline
+        raise Unavailable("; ".join(problems) or "no answer in time")
+
+    def _answer(self, model: str, body: dict, search: dict | None, tries: int,
+                deadline: float | None = None) -> SimpleNamespace:
         """The model's reply. While it asks for searches, they are run and their results handed back; once the
         allowed number is reached the model has to answer with what it has. `search_urls` lists every page the
         searches returned, so the caller can refuse a source the model made up."""
@@ -167,7 +214,7 @@ class Gemini:
         tokens_in = tokens_out = searches = requests_sent = 0
         urls = []
         for _ in range((search or {}).get("max_uses", 0) + 2):  # its searches, its answer, and one spare round
-            data = _send(model, body, tries)
+            data = _send(model, body, tries, deadline)
             requests_sent += 1
             used = data.get("usageMetadata", {})
             tokens_in += used.get("promptTokenCount", 0)

@@ -8,6 +8,7 @@ Everything here is committed, because it is graded evidence of the AI suggestion
 | `reviews.csv` | Every human review of the day (orders, risk, summary) with the feedback sent back (Reviews format) |
 | `summary/<date>.md` | The executive summary the human approved before the orders were submitted |
 | `memo/<date>.md` | The Portfolio Manager's memo of the day (its last round) |
+| `proposals/<date>-round<n>.json` | Each round of the Portfolio Manager as first computed: target, orders, memo and the human feedback that asked for it. Read back by every later run of the day, on any machine, so a day always shows the same orders |
 | `pm_portfolios.csv` | The portfolios the Portfolio Manager built each day: the code's baseline and optimiser, the LLM's own, and the final blend (PM portfolios format) |
 | `recommendations.csv` | Every order the Portfolio Manager proposed, round by round, with its fill price and its reasons (Recommendations format, append-only) |
 | `risk_reports.csv` | The Risk Manager's report of each day, one row per metric (Risk report format) |
@@ -28,9 +29,12 @@ Everything here is committed, because it is graded evidence of the AI suggestion
 | `lessons.md` | Lessons journal, written by the learning step (newest review first): the weights and the record behind them, which agent was right on which kind of call, the largest misses, the weakest sources. The agents read it before each decision |
 | `logbook.csv` | The audit trail: one row per event (signals, recommendations, risk flags, human decisions, computed fills, valuations), append-only, each row hashed with the one before it (Logbook format, `agents/logbook.py`) |
 | `logbook/<date>.md` | The day told in order, built from `logbook.csv` |
-| `profile_portfolios.csv` | The model portfolio of each investor profile, every day of a morning run: fixed rules, one row per ETF with its sleeve (Profile portfolios format) |
+| `strategy_choices.csv` | The strategy the team trades, chosen in the cockpit with its reason, from a date on (Strategy choices format, append-only). Every day not run yet is traded within that strategy's limits |
+| `strategy_portfolios.csv` | The reference portfolio of each strategy (Defensive, Balanced, Opportunity), every day of a morning run: fixed rules, one row per ETF with its sleeve (Strategy portfolios format) |
+| `profile_portfolios.csv` | Until 18 November 2026: the model portfolio of each of the five former investor profiles, before the team split archetypes and risk levels. Kept as history, no longer written |
+| `chart_history.csv` | The points of the customer app's charts: each ETF's adjusted close and each strategy's reference portfolio, every session of the last weeks and one a week before. Rewritten by each morning run (Chart history format) |
 | `etf_sheets.csv` | The sheet of each ETF as the customer app shows it, every day of a morning run: returns, the three trends with their checks, what the day's macro views mean for it (ETF sheets format) |
-| `customer_log.csv` | What happened to each customer of the app: the profile the coach placed them in, with the reason, their suitability answers and the contradictions the code found, then their decision on the plan (Customer log format, append-only). Always written to `mock/`: the app's customers are synthetic demo customers |
+| `customer_log.csv` | What happened to each customer of the app: the archetype the coach found and the strategy the rules gave, with the reasons, their suitability answers and the contradictions the code found, then each order they placed, the lessons they answered and whether they passed the check on complex products (Customer log format, append-only). Always written to `mock/`: the app's customers are synthetic demo customers |
 | `logbook/INDEX.md` | One line per day: orders kept, changed, rejected and added by the human, risk warnings, portfolio value and return against the benchmark, and whether the hash chain is intact |
 
 Not committed: `checkpoints.sqlite` (the saved graph state, used to resume a day between reviews) and `mock/` (runs while any step is on a mock).

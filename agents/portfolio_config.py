@@ -7,6 +7,8 @@ the list) are checked by the pipeline, and two hard limits below apply to every 
 own portfolio, a suggestion: the LLM proposes its own weights, the final target blends the two, and how much the
 LLM counts is learned from how its portfolios did against the code's.
 The Risk Manager and the memo's flags tell the human about concentration, theme, volatility and leverage.
+On top of these, every portfolio stays within the limits of the strategy the team trades (data/profiles.py, chosen in
+the cockpit): `within_strategy` in agents/portfolio.py.
 """
 from datetime import date
 

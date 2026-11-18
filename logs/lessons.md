@@ -2,6 +2,35 @@
 
 Written by the review loop (graph/review_loop.py) from the logs and the prices: facts with their numbers, no opinion. Newest review first. The agents read it before they decide.
 
+## Review of 2026-11-18
+
+**Weights** (each session, a weight is multiplied by e^(2 x what following it earned in that session); start -> today
+
+- The technical agent's three answers: mean_reversion 33% -> 15% (-0.014% a session over 1188, right 49%); momentum 33% -> 24% (+0.006% a session over 1247, right 54%); trend 33% -> 61% (+0.043% a session over 1242, right 53%)
+- The four agents: macro_etf 25% -> 25% (+0.235% a session over 4, right 75%); macro_market 25% -> 25% (+0.221% a session over 6, right 67%); technical_det 25% -> 25% (+0.191% a session over 7, right 57%); technical_llm 25% -> 25% (+1.275% a session over 1, right 100%)
+- The LLM's portfolio (llm) against the code's (code): code 40% -> 40% (+0.181% a session over 1, right 100%); llm 60% -> 60% (+0.200% a session over 1, right 100%)
+
+**Where each agent is right** (each score judged on the 3 sessions that followed it; calls with a score of at least 0.1)
+
+- macro_etf: calls up right 26% (n=34), calls down right 76% (n=58)
+- macro_market: calls up right 37% (n=35), calls down right 60% (n=143)
+- technical_det: calls up right 47% (n=78), calls down right 73% (n=89)
+- technical_llm: calls up right 11% (n=9), calls down right 86% (n=14)
+
+**Largest misses of the last judged day** (17 Nov)
+
+- technical_det +0.79 on BEL 20: -2.0% over 1 session
+- technical_det +0.70 on HEALTH CARE: -1.9% over 1 session
+- technical_det +0.72 on EUROPE 600: -1.8% over 1 session
+
+**ETF analysts by theme** (calls right / calls made, best first)
+
+- Digital assets 12/12, Precious metals 8/10, Leveraged & inverse 12/16, Size & style factors 9/13, ..., Emerging markets 6/10, Fixed income / Bonds 7/13, Equity / Tech 5/10, Defensive sector 3/7
+
+**Macro views by factor** (views right / views judged, best first)
+
+- gold_silver 8/9, crypto 8/10, copper_metals 6/8, geopolitics_defence 5/7, ..., china_em 4/7, growth_recession 4/7, uranium 2/5, eurusd 1/9
+
 ## Review of 2026-11-16
 
 **Weights** (each session, a weight is multiplied by e^(2 x what following it earned in that session); start -> today

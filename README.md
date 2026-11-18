@@ -4,7 +4,7 @@
 
 <p align="center">
   Meet <b>Lena</b>, the AI coach inside ReBel.<br>
-  Seven questions, a plan built for your life, one tap to approve.
+  Seven questions, your risk level, and AI that explains every ETF. You decide.
 </p>
 
 <p align="center">
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/demo.gif" width="300" alt="The app on a phone: a customer opens their plan, then the sheet of the gold ETF">
+  <img src="docs/demo.gif" width="300" alt="The app on a phone: Lena's questions, the risk level set by rules, the reference portfolio with its chart, what the AI sees in an ETF, the customer's own orders, the portfolio, a lesson">
 </p>
 
 ## The problem
@@ -25,13 +25,16 @@ what happens to your money once it is invested.
 **She asks, you tap.** At most seven questions, each one chosen from your previous answers. With your OK, what your
 bank already knows is not asked again.
 
-**She builds a plan that fits.** One of five investor profiles, and a portfolio of ETFs you can read at a glance.
-Your own rules are applied: no weapons, no crypto, your call.
+**Rules set your risk level, not the AI.** Defensive, Balanced or Opportunity, from what you would do in a fall, when
+you need the money and what you know. You see why. It decides the reference portfolio you are shown and the products
+open to you. Your investor style (one of five) only changes how Lena helps you.
 
-**She explains every line.** Tap an ETF to see how it did, where its trend points and what today's news means for
-it, in plain words.
+**AI that explains every ETF.** A chart in %, then what our agents see today in three plain lines: the trend, the
+macro, the news, with sources and the other side of the argument. Information, not advice.
 
-**You decide.** Nothing is invested before you approve, and a human adviser is one tap away.
+**You decide, you place each order.** ReBel is execution-only. Buy one ETF, or your reference mix line by line, then
+follow your portfolio against the reference. Leveraged and crypto ETFs open only after a 3-question check. Rather
+have someone decide for you? Belfius advice or a managed portfolio is one tap away.
 
 ## Behind the screen
 
@@ -46,13 +49,14 @@ A human reviews every order before it is placed. After each session the system l
 count for more the next day. Every decision goes into a tamper-evident logbook.
 
 <p align="center">
-  <b>50</b> ETFs · <b>5</b> investor profiles · <b>4</b> AI agents · <b>3</b> human reviews · free AI tools only
+  <b>50</b> ETFs · <b>3</b> risk levels · <b>5</b> investor styles · <b>4</b> AI agents · <b>3</b> human reviews · free AI tools only
 </p>
 
 ## In competition
 
 The same engine trades a real competition portfolio in the QTEM Data Challenge (Belfius × QuantumBlack): €10,000
-over five trading days in December 2026. Everything the agents suggested and the humans decided is in [`logs/`](logs/).
+over five trading days in December 2026. The team plays the customer: it picks one of the three strategies in the
+cockpit, the agents trade within its limits, and a human approves every order. Everything the agents suggested and the humans decided is in [`logs/`](logs/).
 
 ## Try it
 

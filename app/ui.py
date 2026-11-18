@@ -9,16 +9,9 @@ from data import config as settings
 from data.schemas import REVIEW_GATES
 from graph import pipeline
 
-STEPS = ["data", "technical", "macro_news", "portfolio", "risk"]
 STEP_LABELS = {"data": "Data", "technical": "Technical", "macro_news": "Macro / News", "portfolio": "Portfolio",
                "risk": "Risk", "logbook": "Logbook", "learning": "Learning", "dividends": "Ex-dividend dates"}
-FACTOR_LABELS = {
-    "ecb_rates": "ECB rates", "fed_us_rates": "Fed / US rates", "inflation": "Inflation",
-    "growth_recession": "Growth", "eurusd": "EUR / USD", "oil": "Oil", "energy_weather": "Energy & weather",
-    "gold_silver": "Gold & silver", "copper_metals": "Copper & metals", "uranium": "Uranium",
-    "geopolitics_defence": "Geopolitics", "china_em": "China & EM", "tech_ai_semis": "Tech, AI & semis",
-    "crypto": "Crypto", "risk_appetite": "Risk appetite",
-}
+FACTOR_LABELS = settings.MACRO_FACTOR_LABELS
 
 # Light palette. In the data: blue = up / buy, red = down / sell, grey = neutral; amber = waiting for you.
 T = {
@@ -147,12 +140,6 @@ def day_label(status: str, state: dict, pending: dict | None) -> str:
     return status
 
 
-def passed_reviews(state: dict) -> set[str]:
-    """The reviews already approved in the current round."""
-    round_ = state.get("round", 1)
-    return {r["gate"] for r in state.get("reviews", []) if r["round"] == round_ and r["decision"] == "approved"}
-
-
 def incident_text(incident: dict) -> str:
     return (f"{STEP_LABELS.get(incident['step'], incident['step'])} failed and was replaced by its fallback: "
             f"{incident['error']}")
@@ -213,33 +200,27 @@ def steps(cells: list[tuple[str, str, str, bool]]) -> None:
         f"<div class='s {cls}'>{escape(text)}</div></div>" for name, text, cls, now in cells) + "</div>")
 
 
-def day_steps(status: str, state: dict, pending: dict | None) -> None:
-    """The day's steps left to right, each with its state, then where your reviews stand."""
-    failed = {i["step"] for i in state.get("incidents", [])}
-    cells = []
-    for key in ["data", "learning", "technical", "macro_news", "portfolio", "risk"]:
-        if status == "not started":
-            cells.append((STEP_LABELS[key], "not run", "idle", False))
-        elif key in failed:
-            cells.append((STEP_LABELS[key], "failed", "fail", False))
-        elif key == "risk" and "orders" not in passed_reviews(state):
-            cells.append((STEP_LABELS[key], "after your review" if status != "done" else "skipped", "idle", False))
+HUMAN_STEPS = ["1 · Run the agents", "2 · Orders", "3 · Risk", "4 · Sign off", "5 · Export"]
+
+
+def human_steps(status: str, state: dict, pending: dict | None, outcome: str) -> None:
+    """The day as you live it, left to right: run, your three reviews, the export. Done steps read done, the one
+    waiting for you is highlighted. `outcome` is what the logs say (data.day_outcome), for a day read from its files."""
+    stopped = status == "done" and state.get("outcome") == "stopped" or outcome == "no trade today"
+    if status == "done" or outcome in ("approved", "no trade today"):
+        if stopped:
+            cells = [(HUMAN_STEPS[0], "done", "ok", False)] + [(name, "no trade today", "idle", False)
+                                                                for name in HUMAN_STEPS[1:]]
         else:
-            cells.append((STEP_LABELS[key], "done", "ok", False))
-    you = {"not started": ("not run", "idle", False),
-           "waiting for approval": (day_label(status, state, pending), "wait", True),
-           "done": ("no trade today", "idle", False) if state.get("outcome") == "stopped" else ("approved", "ok", False)}
-    cells.append(("You", *you[status]))
+            cells = [(name, "done", "ok", False) for name in HUMAN_STEPS[:4]]
+            cells.append((HUMAN_STEPS[4], "ready", "wait", True))
+    elif status == "waiting for approval":
+        at = REVIEW_GATES.index(pending["gate"]) + 1
+        cells = [(name, "done" if i < at else "waiting for you" if i == at else "next",
+                  "ok" if i < at else "wait" if i == at else "idle", i == at) for i, name in enumerate(HUMAN_STEPS)]
+    else:
+        cells = [(HUMAN_STEPS[0], "to do", "wait", True)] + [(name, "next", "idle", False) for name in HUMAN_STEPS[1:]]
     steps(cells)
-
-
-def review_steps(pending: dict, state: dict) -> None:
-    """The three human reviews of the day, the one waiting highlighted."""
-    passed = passed_reviews(state)
-    steps([(f"{i} · {gate.capitalize()}", "approved" if gate in passed else
-            "waiting for you" if gate == pending["gate"] else "next",
-            "ok" if gate in passed else "wait" if gate == pending["gate"] else "idle", gate == pending["gate"])
-           for i, gate in enumerate(REVIEW_GATES, 1)])
 
 
 def mock_note(is_mock: bool, what: str = "No real data yet") -> None:

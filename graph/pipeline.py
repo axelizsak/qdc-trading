@@ -18,9 +18,11 @@
 - Each round of the Portfolio Manager writes its memo to <logs>/memo/<date>.md, and the risk step its board and
   reading to <logs>/risk/<date>.md. When the day ends: <logs>/orders.csv (AI suggestion next to the human decision),
   <logs>/reviews.csv (every review with its feedback) and <logs>/summary/<date>.md.
-- Signals and the macro summary are written to <logs>/ and read back when a date is run
-  again, so a rerun never calls the agents (or the the LLM API) twice. A real signal step always
-  uses logs/. The real Macro/News agent only runs on the day itself (it reads the news of the day).
+- A day is computed once: the logs are its record, whoever opens it and on whichever machine. Signals and the
+  macro summary are written to <logs>/ and read back; each round of the Portfolio Manager is frozen in
+  <logs>/proposals/<date>-round<n>.json and read back, so the same day always shows the same orders and the agents
+  (and the LLM API) are never called twice for it. A day whose reviews are in <logs>/reviews.csv is finished: it is
+  read, never run again. The saved graph state (checkpoints.sqlite) is only a convenience of one machine.
 - Any day can be run: days before the trading window are practice, to collect signals and test
   orders. Practice orders never count in the competition, which starts from START_CAPITAL_EUR.
 - <logs> is logs/mock/ (gitignored) while any step is on a mock, else logs/ (graded evidence).
@@ -30,7 +32,6 @@ Usage:
     python -m graph.pipeline --date 2026-12-07                      # run that day until the first review
     python -m graph.pipeline --date 2026-12-07 --answer a.json      # answer the review waiting
     python -m graph.pipeline --date 2026-12-07 --approve-all        # approve every review left
-    python -m graph.pipeline --date 2026-12-07 --rerun              # start the day again
 
 Answer file for the review waiting (feedback is required to send the day back or to stop it):
     {"decision": "approved"}                                          # risk or summary review
@@ -59,12 +60,12 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
-from agents import learning, logbook, macro_news, portfolio, risk, technical
+from agents import learning, logbook, macro_news, model_portfolios, portfolio, risk, technical
 from data import config as settings
 from data import mock
 from data.schemas import (
     EX_DIVIDENDS, FEATURES, HOLDINGS, INCIDENTS, ORDER_LOG, ORDERS, PORTFOLIO, PRICES, REVIEW_DECISIONS, REVIEWS, RISK_REPORT,
-    SIGNALS, validate_ex_dividends, validate_features, validate_holdings, validate_incidents, validate_order_log,
+    SIDES, SIGNALS, validate_ex_dividends, validate_features, validate_holdings, validate_incidents, validate_order_log,
     validate_orders, validate_portfolio, validate_prices, validate_reviews, validate_risk_report, validate_signals,
 )
 from data.universe import tickers
@@ -571,6 +572,40 @@ def _book(logs: Path, as_of: date, record, *args, **kwargs) -> list[dict]:
         return [_incident(logs, as_of, "logbook", exc)]
 
 
+def proposal_path(logs: Path, as_of: date, round_: int) -> Path:
+    """Where a round of the Portfolio Manager is frozen."""
+    return logs / "proposals" / f"{as_of.isoformat()}-round{round_}.json"
+
+
+def _logged_proposal(logs: Path, as_of: date) -> dict | None:
+    """The first round of a day run before proposals were frozen, rebuilt from what the Portfolio Manager logged:
+    its final blend (pm_portfolios.csv), its orders (recommendations.csv, the latest run) and its memo. None when
+    the logs hold none."""
+    day = as_of.isoformat()
+    paths = [logs / "pm_portfolios.csv", logs / "recommendations.csv", logs / "memo" / f"{day}.md"]
+    if not all(path.exists() for path in paths):
+        return None
+    blend, recs = pd.read_csv(paths[0]), pd.read_csv(paths[1])
+    blend = blend[(blend["date"].astype(str) == day) & (blend["source"] == "final")]
+    recs = recs[recs["date"].astype(str) == day]
+    if blend.empty or recs.empty:
+        return None
+    recs = recs[(recs["created_at"] == recs["created_at"].max()) & recs["side"].isin(sorted(SIDES))]
+    target = pd.DataFrame({"ticker": blend["ticker"], "target_weight": blend["weight"]}, columns=PORTFOLIO)
+    orders = pd.DataFrame({"date": day, "side": recs["side"], "ticker": recs["ticker"], "units": recs["units"]},
+                          columns=ORDERS)
+    return {"round": 1, "feedback": "", "target": _records(target), "orders": _records(orders),
+            "memo": paths[2].read_text(encoding="utf-8")}
+
+
+def frozen_proposal(logs: Path, as_of: date, round_: int, feedback: str) -> dict | None:
+    """The round as it was first computed, if it was: same day, same round, same feedback from the human."""
+    path = proposal_path(logs, as_of, round_)
+    saved = json.loads(path.read_text(encoding="utf-8")) if path.exists() else (
+        _logged_proposal(logs, as_of) if round_ == 1 else None)
+    return saved if saved is not None and saved.get("feedback", "") == feedback else None
+
+
 def portfolio_step(state: DayState, config: RunnableConfig) -> dict:
     as_of, logs = _day(state, config)
     fresh = {"human_decisions": [], "approved_orders": [], "risk_report": [], "risk_board": "", "risk_reading": "",
@@ -580,13 +615,21 @@ def portfolio_step(state: DayState, config: RunnableConfig) -> dict:
     # today's weights: each agent that scored today, its starting weight times what its record made of it
     weights = learning.weights_now(learning.starting_weights(scoring_agents(signals)), state.get("agent_multipliers") or {})
     fresh["agent_weights"] = weights
+    round_, feedback = state.get("round", 1), feedback_for_portfolio(state.get("reviews", []))
+    strategy = model_portfolios.traded(logs, as_of)  # chosen in the cockpit, logged: the same on every machine
+    saved = frozen_proposal(logs, as_of, round_, feedback)
+    if saved is not None:  # this round was already computed: the logs say what it proposed
+        book = _book(logs, as_of, logbook.record_round, round_, target=_frame(saved["target"], PORTFOLIO),
+                     memo=saved["memo"], proposed=_frame(saved["orders"], ORDERS))
+        return {**fresh, "target_weights": saved["target"], "proposed_orders": saved["orders"], "memo": saved["memo"],
+                "incidents": book}
     try:
         # logs_dir: where it logs its portfolios and proposals (the learning step reads them)
         target, orders, memo = _call("portfolio", signals, weights,
-                                     state["lessons"], holdings, state["cash_eur"], prices, as_of,
-                                     feedback_for_portfolio(state.get("reviews", [])),
+                                     state["lessons"], holdings, state["cash_eur"], prices, as_of, feedback,
                                      macro_summary=state.get("macro_summary", ""), logs_dir=logs,
-                                     trust=state.get("trust"), learning=pd.DataFrame(state.get("learning") or []))
+                                     trust=state.get("trust"), learning=pd.DataFrame(state.get("learning") or []),
+                                     strategy=strategy)
         validate_portfolio(target)
         validate_orders(orders)
         problems = check_orders(orders, holdings, state["cash_eur"], prices, as_of)
@@ -599,6 +642,12 @@ def portfolio_step(state: DayState, config: RunnableConfig) -> dict:
     page = logs / "memo" / f"{as_of.isoformat()}.md"  # the latest round's memo, for the cockpit
     page.parent.mkdir(parents=True, exist_ok=True)
     page.write_text(memo, encoding="utf-8", newline="\n")
+    frozen = proposal_path(logs, as_of, round_)  # from now on, this round is read back, never computed again
+    frozen.parent.mkdir(parents=True, exist_ok=True)
+    frozen.write_text(json.dumps({"round": round_, "strategy": strategy, "feedback": feedback,
+                                  "target": _records(target[PORTFOLIO]),
+                                  "orders": _records(orders[ORDERS]), "memo": memo}, indent=1, default=str),
+                      encoding="utf-8", newline="\n")
     book = _book(logs, as_of, logbook.record_round, state.get("round", 1), target=target[PORTFOLIO], memo=memo,
                  proposed=orders[ORDERS])
     return {**fresh, "target_weights": _records(target[PORTFOLIO]), "proposed_orders": _records(orders[ORDERS]),
@@ -772,29 +821,39 @@ def _outdated(snapshot) -> bool:
     return bool(snapshot.interrupts) and "gate" not in snapshot.interrupts[0].value
 
 
+def finished_in_logs(as_of: date, logs: Path) -> bool:
+    """Whether the day's reviews are in the logs: written once, when the day ends (approved or no trade)."""
+    path = logs / "reviews.csv"
+    return path.exists() and (pd.read_csv(path)["date"].astype(str) == as_of.isoformat()).any()
+
+
 def day_status(as_of: date, logs: Path | None = None) -> tuple[str, dict, dict | None]:
     """Read-only: ("not started" | "waiting for approval" | "done", saved state, pause payload or None).
-    The payload's "gate" says which review is waiting: orders, risk or summary."""
+    The payload's "gate" says which review is waiting: orders, risk or summary. A day finished in the logs is done,
+    even on a machine that never ran it (its state is then empty: read the logs)."""
     logs = Path(logs) if logs else default_logs_dir()
     with open_graph(logs) as graph:
         snapshot = graph.get_state(thread(as_of, logs))
     if not snapshot.values or _outdated(snapshot):
-        return "not started", {}, None
+        return ("done" if finished_in_logs(as_of, logs) else "not started"), {}, None
     if snapshot.interrupts:
         return "waiting for approval", snapshot.values, snapshot.interrupts[0].value
     return "done", snapshot.values, None
 
 
-def run_day(as_of: date, logs: Path | None = None, rerun: bool = False) -> dict | None:
+def run_day(as_of: date, logs: Path | None = None) -> dict | None:
     """Run a day up to its first review and return what the human must look at.
 
-    A day that is already paused is not run again. Returns None once the day is done.
+    A day is run once. A day already paused here is not run again; a day finished in the logs (by anyone) is not run
+    at all; a day another machine started replays from the logs, to the same orders. Returns None once it is done.
     """
     logs = Path(logs) if logs else default_logs_dir()
     with open_graph(logs) as graph:
         cfg = thread(as_of, logs)
-        if rerun or _outdated(graph.get_state(cfg)):
+        if _outdated(graph.get_state(cfg)):
             graph.checkpointer.delete_thread(as_of.isoformat())
+        if not graph.get_state(cfg).values and finished_in_logs(as_of, logs):
+            return None
         if not graph.get_state(cfg).values:
             graph.invoke({"date": as_of.isoformat(), "round": 1}, cfg)
         return _pending(graph, cfg)
@@ -852,14 +911,13 @@ def main(argv: list[str] | None = None) -> None:
     resume = parser.add_mutually_exclusive_group()
     resume.add_argument("--approve-all", action="store_true", help="approve every review left, orders as proposed")
     resume.add_argument("--answer", type=Path, help="answer the review waiting with this JSON file")
-    parser.add_argument("--rerun", action="store_true", help="start the day again (signals come from the logs)")
     parser.add_argument("--logs-dir", type=Path, help="default: logs/mock/ while any step is on a mock, else logs/")
     args = parser.parse_args(argv)
     logs = args.logs_dir or default_logs_dir()
 
-    pending = run_day(args.date, logs, rerun=args.rerun)
+    pending = run_day(args.date, logs)
     if pending is None:
-        print(f"{args.date}: already done, see {logs / 'orders.csv'} (use --rerun to start again)")
+        print(f"{args.date}: already done, see {logs / 'orders.csv'}. A day is run once: its logs are the record.")
         return
     if args.approve_all:
         approve_day(args.date, logs)

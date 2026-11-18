@@ -7,6 +7,7 @@ import pandas as pd
 
 from data.config import DATA_DIR, MACRO_FACTORS, SIGNAL_AGENTS, TECHNICAL_SIGNALS
 from data.schemas import (
+    CHART_HISTORY,
     CUSTOMER_LOG,
     ETF_SHEETS,
     EX_DIVIDENDS,
@@ -15,15 +16,17 @@ from data.schemas import (
     LOGBOOK,
     ORDER_LOG,
     PM_PORTFOLIOS,
-    PROFILE_PORTFOLIOS,
     RECOMMENDATIONS,
     REVIEWS,
     RISK_CALIBRATION,
     RISK_FORECASTS,
     RISK_REPORT,
     STARTER_FEATURES,
+    STRATEGY_CHOICES,
+    STRATEGY_PORTFOLIOS,
     TECHNICAL_ANSWERS,
     WEIGHTS,
+    validate_chart_history,
     validate_etf_views,
     validate_customer_log,
     validate_etf_sheets,
@@ -40,7 +43,6 @@ from data.schemas import (
     validate_portfolio,
     validate_pm_portfolios,
     validate_prices,
-    validate_profile_portfolios,
     validate_recommendations,
     validate_reviews,
     validate_risk_calibration,
@@ -48,6 +50,8 @@ from data.schemas import (
     validate_risk_report,
     validate_signals,
     validate_source_changes,
+    validate_strategy_choices,
+    validate_strategy_portfolios,
     validate_source_registry,
     validate_technical_answers,
     validate_weights,
@@ -344,15 +348,37 @@ def mock_ex_dividends(as_of: str = "2026-12-07") -> pd.DataFrame:
     return validate_ex_dividends(pd.DataFrame(rows, columns=EX_DIVIDENDS))
 
 
-def mock_profile_portfolios(as_of: str = "2026-12-07") -> pd.DataFrame:
-    """Two small model portfolios, a few ETFs each. Format: Profile portfolios."""
+def mock_strategy_portfolios(as_of: str = "2026-12-07") -> pd.DataFrame:
+    """Two small reference portfolios, a few ETFs each. Format: Strategy portfolios."""
     day = pd.Timestamp(as_of).date()
-    mixes = {"goal_builder": [("WORLD", 0.50, "core_equity"), ("GLOBAL AGG BOND", 0.25, "bonds"), ("GOLD", 0.10, "gold"),
-                              ("SEMIS", 0.10, "satellites"), ("OVERNIGHT CASH", 0.05, "cash")],
-             "cautious_saver": [("WORLD", 0.30, "core_equity"), ("EUR GOVT BOND", 0.50, "bonds"),
-                                ("OVERNIGHT CASH", 0.20, "cash")]}
-    rows = [(day, profile, ticker, weight, sleeve) for profile, mix in mixes.items() for ticker, weight, sleeve in mix]
-    return validate_profile_portfolios(pd.DataFrame(rows, columns=PROFILE_PORTFOLIOS))
+    mixes = {"balanced": [("WORLD", 0.50, "core_equity"), ("GLOBAL AGG BOND", 0.25, "bonds"), ("GOLD", 0.10, "gold"),
+                          ("SEMIS", 0.10, "satellites"), ("OVERNIGHT CASH", 0.05, "cash")],
+             "defensive": [("WORLD", 0.30, "core_equity"), ("EUR GOVT BOND", 0.50, "bonds"),
+                           ("OVERNIGHT CASH", 0.20, "cash")]}
+    rows = [(day, strategy, ticker, weight, sleeve) for strategy, mix in mixes.items() for ticker, weight, sleeve in mix]
+    return validate_strategy_portfolios(pd.DataFrame(rows, columns=STRATEGY_PORTFOLIOS))
+
+
+def mock_strategy_choices() -> pd.DataFrame:
+    """The team trades Opportunity, then Balanced before a central bank week. Format: Strategy choices."""
+    rows = [("2026-11-18", "opportunity", "Team decision: the competition rewards return"),
+            ("2026-12-10", "balanced", "Fed and ECB meetings next week: less risk")]
+    return validate_strategy_choices(pd.DataFrame(rows, columns=STRATEGY_CHOICES))
+
+
+def mock_chart_history(as_of: str = "2026-12-07", weeks: int = 60) -> pd.DataFrame:
+    """A year of weekly points, then the last ten sessions, for two ETFs and the three strategies. Format: Chart history."""
+    end = pd.Timestamp(as_of)
+    days = sorted({*pd.date_range(end=end - pd.Timedelta(days=14), periods=weeks, freq="W-FRI"),
+                   *pd.bdate_range(end=end - pd.Timedelta(days=1), periods=10)})
+    rng = np.random.default_rng(7)
+    rows = []
+    for kind, name, start, drift in [("etf", "WORLD", 100.0, 0.002), ("etf", "GOLD", 60.0, 0.003),
+                                     ("strategy", "defensive", 1.0, 0.001), ("strategy", "balanced", 1.0, 0.0015),
+                                     ("strategy", "opportunity", 1.0, 0.0025)]:
+        path = start * np.cumprod(1 + drift + 0.015 * rng.standard_normal(len(days)))
+        rows += [(day.date().isoformat(), kind, name, float(value)) for day, value in zip(days, path)]
+    return validate_chart_history(pd.DataFrame(rows, columns=CHART_HISTORY))
 
 
 def mock_etf_sheets(as_of: str = "2026-12-07") -> pd.DataFrame:
@@ -370,17 +396,18 @@ def mock_etf_sheets(as_of: str = "2026-12-07") -> pd.DataFrame:
 
 
 def mock_customer_log() -> pd.DataFrame:
-    """One customer placed in a profile who then approves the plan, and one who starts over. Format: Customer log."""
-    sheet = ('{"goal": "a home deposit", "horizon_years": 4, "amount_eur": 6000, "wealth_range": "10k_50k", '
-             '"monthly_eur": 150, '
-             '"buffer_months": 6, "loss_reaction": "wait", "max_loss_pct": 10, "knowledge_1": "right", '
-             '"knowledge_2": "wrong", "experience": "funds", "preferences": "none"}')
-    why = "You are saving for a home in about four years and want the rest to grow for the long term."
-    rows = [("2026-12-01T09:00:00", "thomas", "profiled", "goal_builder", why, sheet, ""),
-            ("2026-12-01T09:04:00", "thomas", "approved", "goal_builder", why, sheet, ""),
-            ("2026-12-01T10:00:00", "lina", "profiled", "first_step_starter", "You are starting out with a long "
-             "time ahead.", "{}", "Thin buffer: less than 3 months of spending stays in savings"),
-            ("2026-12-01T10:02:00", "lina", "reset", "", "", "{}", "")]
+    """One customer placed in an archetype and a strategy who then buys an ETF, and one who starts over.
+    Format: Customer log."""
+    answers = ('{"goal": "home", "horizon": "under_5", "amount": 6000, "loss_reaction": "wait", '
+               '"knowledge_1": "fund", "rules": []}')
+    why = ('{"archetype": "What points to it most: goal (buy a home).", '
+           '"strategy": ["You need the money within 5 years"]}')
+    order = '{"ticker": "WORLD", "eur": 1200, "units": 11.5, "price": 104.35, "as_of": "2026-11-30"}'
+    rows = [("2026-12-01T09:00:00", "thomas", "profiled", "goal_builder", "defensive", why, answers, ""),
+            ("2026-12-01T09:04:00", "thomas", "order", "goal_builder", "defensive", why, order, ""),
+            ("2026-12-01T10:00:00", "lina", "profiled", "first_step_starter", "balanced", '{"archetype": "", "strategy": []}',
+             "{}", "Thin buffer: less than 3 months of spending stays in savings"),
+            ("2026-12-01T10:02:00", "lina", "reset", "", "", "{}", "{}", "")]
     return validate_customer_log(pd.DataFrame(rows, columns=CUSTOMER_LOG))
 
 
@@ -409,7 +436,9 @@ MOCKS = {
     "risk_calibration": mock_risk_calibration,
     "ex_dividends": mock_ex_dividends,
     "logbook": mock_logbook,
-    "profile_portfolios": mock_profile_portfolios,
+    "strategy_portfolios": mock_strategy_portfolios,
+    "chart_history": mock_chart_history,
+    "strategy_choices": mock_strategy_choices,
     "etf_sheets": mock_etf_sheets,
     "customer_log": mock_customer_log,
 }

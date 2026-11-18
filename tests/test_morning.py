@@ -1,4 +1,4 @@
-"""The morning run: the fixed model portfolios, the ETF sheets, and what is written for the customer app."""
+"""The morning run: the fixed reference portfolios, the ETF sheets, the charts' points, what the customer app reads."""
 from datetime import date
 
 import numpy as np
@@ -7,9 +7,9 @@ import pytest
 
 from agents import etf_sheets, macro_news, model_portfolios
 from data import mock
-from data.profiles import PROFILES, SLEEVE_ETFS, SLEEVES
-from data.schemas import validate_etf_sheets, validate_profile_portfolios
-from data.universe import tickers
+from data.profiles import COMPLEX_FAMILIES, SLEEVE_ETFS, SLEEVES, STRATEGIES, TRADED
+from data.schemas import validate_chart_history, validate_etf_sheets, validate_strategy_portfolios
+from data.universe import load_universe, tickers
 from graph import morning
 from tests.test_profiler import FakeModel
 
@@ -24,31 +24,35 @@ def made_up_prices(days: int = 800) -> pd.DataFrame:
                         columns=["date", "ticker", "adj_close_eur"])
 
 
-def test_every_profile_has_a_whole_portfolio_of_known_etfs():
+def test_every_strategy_has_a_whole_portfolio_of_known_etfs():
     known = set(tickers())
-    for profile, spec in PROFILES.items():
+    family = load_universe().set_index("ticker")["family"]
+    assert [spec["level"] for spec in STRATEGIES.values()] == [1, 2, 3] and TRADED == "opportunity"
+    for strategy, spec in STRATEGIES.items():
         assert sum(spec["sleeves"].values()) == pytest.approx(1) and set(spec["sleeves"]) == set(SLEEVES)
-        assert 1 <= spec["level"] <= 5 and set(spec["themes"]) <= known
-        held = model_portfolios.weights(profile)
+        assert set(spec["themes"]) <= known
+        held = model_portfolios.weights(strategy)
         assert sum(weight for _, weight in held.values()) == pytest.approx(1) and set(held) <= known
         for sleeve, share in spec["sleeves"].items():
             assert sum(w for s, w in held.values() if s == sleeve) == pytest.approx(share)
+        if not spec["complex"]:  # a level that does not allow complex products holds none
+            assert not any(family[ticker] in COMPLEX_FAMILIES for ticker in held)
     assert all(sum(parts.values()) == pytest.approx(1) for parts in SLEEVE_ETFS.values())
-    assert "BITCOIN" not in model_portfolios.weights("first_step_starter")  # its rule: no crypto, no leverage
-    safer = [PROFILES[p]["sleeves"]["bonds"] + PROFILES[p]["sleeves"]["cash"] for p in ("self_directed_trader", "goal_builder", "cautious_saver")]
+    assert "BITCOIN" in model_portfolios.weights("opportunity")
+    safer = [STRATEGIES[s]["sleeves"]["bonds"] + STRATEGIES[s]["sleeves"]["cash"] for s in ("opportunity", "balanced", "defensive")]
     assert safer == sorted(safer)  # the lower the risk level, the more bonds and cash
 
 
-def test_the_model_portfolios_of_a_day_are_in_the_shared_format():
+def test_the_reference_portfolios_of_a_day_are_in_the_shared_format():
     portfolios = model_portfolios.build(DAY)
-    assert set(portfolios["profile"]) == set(PROFILES) and set(portfolios["date"]) == {DAY}
-    validate_profile_portfolios(portfolios)
+    assert set(portfolios["strategy"]) == set(STRATEGIES) and set(portfolios["date"]) == {DAY}
+    validate_strategy_portfolios(portfolios)
     with pytest.raises(ValueError, match="unknown sleeve"):
-        validate_profile_portfolios(portfolios.assign(sleeve="core"))
+        validate_strategy_portfolios(portfolios.assign(sleeve="core"))
 
 
 def test_a_track_record_measures_the_fixed_portfolio():
-    record = model_portfolios.track_record(made_up_prices(), "cautious_saver")  # only WORLD, GOLD and cash have prices here
+    record = model_portfolios.track_record(made_up_prices(), "defensive")  # only WORLD, GOLD and cash have prices here
     assert record["years"] == pytest.approx(799 / 252, abs=0.1) and record["worst_fall"] <= 0
     assert 0 < record["return"] < 0.05 and record["volatility"] < 0.01  # a little of the rising ETF, the rest flat
 
@@ -70,6 +74,34 @@ def test_an_etf_sheet_shows_returns_trends_and_macro():
     assert [(name, state) for _, name, _, state, _ in etf_sheets._trends(bounce)] == [("short", "neutral")]
     short = etf_sheets.build(made_up_prices(days=30), views, macro_news.load_exposure(), DAY)
     assert set(short[short["ticker"] == "WORLD"]["name"]) >= {"1 month", "short"} and "3 years" not in set(short["name"])
+
+
+def test_the_reading_says_in_words_what_the_sheet_holds():
+    lines = [{"block": "trend", "name": "short", "state": "down"}, {"block": "trend", "name": "medium", "state": "down"},
+             {"block": "trend", "name": "long", "state": "up"}, {"block": "macro", "name": "growth recession", "state": "supportive"},
+             {"block": "macro", "name": "risk appetite", "state": "headwind"}, {"block": "macro", "name": "oil", "state": "watch"}]
+    trend, macro, news = etf_sheets.reading(lines, {"direction": -0.3, "confidence": 0.55, "rationale": "..."})
+    assert trend == {"topic": "Trend", "tone": "bad", "text": "Rising over 12 months, falling over 1 and 3 months."}
+    assert macro == {"topic": "Macro", "tone": "wait", "text": "Tailwind: Growth. Headwind: Risk appetite."}
+    assert news["tone"] == "bad" and news["text"] == "Our news analyst leans negative for the next few days (55% sure)."
+    calm = etf_sheets.reading([{"block": "macro", "name": "oil", "state": "watch"}], {"direction": 0.05, "confidence": 0.2})
+    assert calm[0]["text"] == "No strong macro force either way today." and calm[1]["text"].startswith("Our news analyst sees no clear edge")
+    assert etf_sheets.reading([]) == []
+    assert [etf_sheets.label(line) for line in lines[:4]] == ["1 month", "3 months", "12 months", "Growth"]
+    assert etf_sheets.label({"block": "returns", "name": "volatility"}) == "Volatility"
+
+
+def test_the_charts_keep_recent_days_and_one_point_a_week_before():
+    days = pd.bdate_range(end=DAY, periods=400)
+    points = morning.sampled(pd.Series(np.arange(400.0), index=days.date))
+    assert list(points.iloc[-morning.DAILY_POINTS:]) == list(np.arange(330.0, 400.0))  # every recent session
+    older = pd.to_datetime(pd.Series(points.index[:-morning.DAILY_POINTS]))
+    assert older.dt.to_period("W").is_unique and len(older) == len(set(pd.to_datetime(days[:330]).to_period("W")))
+    assert points.index.is_monotonic_increasing
+    history = morning.chart_history(made_up_prices(), DAY)
+    validate_chart_history(history)
+    assert set(history[history["kind"] == "strategy"]["name"]) == set(STRATEGIES)
+    assert set(history[history["kind"] == "etf"]["name"]) == {"WORLD", "GOLD", "OVERNIGHT CASH"}
 
 
 def test_a_line_is_explained_from_the_sheet_only():
@@ -96,7 +128,9 @@ def test_the_morning_run_writes_what_the_app_reads(tmp_path):
     out = morning.run(DAY, tmp_path, fetch=lambda start, end: made_up_prices(), news=news)
     assert asked == [DAY] and out["views_of"] == DAY.isoformat() and out["note"] == ""
     portfolios, sheets = pd.read_csv(tmp_path / morning.PORTFOLIOS), pd.read_csv(tmp_path / morning.SHEETS, keep_default_na=False)
-    assert set(portfolios["profile"]) == set(PROFILES) and set(sheets["ticker"]) == {"WORLD", "GOLD", "OVERNIGHT CASH"}
+    assert set(portfolios["strategy"]) == set(STRATEGIES) and set(sheets["ticker"]) == {"WORLD", "GOLD", "OVERNIGHT CASH"}
+    history = validate_chart_history(pd.read_csv(tmp_path / morning.HISTORY))
+    assert history["date"].max() <= DAY.isoformat() and len(history) == len(out["history"])
     morning.run(DAY, tmp_path, fetch=lambda start, end: made_up_prices(), news=news)
     assert asked == [DAY]  # the day's views are in the logs: Macro/News is not run twice
     assert len(pd.read_csv(tmp_path / morning.PORTFOLIOS)) == len(portfolios)  # a second run replaces the day, it adds nothing

@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from data.config import MACRO_FACTORS, MAX_ORDERS_PER_DAY, SIGNAL_AGENTS, TECHNICAL_SIGNALS
-from data.profiles import PROFILES, SLEEVES
+from data.profiles import ARCHETYPES, SLEEVES, STRATEGIES
 
 # Real daily prices (not adjusted for dividends), in EUR, on the Belfius exchange.
 # One row per day the ETF was quoted: a day without a quote is absent, never filled.
@@ -77,18 +77,28 @@ RISK_CALIBRATION = ["date", "vol_scale", "days_graded", "mean_ratio", "floor_bre
 LOGBOOK = ["seq", "date", "kind", "actor", "ticker", "round", "gate", "title", "detail", "data", "source", "event_id",
            "recorded_at", "prev_hash", "hash"]
 
-# The portfolio the engine holds for each investor profile (data/profiles.py): what the customer app shows a customer
-# of that profile. sleeve: one of data/profiles.py SLEEVES (core equity, bonds, gold, satellites, cash). One portfolio
-# per date and profile, built by agents/model_portfolios.py.
-PROFILE_PORTFOLIOS = ["date", "profile", "ticker", "target_weight", "sleeve"]
+# logs/strategy_portfolios.csv: the reference portfolio of each strategy (data/profiles.py STRATEGIES), what the
+# customer app shows a customer of that risk level. sleeve: one of data/profiles.py SLEEVES (core equity, bonds, gold,
+# satellites, cash). One portfolio per date and strategy, built by agents/model_portfolios.py.
+STRATEGY_PORTFOLIOS = ["date", "strategy", "ticker", "target_weight", "sleeve"]
+# logs/strategy_choices.csv: the strategy the team trades, chosen in the cockpit, append-only. From `date` on, every
+# day not run yet is traded within that strategy's limits, until the next choice. reason: why, in a few words.
+STRATEGY_CHOICES = ["date", "strategy", "reason"]
+# logs/chart_history.csv: the points of the app's charts, rewritten by each morning run (graph/morning.py). kind etf:
+# `name` is a ticker and `value` its adjusted close in EUR; kind strategy: `name` is a strategy and `value` what 1
+# invested in its reference portfolio became. Every session of the last weeks, one a week before.
+CHART_HISTORY = ["date", "kind", "name", "value"]
 # logs/etf_sheets.csv: the sheet of each ETF as the customer app shows it, one row per line of a sheet, written by the
 # morning run (graph/morning.py). block: returns, trend or macro. state: up, neutral or down for a trend; supportive,
 # watch or headwind for a macro factor; empty for a return. detail: the checks or the view behind the line.
 ETF_SHEETS = ["date", "ticker", "block", "name", "value", "state", "detail"]
-# logs/customer_log.csv: what happened to each customer of the app, append-only. event: profiled (the coach placed
-# them in a profile), approved or declined (their decision on the plan), reset (they start over). `sheet` holds the
-# suitability answers as a JSON object, `flags` the contradictions the code found, joined with LIST_SEP.
-CUSTOMER_LOG = ["time", "customer", "event", "profile", "why", "sheet", "flags"]
+# logs/customer_log.csv: what happened to each customer of the app, append-only. event: profiled (the coach found
+# their archetype and the rules their strategy), order (they bought an ETF themselves), unlocked (they passed the check
+# on complex products), lesson (they answered a lesson's question), reset (they start over). `why`: the reasons for the
+# archetype and for the strategy, as a JSON object. `detail`: a JSON object: the suitability answers (profiled), the
+# order (ticker, eur, units, price, as_of), the check's answers (unlocked), or the lesson, the answer and whether it was
+# right (lesson). `flags`: the contradictions the code found, joined with LIST_SEP.
+CUSTOMER_LOG = ["time", "customer", "event", "archetype", "strategy", "why", "detail", "flags"]
 
 SIDES = {"BUY", "SELL"}
 LOGBOOK_KINDS = {"signals", "macro_report", "agent_weights", "recommendation", "risk_report", "risk_flag",
@@ -103,7 +113,8 @@ REVIEW_GATES = ["orders", "risk", "summary"]  # in the order the human meets the
 REVIEW_DECISIONS = {"approved", "revised", "stopped"}  # revised: back to the Portfolio Manager; stopped: no trade
 PM_SOURCES = {"baseline", "optimizer", "llm", "final"}
 RISK_FORECAST_KINDS = {"weight", "forecast"}
-CUSTOMER_EVENTS = {"profiled", "approved", "declined", "reset"}
+CUSTOMER_EVENTS = {"profiled", "order", "unlocked", "lesson", "reset"}
+CHART_KINDS = {"etf", "strategy"}
 SHEET_STATES = {"returns": {""}, "trend": {"up", "neutral", "down"}, "macro": {"supportive", "watch", "headwind"}}
 LIST_SEP = ";"
 
@@ -458,32 +469,63 @@ def validate_ex_dividends(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def validate_profile_portfolios(df: pd.DataFrame) -> pd.DataFrame:
-    """Profile portfolios: known profiles and sleeves, weights in [0, 1] that add up to at most 100% per portfolio."""
-    _require_columns(df, PROFILE_PORTFOLIOS, "profile_portfolios")
-    _require_in(df, "profile", set(PROFILES), "profile_portfolios")
-    _require_in(df, "sleeve", set(SLEEVES), "profile_portfolios")
-    _require_between(df, "target_weight", 0, 1, "profile_portfolios")
-    _require_unique(df, ["date", "profile", "ticker"], "profile_portfolios")
-    if (df.groupby([df["date"].astype(str), "profile"])["target_weight"].sum() > 1 + 1e-6).any():
-        raise ValueError("profile_portfolios: the weights of a portfolio must add up to at most 1")
+def validate_strategy_portfolios(df: pd.DataFrame) -> pd.DataFrame:
+    """Strategy portfolios: known strategies and sleeves, weights in [0, 1] that add up to at most 100% per portfolio."""
+    _require_columns(df, STRATEGY_PORTFOLIOS, "strategy_portfolios")
+    _require_in(df, "strategy", set(STRATEGIES), "strategy_portfolios")
+    _require_in(df, "sleeve", set(SLEEVES), "strategy_portfolios")
+    _require_between(df, "target_weight", 0, 1, "strategy_portfolios")
+    _require_unique(df, ["date", "strategy", "ticker"], "strategy_portfolios")
+    if (df.groupby([df["date"].astype(str), "strategy"])["target_weight"].sum() > 1 + 1e-6).any():
+        raise ValueError("strategy_portfolios: the weights of a portfolio must add up to at most 1")
     return df
 
 
-def validate_customer_log(df: pd.DataFrame) -> pd.DataFrame:
-    """Customer log: a customer and a known event on every row, a known profile unless the event is a reset, and
-    the suitability answers as a JSON object."""
-    _require_columns(df, CUSTOMER_LOG, "customer_log")
-    _require_text(df, "customer", "customer_log")
-    _require_in(df, "event", CUSTOMER_EVENTS, "customer_log")
-    _require_in(df[df["event"] != "reset"], "profile", set(PROFILES), "customer_log")
-    for sheet in df["sheet"]:
+def validate_strategy_choices(df: pd.DataFrame) -> pd.DataFrame:
+    """Strategy choices: a real date, a known strategy, a reason."""
+    _require_columns(df, STRATEGY_CHOICES, "strategy_choices")
+    if pd.to_datetime(df["date"].astype(str), format="%Y-%m-%d", errors="coerce").isna().any():
+        raise ValueError("strategy_choices: date must be a date (YYYY-MM-DD)")
+    _require_in(df, "strategy", set(STRATEGIES), "strategy_choices")
+    _require_text(df, "reason", "strategy_choices")
+    return df
+
+
+def validate_chart_history(df: pd.DataFrame) -> pd.DataFrame:
+    """Chart history: a known kind, a known strategy for kind strategy, a value above 0, one point per (kind, name,
+    date)."""
+    _require_columns(df, CHART_HISTORY, "chart_history")
+    _require_in(df, "kind", CHART_KINDS, "chart_history")
+    _require_in(df[df["kind"] == "strategy"], "name", set(STRATEGIES), "chart_history")
+    _require_text(df, "name", "chart_history")
+    value = pd.to_numeric(df["value"], errors="coerce")
+    if not (np.isfinite(value) & (value > 0)).all():
+        raise ValueError("chart_history: value must be a finite number above 0")
+    _require_unique(df, ["kind", "name", "date"], "chart_history")
+    return df
+
+
+def _json_objects(df: pd.DataFrame, col: str, name: str) -> None:
+    for text in df[col]:
         try:
-            ok = isinstance(json.loads(sheet), dict)
+            ok = isinstance(json.loads(text), dict)
         except (TypeError, ValueError):
             ok = False
         if not ok:
-            raise ValueError("customer_log: sheet must be a JSON object")
+            raise ValueError(f"{name}: {col} must be a JSON object")
+
+
+def validate_customer_log(df: pd.DataFrame) -> pd.DataFrame:
+    """Customer log: a customer and a known event on every row, a known archetype and strategy unless the event is a
+    reset, and `why` and `detail` as JSON objects."""
+    _require_columns(df, CUSTOMER_LOG, "customer_log")
+    _require_text(df, "customer", "customer_log")
+    _require_in(df, "event", CUSTOMER_EVENTS, "customer_log")
+    placed = df[df["event"] != "reset"]
+    _require_in(placed, "archetype", set(ARCHETYPES), "customer_log")
+    _require_in(placed, "strategy", set(STRATEGIES), "customer_log")
+    _json_objects(df, "why", "customer_log")
+    _json_objects(df, "detail", "customer_log")
     return df
 
 

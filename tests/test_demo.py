@@ -7,7 +7,7 @@ import sys
 import pytest
 
 from data import mock
-from data.profiles import PROFILES
+from data.profiles import STRATEGIES
 from graph import morning
 from mobile import demo, server
 
@@ -17,6 +17,7 @@ def site(tmp_path):
     shared = tmp_path / "shared"
     shared.mkdir()
     mock.mock_etf_sheets().to_csv(shared / morning.SHEETS, index=False)
+    mock.mock_chart_history().to_csv(shared / morning.HISTORY, index=False)
     demo.build(tmp_path / "site", shared)
     return tmp_path / "site"
 
@@ -29,20 +30,25 @@ def test_the_demo_is_the_app_with_the_servers_answers_prepared(site):
     assert data["start"] == json.loads(json.dumps(server.start()))
     assert set(data["known"]) == {customer["id"] for customer in data["start"]["customers"]}
     assert set(data["sheets"]) == {"GOLD", "WORLD"} and "rows" not in data["sheets"]["WORLD"]  # the mock's two sheets
-    assert data["sheets"]["WORLD"]["lines"][0].keys() == {"block", "name", "value", "state", "detail"}
+    assert data["sheets"]["WORLD"]["lines"][0].keys() == {"block", "name", "label", "value", "state", "detail"}
+    assert data["sheets"]["WORLD"]["history"] and data["sheets"]["WORLD"]["reading"]
+    assert len(data["etfs"]) == 50 and "lock" not in data["etfs"][0]  # the page adds the locks with mobile/wallet.py
+    assert set(data["strategy_history"]) == set(STRATEGIES) and all(data["strategy_history"].values())
     for name in data["python"]:  # the page runs the repo's own files
         assert (site / "py" / name).read_text() == (demo.ROOT / name).read_text()
 
 
-def test_there_is_a_plan_for_every_profile_and_every_set_of_rules(site):
+def test_there_is_a_reference_for_every_strategy_and_every_set_of_rules(site):
     data = json.loads((site / "demo.json").read_text())
-    assert set(data["plans"]) == set(PROFILES) and all(len(plans) == 2 ** len(data["rules"]) for plans in data["plans"].values())
-    for rules in data["plans"]["goal_builder"]:  # the page looks a plan up by its rules, in the order of data["rules"]
+    references = data["references"]
+    assert set(references) == set(STRATEGIES) and all(len(refs) == 2 ** len(data["rules"]) for refs in references.values())
+    for rules in references["balanced"]:  # the page looks a reference up by its rules, in the order of data["rules"]
         assert rules == "+".join(rule for rule in data["rules"] if rule in rules.split("+"))
-    trader = data["plans"]["self_directed_trader"]
-    assert trader[""] == json.loads(json.dumps(server.plan("self_directed_trader", 1)))
-    assert {line["ticker"] for line in trader["weapons+crypto"]["left_out"]} == {"DEFENSE", "BITCOIN"}
-    assert sum(line["weight"] for line in trader["weapons+crypto"]["lines"]) == pytest.approx(1)
+    bold = references["opportunity"]
+    expected = {k: v for k, v in server.reference("opportunity", 1, [], site.parent / "shared").items() if k != "history"}
+    assert bold[""] == json.loads(json.dumps(expected)) and "history" not in bold[""]  # one chart per strategy, apart
+    assert {line["ticker"] for line in bold["weapons+crypto"]["left_out"]} == {"DEFENSE", "BITCOIN"}
+    assert sum(line["weight"] for line in bold["weapons+crypto"]["lines"]) == pytest.approx(1)
 
 
 def test_the_stand_in_answers_every_route_of_the_server(tmp_path):
