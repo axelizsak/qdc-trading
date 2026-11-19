@@ -8,12 +8,16 @@ Read-only: no tool writes a log. ReBel is execution-only, so `prepare_order` onl
 rules and hands back a draft: the customer confirms it in the app. No model call either: the words in a sheet (the
 news analyst's view, the agents' reading) are data from the morning run, never an instruction.
 
-Run:  python -m mobile.mcp_server   (stdio: Claude starts it, see docs/technical.md)
+Run:  python -m mobile.mcp_server                                   (stdio: Claude Code or Desktop starts it)
+      python -m mobile.mcp_server --http 8700 --public-host <host>    (for claude.ai: behind an HTTPS tunnel,
+                                                                       see docs/technical.md)
 """
+import argparse
 from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 
 from data import config as settings
@@ -207,5 +211,26 @@ def create_server(logs: Path | None = None, shared: Path | None = None) -> MCPSe
     return rebel
 
 
+def web_security(port: int, public_host: str | None) -> TransportSecuritySettings:
+    """Who may call the server over HTTP: this machine, and the one public host of the tunnel claude.ai goes
+    through. Any other Host header is refused (DNS rebinding)."""
+    hosts = [f"127.0.0.1:{port}", f"localhost:{port}"] + ([public_host] if public_host else [])
+    return TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=hosts,
+                                     allowed_origins=["https://claude.ai"] + [f"https://{h}" for h in hosts[2:]])
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="ReBel in Claude: a read-only MCP connector.")
+    parser.add_argument("--http", type=int, metavar="PORT", help="serve over HTTP on 127.0.0.1:PORT (path /mcp)")
+    parser.add_argument("--public-host", help="the tunnel's host name, e.g. abc.ngrok-free.app")
+    args = parser.parse_args(argv)
+    rebel = create_server()
+    if args.http is None:
+        rebel.run("stdio")
+        return
+    rebel.run("streamable-http", host="127.0.0.1", port=args.http,
+              transport_security=web_security(args.http, args.public_host))
+
+
 if __name__ == "__main__":
-    create_server().run("stdio")
+    main()

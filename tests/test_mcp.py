@@ -126,3 +126,11 @@ def test_a_long_chart_keeps_its_last_point():
     short = mcp_server.chart(long)
     assert len(short) == mcp_server.CHART_POINTS and short[0] == long[0] and short[-1] == long[-1]
     assert mcp_server.chart(long[:10]) == long[:10]
+
+
+def test_over_http_only_this_machine_and_the_tunnel_may_call():
+    rules = mcp_server.web_security(8700, "abc.ngrok-free.app")
+    assert rules.enable_dns_rebinding_protection
+    assert rules.allowed_hosts == ["127.0.0.1:8700", "localhost:8700", "abc.ngrok-free.app"]
+    assert rules.allowed_origins == ["https://claude.ai", "https://abc.ngrok-free.app"]
+    assert mcp_server.web_security(8700, None).allowed_hosts == ["127.0.0.1:8700", "localhost:8700"]

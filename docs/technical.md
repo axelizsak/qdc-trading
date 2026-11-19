@@ -179,7 +179,20 @@ Developer, Edit Config), then restart it:
 }
 ```
 
-Then ask, for instance: "How far is Thomas from the Defensive reference?" or "Explain the WORLD sheet of today".
+In claude.ai (the web app), a connector must be reachable at a public HTTPS address: serve it over HTTP and put a
+tunnel in front (ngrok's free plan here), then add the address in claude.ai, Settings, Connectors, Add custom
+connector:
+
+```bash
+ngrok http 8700                                                             # gives https://<host>
+.venv/bin/python -m mobile.mcp_server --http 8700 --public-host <host>      # connector URL: https://<host>/mcp
+```
+
+Only that host (and this machine) may call it; the tools stay read-only and the customers are synthetic. Anyone who
+knows the address can read the demo data while the tunnel runs: stop both commands after the demo.
+
+Then ask, for instance: "How far is Thomas from the Defensive model portfolio?" or "Explain the WORLD sheet of
+today". The demo customers must have gone through the app first (`python -m mobile.server`).
 
 ## Change the model
 
