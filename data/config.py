@@ -26,6 +26,10 @@ MAX_ORDERS_PER_DAY = 5
 # the book, the cash check, the Portfolio and Risk Managers, the logbook, the grading and the backtest.
 # It is not a detail: backtest/README.md shows what the difference is worth.
 FILL_AT_PREVIOUS_CLOSE = True
+# Dividends are not credited in the competition: a distributing ETF loses its dividend on the ex-date. True keeps
+# every distributing ETF (data/etf_universe.csv, `distributing`) out of the portfolio the team trades. The customer
+# app's reference portfolios keep them: a real customer is paid the dividend.
+EXCLUDE_DISTRIBUTING = True
 
 
 def fill_rule() -> str:

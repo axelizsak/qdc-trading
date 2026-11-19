@@ -47,7 +47,7 @@ from agents import portfolio_config as cfg
 from data import config as settings
 from data.profiles import COMPLEX_FAMILIES, EQUITY_SLEEVES, SLEEVE_ETFS, STRATEGIES, sleeve_of
 from data.schemas import ORDERS, PORTFOLIO, validate_orders, validate_portfolio
-from data.universe import load_universe
+from data.universe import distributing_tickers, load_universe
 
 KEYWORDS = re.compile(r"\b(cut|exclude|avoid|remove|veto|drop|without|no more|stop buying)\b", re.I)
 
@@ -739,7 +739,8 @@ def write_memo(as_of: date, status: str, nav: float, info: dict, judgement: dict
 def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, holdings: pd.DataFrame,
         cash_eur: float, prices: pd.DataFrame, as_of: date, feedback: str = "", *, macro_summary: str = "",
         logs_dir: Path | str | None = None, client=None, use_llm: bool = True, trust: float | None = None,
-        learning: pd.DataFrame | None = None, strategy: str | None = None) -> tuple[pd.DataFrame, pd.DataFrame, str]:
+        learning: pd.DataFrame | None = None, strategy: str | None = None,
+        competition: bool = True) -> tuple[pd.DataFrame, pd.DataFrame, str]:
     """Returns (target weights in the Portfolio format, proposed orders in the Orders format, investment memo).
 
     `feedback` holds one line per time the human sent the day back, e.g.
@@ -751,7 +752,9 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
     and recommendations are logged there; without it nothing is written); `trust` (how much the LLM's portfolio
     counts, default TRUST_START); `learning` (the learning scoreboard, shown in the memo); `client` (a the LLM client,
     default: the real one when GEMINI_API_KEY is set); `use_llm=False` (the code's portfolio alone); `strategy` (the
-    strategy the team trades, data/profiles.py: every portfolio stays within its limits, `within_strategy`).
+    strategy the team trades, data/profiles.py: every portfolio stays within its limits, `within_strategy`);
+    `competition=False` (a customer's reference portfolio: the competition's own rules, such as no distributing ETF
+    when EXCLUDE_DISTRIBUTING, do not apply).
     """
     universe = load_universe().set_index("ticker")
     tickers = universe.index.tolist()
@@ -776,6 +779,8 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
     weights_now = (units * fill[units.index]) / nav
     held = set(weights_now[weights_now > 0].index)
     status = day_status(as_of)
+    # dividends are not credited in the competition: a distributing ETF is not bought, and a held one is sold
+    no_dividend = set(distributing_tickers()) if competition and settings.EXCLUDE_DISTRIBUTING else set()
 
     # 1. the agent weights and the trust, as the learning rule set them this morning
     agents = sorted(clean_signals(signals)["agent"].unique())
@@ -794,6 +799,7 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
     table = combined.assign(vol=vol.reindex(combined.index))
     exclude, pinned = feedback_constraints(feedback, tickers, held, keywords=False)
     exclude, pinned = exclude | (stale - held), pinned | (stale & held)  # a stale price: not bought, a held ETF stays
+    exclude |= no_dividend - pinned
     draft, draft_info = baseline_target(table["final_score"], vol, universe, weights_now, priced, exclude, pinned, {})
     drafts = {"baseline": draft, "optimizer": optimizer_target(table["final_score"], cov, universe, weights_now, priced,
                                                                exclude, pinned, {}, draft_info["exposure"], draft)}
@@ -821,8 +827,12 @@ def run(signals: pd.DataFrame, agent_weights: dict[str, float], lessons: str, ho
         exclude, pinned = feedback_constraints(feedback, tickers, held, keywords=True)
     exclude, pinned = exclude | (stale - held), pinned | (stale & held)
     exclude |= set(judgement["exclude"]) - pinned
+    asked = exclude - no_dividend  # what the human, the LLM or a stale price ruled out, said apart from the rule
+    exclude |= no_dividend - pinned
     max_weight = judgement["max_weight"]
-    constraints = ([f"not bought: {', '.join(sorted(exclude))}" if exclude else ""]
+    constraints = ([f"not bought: {', '.join(sorted(asked))}" if asked else ""]
+                   + [f"not held, dividends not credited in the competition: {', '.join(sorted(no_dividend - pinned))}"
+                      if no_dividend - pinned else ""]
                    + [f"kept as it is: {', '.join(sorted(pinned))}" if pinned else ""]
                    + [f"{t} limited to {w:.0%}" for t, w in max_weight.items()])
     baseline, info = baseline_target(table["final_score"], vol, universe, weights_now, priced, exclude, pinned,

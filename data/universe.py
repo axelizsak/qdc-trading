@@ -30,6 +30,12 @@ def tickers() -> list[str]:
     return load_universe()["ticker"].tolist()
 
 
+def distributing_tickers() -> frozenset[str]:
+    """The ETFs that pay out a dividend (`distributing` in data/etf_universe.csv)."""
+    universe = load_universe()
+    return frozenset(universe.loc[universe["distributing"].astype(bool), "ticker"])
+
+
 def reference_exchange(ticker: str) -> str:
     """Exchange Belfius uses for this ETF, e.g. 'Xetra'."""
     if ticker in REFERENCE_EXCHANGE:

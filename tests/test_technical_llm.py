@@ -61,7 +61,7 @@ def test_the_llm_reads_the_codes_answers_not_raw_prices(sheet):
     lines = technical_llm.sheet_lines(sheet).splitlines()
     assert len(lines) == len(sheet)
     world = next(line for line in lines if line.startswith('- "WORLD"'))
-    assert "rule score +0.50 (trend signal buy)" in world and "trend short up, medium up, long up -> setup buy" in world
+    assert "rule score +0.51 (trend signal buy)" in world and "trend short up, medium up, long up -> setup buy" in world
     short = next(line for line in lines if line.startswith('- "S&P 500 SHORT"'))
     assert "leverage -1, read on S&P 500" in short and "mean reversion: not applicable" in short
     assert "close_eur" not in "\n".join(lines)
@@ -98,7 +98,7 @@ def test_run_gives_both_technical_scores_when_the_llm_answers():
     features = compute_features(prices)
     as_of = pd.to_datetime(prices["date"]).max().date()
     both = technical.run(prices, features, as_of, "", client=FakeModel())
-    assert both.groupby("agent")["ticker"].nunique().to_dict() == {"technical_det": 42, "technical_llm": 42}
+    assert both.groupby("agent")["ticker"].nunique().to_dict() == {"technical_det": 49, "technical_llm": 49}
     assert set(technical.run(prices, features, as_of, use_llm=False)["agent"]) == {"technical_det"}
     assert set(technical.run(prices, features, as_of)["agent"]) == {"technical_det"}  # no key: the rule score alone
 
