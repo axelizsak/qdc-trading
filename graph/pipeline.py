@@ -746,7 +746,7 @@ def publish_references(state: DayState, as_of: date, logs: Path) -> list[dict]:
         for strategy in STRATEGIES:
             target, _, _ = _call("portfolio", signals, state.get("agent_weights") or {}, "",
                                  pd.DataFrame(columns=HOLDINGS), settings.START_CAPITAL_EUR, prices, as_of, "",
-                                 use_llm=False, strategy=strategy)
+                                 use_llm=False, strategy=strategy, competition=False)
             targets[strategy] = target.set_index("ticker")["target_weight"]
         families = dict(zip(load_universe()["ticker"], load_universe()["family"]))
         model_portfolios.publish(logs, as_of, targets, families)

@@ -201,7 +201,8 @@ def test_at_most_five_orders_even_when_many_changes_are_needed(prices, signals):
     assert "Left for a later date" in memo
 
 
-def test_a_portfolio_at_its_target_gives_no_orders(prices, signals):
+def test_a_portfolio_at_its_target_gives_no_orders(prices, signals, monkeypatch):
+    monkeypatch.setattr(settings, "EXCLUDE_DISTRIBUTING", False)  # the order counts below are those of this mock day
     target, orders, _ = propose(prices, signals)
     last_day = prices[prices["date"].astype(str) == "2026-12-04"].set_index("ticker")["close_eur"]
     spent = orders["units"] * orders["ticker"].map(last_day)
@@ -593,3 +594,26 @@ def test_idle_budget_can_follow_the_benchmark(prices, monkeypatch):
     assert wide.sum() <= cfg.EXPOSURE_MAX + 1e-6 and wide["WORLD"] > 0.40
     # the human's word still wins: a benchmark the human excluded is not bought
     assert "WORLD" not in portfolio.top_up_with_benchmark(pd.Series({"GOLD": 0.3}), 0.9, {"GOLD", "WORLD"}, {"WORLD"}, set())
+
+
+def test_distributing_etfs_stay_out_of_the_competition_but_not_out_of_a_reference(prices, monkeypatch):
+    monkeypatch.setattr(settings, "EXCLUDE_DISTRIBUTING", True)
+    traded, _, _ = propose(prices, _one_strong_score("BEL 20"))  # a distributing ETF: dividends not credited
+    assert "BEL 20" not in set(traded["ticker"])
+    reference, _, _ = propose(prices, _one_strong_score("BEL 20"), competition=False)  # a customer is paid it
+    assert reference.set_index("ticker")["target_weight"].get("BEL 20", 0) > 0
+
+    held = pd.DataFrame({"ticker": ["BEL 20"], "units": [20.0]})  # bought before the rule: sold
+    target, orders, _ = propose(prices, _one_strong_score("BEL 20"), holdings=held, cash=8_000.0)
+    assert "BEL 20" not in set(target["ticker"])
+    assert ((orders["ticker"] == "BEL 20") & (orders["side"] == "SELL")).any()
+
+    monkeypatch.setattr(settings, "EXCLUDE_DISTRIBUTING", False)  # the switch turns the rule off
+    allowed, _, _ = propose(prices, _one_strong_score("BEL 20"))
+    assert allowed.set_index("ticker")["target_weight"].get("BEL 20", 0) > 0
+
+
+def test_every_etf_but_cash_is_scored_by_the_technical_agent():
+    universe = load_universe()
+    assert universe["buyable"].all()  # distributing ETFs and bonds are scored: the competition rule is the PM's
+    assert universe["ticker"].isin(["GLOBAL AGG BOND", "EUR GOVT BOND", "BEL 20"]).sum() == 3

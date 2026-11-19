@@ -6,9 +6,9 @@ id,theme,ticker,isin,name,family,bucket,distributing,leveraged,underlying,buyabl
 5,European equity,IBEX 35,FR0010655746,Amundi IBEX 35 UCITS ETF Acc,broad_equity,europe,False,1,,True,True
 6,Home market,BEL 20,FR0000021842,Amundi BEL 20 UCITS ETF Dist,broad_equity,europe,True,1,,True,True
 7,Size & style factors,WORLD SMALL CAP,IE00BF4RFH31,iShares MSCI World Small Cap UCITS ETF USD (Acc),factor_income,global_us,False,1,,True,True
-8,Size & style factors,WORLD MIN VOL,IE00B8FHGS14,iShares Edge MSCI World Minimum Volatility UCITS ETF USD (Acc),factor_income,defensive,False,1,,False,True
-9,Size & style factors,DIVIDEND LEADERS,NL0011683594,VanEck Morningstar Developed Markets Dividend Leaders UCITS ETF,factor_income,global_us,True,1,,False,True
-10,Income strategies,NASDAQ INCOME,IE000U9J8HX9,NASDAQ Equity Premium Income Active UCITS ETF USD (Dist),factor_income,us_tech,True,1,,False,True
+8,Size & style factors,WORLD MIN VOL,IE00B8FHGS14,iShares Edge MSCI World Minimum Volatility UCITS ETF USD (Acc),factor_income,defensive,False,1,,True,True
+9,Size & style factors,DIVIDEND LEADERS,NL0011683594,VanEck Morningstar Developed Markets Dividend Leaders UCITS ETF,factor_income,global_us,True,1,,True,True
+10,Income strategies,NASDAQ INCOME,IE000U9J8HX9,NASDAQ Equity Premium Income Active UCITS ETF USD (Dist),factor_income,us_tech,True,1,,True,True
 11,Equity / Tech,NASDAQ,IE00B53SZB19,iShares NASDAQ 100 UCITS ETF USD (Acc),tech_growth,us_tech,False,1,,True,True
 12,Equity / Tech,SEMIS,IE000I8KRLL9,iShares MSCI Global Semiconductors UCITS ETF USD (Acc),tech_growth,us_tech,False,1,,True,True
 13,Equity / Tech,CYBERSEC,IE00BYPLS672,L&G Cyber Security UCITS ETF USD Acc,tech_growth,us_tech,False,1,,True,True
@@ -34,10 +34,10 @@ id,theme,ticker,isin,name,family,bucket,distributing,leveraged,underlying,buyabl
 33,Precious metals,GOLD,IE00B4ND3602,iShares Physical Gold ETC,gold,gold,False,1,,True,False
 34,Precious metals,GOLD MINERS,IE00BQQP9F84,VanEck Gold Miners UCITS ETF,cyclical,gold,False,1,,True,False
 35,Precious metals,SILVER MINERS,IE000UL6CLP7,Global X Silver Miners UCITS ETF USD (Acc),cyclical,gold,False,1,,True,False
-36,Fixed income / Bonds,HIGHY BOND,LU1109942653,Xtrackers II EUR High Yield Corporate Bond UCITS ETF 1D,bonds,credit,True,1,,False,False
-37,Fixed income / Bonds,US TREASURY 20Y,LU1407890620,Amundi US Treasury Bond Long Dated UCITS ETF (Dist),bonds,us_rates,True,1,,False,False
-38,Fixed income / Bonds,GLOBAL AGG BOND,IE00BG47KH54,Vanguard Global Aggregate Bond UCITS ETF EUR Hedged (Acc),bonds,eur_rates,False,1,,False,False
-39,Fixed income / Bonds,EUR GOVT BOND,IE00B4WXJJ64,iShares Core EUR Govt Bond UCITS ETF EUR (Dist),bonds,eur_rates,True,1,,False,False
+36,Fixed income / Bonds,HIGHY BOND,LU1109942653,Xtrackers II EUR High Yield Corporate Bond UCITS ETF 1D,bonds,credit,True,1,,True,False
+37,Fixed income / Bonds,US TREASURY 20Y,LU1407890620,Amundi US Treasury Bond Long Dated UCITS ETF (Dist),bonds,us_rates,True,1,,True,False
+38,Fixed income / Bonds,GLOBAL AGG BOND,IE00BG47KH54,Vanguard Global Aggregate Bond UCITS ETF EUR Hedged (Acc),bonds,eur_rates,False,1,,True,False
+39,Fixed income / Bonds,EUR GOVT BOND,IE00B4WXJJ64,iShares Core EUR Govt Bond UCITS ETF EUR (Dist),bonds,eur_rates,True,1,,True,False
 40,Money market (cash),OVERNIGHT CASH,LU1190417599,Amundi Smart Overnight Return UCITS ETF EUR (Acc),cash,cash,False,1,,True,False
 41,Defensive sector,DEFENSE,IE000YYE6WK5,VanEck Defense UCITS ETF A,cyclical,defense,False,1,,True,True
 42,Defensive sector,STAPLES,IE00BM67HN09,Xtrackers MSCI World Consumer Staples UCITS ETF 1C,defensive,defensive,False,1,,True,True
