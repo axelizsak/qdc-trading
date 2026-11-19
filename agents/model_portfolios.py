@@ -1,9 +1,11 @@
 """The reference portfolio of each strategy (Defensive, Balanced, Opportunity): what the app shows a customer.
 
 Each strategy starts from a fixed mix (`weights`): a share per sleeve (data/profiles.py), the same core ETFs for
-everyone, the strategy's own themes in equal parts. Then it follows our engine: when the team signs off a day in the
-cockpit, the code's portfolio of the Portfolio Manager is built for each strategy, from the same agents' scores and
-the same learned weights, inside the strategy's limits (no LLM: same input, same output). It becomes a new version of
+everyone, the strategy's own themes in equal parts. The share of each sleeve never moves: it is the risk level, the
+table customers and the jury see. Inside each sleeve, the reference follows our engine: when the team signs off a
+day in the cockpit, the code's portfolio of the Portfolio Manager is built for each strategy, from the same agents'
+scores and the same learned weights, inside the strategy's limits (no LLM: same input, same output), and each
+sleeve is split half as in the fixed mix, half as in the engine's portfolio (`follow`). It becomes a new version of
 the reference (`publish`) only when at least PUBLISH_TURNOVER of it would change, so customers are not bothered by
 noise; the app then offers them the orders that follow it, which they decide on. The versions are logged
 (logs/strategy_portfolios.csv); before the first one, the fixed mix is the reference.
@@ -20,7 +22,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from data.profiles import SLEEVE_ETFS, STRATEGIES, TRADED, sleeve_of
+from data.profiles import COMPLEX_FAMILIES, SLEEVE_ETFS, STRATEGIES, TRADED, sleeve_of
 from data.schemas import STRATEGY_CHOICES, STRATEGY_PORTFOLIOS, validate_strategy_choices, validate_strategy_portfolios
 
 YEAR = 252  # trading days
@@ -28,7 +30,8 @@ CASH = "OVERNIGHT CASH"  # what money earns without risk: the Sharpe ratio's yar
 CHOICES = "strategy_choices.csv"
 VERSIONS = "strategy_portfolios.csv"
 PUBLISH_TURNOVER = 0.10  # a new version only when at least this share of the reference would change
-MIN_LINE = 0.02  # a line below this share of the reference goes to cash: no dust for customers
+MIN_LINE = 0.02  # a line below this share of the reference is shared out in its sleeve: no dust for customers
+ENGINE_SHARE = 0.5  # inside a sleeve, this part of the split follows the engine, the rest stays as in the fixed mix
 
 
 def choices(logs: Path) -> pd.DataFrame:
@@ -105,21 +108,48 @@ def turnover(old: dict[str, float], new: dict[str, float]) -> float:
     return sum(abs(new.get(t, 0.0) - old.get(t, 0.0)) for t in set(old) | set(new)) / 2
 
 
-def tidy(target: pd.Series, families: dict[str, str]) -> dict[str, tuple[str, float]]:
-    """An engine's target as a customer's reference: lines under MIN_LINE and the idle money go to the cash ETF, so the
-    shares add up to 1. ticker -> (sleeve, share)."""
-    kept = {t: float(w) for t, w in target.items() if float(w) >= MIN_LINE and t != CASH}
-    kept[CASH] = max(1.0 - sum(kept.values()), 0.0)
-    return {t: (sleeve_of(t, families.get(t, "")), round(w, 6)) for t, w in kept.items() if w > 0}
+def follow(target: pd.Series, strategy: str, families: dict[str, str]) -> dict[str, tuple[str, float]]:
+    """The engine's portfolio of the day as the strategy's reference: every sleeve keeps its share of the fixed mix,
+    and its ETFs are split ENGINE_SHARE as in the engine's portfolio, the rest as in the fixed mix (all of it when the
+    engine holds nothing in that sleeve). Complex products stay within the strategy's limit, and lines under MIN_LINE
+    are shared out among the others of their sleeve. ticker -> (sleeve, share)."""
+    spec, fixed = STRATEGIES[strategy], weights(strategy)
+    engine = {t: float(w) for t, w in target.items() if float(w) > 0 and t != CASH}
+    out: dict[str, tuple[str, float]] = {}
+    for sleeve, share in spec["sleeves"].items():
+        if share <= 0:
+            continue
+        mine = {t: w for t, (s, w) in fixed.items() if s == sleeve}
+        theirs = {t: w for t, w in engine.items() if sleeve_of(t, families.get(t, "")) == sleeve}
+        split = {t: w / sum(mine.values()) * (1 - ENGINE_SHARE) for t, w in mine.items()}
+        if theirs and sleeve != "cash":
+            for t, w in theirs.items():
+                split[t] = split.get(t, 0.0) + w / sum(theirs.values()) * ENGINE_SHARE
+        else:
+            split = {t: w / sum(mine.values()) for t, w in mine.items()}
+        complex_ = [t for t in split if families.get(t) in COMPLEX_FAMILIES]
+        room = spec["limits"]["complex_max"] / share
+        if complex_ and sum(split[t] for t in complex_) > room:  # the excess goes to the sleeve's other ETFs
+            others = [t for t in split if t not in complex_]
+            scale = room / sum(split[t] for t in complex_)
+            freed = sum(split[t] for t in complex_) * (1 - scale)
+            split.update({t: split[t] * scale for t in complex_})
+            rest = sum(split[t] for t in others)
+            split.update({t: split[t] + freed * split[t] / rest for t in others} if rest else {})
+        kept = {t: w for t, w in split.items() if w * share >= MIN_LINE} or {max(split, key=split.get): 1.0}
+        out.update({t: (sleeve, round(share * w / sum(kept.values()), 6)) for t, w in kept.items()})
+    big = max(out, key=lambda t: out[t][1])  # the rounding, on the largest line: the shares add up to 1 exactly
+    out[big] = (out[big][0], round(out[big][1] + 1 - sum(w for _, w in out.values()), 6))
+    return out
 
 
 def publish(logs: Path, as_of: date, targets: dict[str, pd.Series], families: dict[str, str]) -> dict[str, float]:
-    """Publishes each strategy's new target as a version of its reference when at least PUBLISH_TURNOVER of the current
-    one would change. Returns strategy -> turnover for the versions published. Run again on the same day, it gives
+    """Publishes each strategy's reference that follows the engine's new target (`follow`) as a new version when at
+    least PUBLISH_TURNOVER of the current one would change. Returns strategy -> turnover for the versions published. Run again on the same day, it gives
     the same result (the day's own version is compared with the one before it)."""
     out, rows = {}, []
     for strategy, target in targets.items():
-        new = tidy(target, families)
+        new = follow(target, strategy, families)
         before, day = current(logs, strategy, as_of)
         if day == as_of.isoformat():
             before = previous(logs, strategy, day)

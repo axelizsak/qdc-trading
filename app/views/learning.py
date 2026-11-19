@@ -14,18 +14,18 @@ summary = data.backtest_summary()
 if summary is not None:
     rows = summary.set_index("variant")
     first = rows.iloc[0]
+    other = rows.loc["learned_three"] if "learned_three" in rows.index else None
     ui.kpis([("Sharpe · the system", f"{first['sharpe']:.2f}",
-              f"3 signals, learned · worst fall {first['max_drawdown']:.0%}"),
-             ("Sharpe · trend rule only", f"{rows.loc['trend_only', 'sharpe']:.2f}" if "trend_only" in rows.index else "—",
-              "before 16 Nov · worst fall " + (f"{rows.loc['trend_only', 'max_drawdown']:.0%}"
-                                               if "trend_only" in rows.index else "—")),
+              f"trend rule · worst fall {first['max_drawdown']:.0%}"),
+             ("Sharpe · 3 answers learned", f"{other['sharpe']:.2f}" if other is not None else "—",
+              "16 to 18 Nov · worst fall " + (f"{other['max_drawdown']:.0%}" if other is not None else "—")),
              (f"Sharpe · {data.BENCHMARK_LABEL}", f"{first['bench_sharpe']:.2f}", f"worst fall {first['bench_max_drawdown']:.0%}"),
              ("Years tested", f"{first['years']:.1f}", "daily, since January 2022")])
 
 learned, learned_mock = data.weights(logs)
 learned = learned.assign(date=pd.to_datetime(learned["date"].astype(str)))
 ui.mock_note(learned_mock, "the learning step has not written logs/weights.csv yet")
-LEVELS = [("technical", "The technical agent's three answers", "since 2022, one point a week"),
+LEVELS = [("technical", "The technical agent's answers", "the trend rule alone since 19 Nov; one point a week"),
           ("agents", "The four agents", "since their first score"),
           ("portfolio", "The LLM's portfolio against the code's", "in the Portfolio Manager's blend")]
 for level, title, aside in LEVELS:
@@ -33,7 +33,12 @@ for level, title, aside in LEVELS:
     if level == "technical":
         rows = rows.groupby([pd.Grouper(key="date", freq="W"), "name"])["weight"].last().reset_index()
     ui.label(title, aside)
-    if rows["date"].nunique() < 2:  # one set so far: the weights as numbers, the curve needs two
+    if rows["name"].nunique() < 2:  # one answer counts: nothing to learn between answers
+        ui.chips([(f"{n.replace('_', ' ')} 100%", "none") for n in rows["name"].unique()] or [("none yet", "none")])
+        st.caption("Team choice after the backtest: the trend rule alone (as good, with a smaller worst fall, and "
+                   "simpler). Mean reversion and momentum are still recorded every session, for the LLM and to check "
+                   "the choice again.")
+    elif rows["date"].nunique() < 2:  # one set so far: the weights as numbers, the curve needs two
         now = rows[rows["date"] == rows["date"].max()].sort_values("weight", ascending=False)
         ui.chips([(f"{r.name.replace('_', ' ')} {r.weight:.0%}", "none") for r in now.itertuples()] or [("none yet", "none")])
     else:

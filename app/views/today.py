@@ -340,6 +340,10 @@ if finished:
     show_record()
 elif status == "not started":
     run_block()
+elif status == "running":
+    st.info("The agents are running this day (started from the command line or another window). It stops at your "
+            "first review: refresh in a few minutes.", icon=":material/hourglass_top:")
+    st.button("Refresh", icon=":material/refresh:")
 else:
     waiting_review()
 portfolio_section()

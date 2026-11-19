@@ -103,3 +103,13 @@ def test_what_changed_and_the_chart_of_a_mix():
                  "B": [{"date": "d2", "value": 5}, {"date": "d3", "value": 6}]}
     assert wallet.mix_curve({"A": 0.5, "B": 0.5}, histories) == [
         {"date": "d1", "value": 1.0}, {"date": "d2", "value": 1.05}, {"date": "d3", "value": 1.155}]
+
+
+def test_a_small_drift_offers_nothing_a_new_version_offers_every_order():
+    held = [{"ticker": "WORLD", "value": 630.0}, {"ticker": "SEMIS", "value": 370.0}]  # 63/37 against 60/40
+    reference = [{"ticker": "WORLD", "weight": 0.6, "lock": ""}, {"ticker": "SEMIS", "weight": 0.4, "lock": ""}]
+    assert wallet.rebalance(held, reference) and wallet.proposal_orders(held, reference, new=False) == []
+    assert wallet.proposal_orders(held, reference, new=True) == wallet.rebalance(held, reference)
+    far = [{"ticker": "WORLD", "value": 700.0}, {"ticker": "SEMIS", "value": 300.0}]  # 10 points off: worth a look
+    assert [o["side"] for o in wallet.proposal_orders(far, reference, new=False)] == ["SELL", "BUY"]
+    assert wallet.proposal_orders([], reference, new=True) == []

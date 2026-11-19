@@ -45,7 +45,7 @@ def test_every_strategy_has_a_whole_portfolio_of_known_etfs():
 
 def test_the_published_references_are_in_the_shared_format(tmp_path):
     families = dict(zip(load_universe()["ticker"], load_universe()["family"]))
-    engine = pd.Series({"WORLD": 0.5, "SEMIS": 0.2, "GOLD": 0.1})
+    engine = pd.Series({"EUROPE 600": 0.5, "EUR GOVT BOND": 0.3, "STAPLES": 0.2})  # far from every starting mix
     model_portfolios.publish(tmp_path, DAY, {key: engine for key in STRATEGIES}, families)
     portfolios = model_portfolios.versions(tmp_path)
     assert set(portfolios["strategy"]) == set(STRATEGIES) and set(portfolios["date"]) == {DAY.isoformat()}

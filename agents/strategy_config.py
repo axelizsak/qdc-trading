@@ -65,7 +65,11 @@ MEAN_REVERSION_SCORES = {"buy": 1.0, "avoid": -1.0, "none": 0.0, "n/a": 0.0}
 
 # technical_det = the three answers' scores, weighted. The weights start here on LEARNING_START and then follow the
 # system's learning rule (agents/learning.py) session by session: an answer whose calls beat the average ETF gains.
-SIGNAL_START = {"trend": 1 / 3, "mean_reversion": 1 / 3, "momentum": 1 / 3}
+# An answer that starts at 0 never counts. Team choice of 19 November 2026: the trend rule alone. In the daily backtest
+# since 2022 it did as well as the three answers learned together (Sharpe 1.18 against 1.15) with a smaller worst
+# fall (-10% against -16%), and it is far simpler to explain (backtest/README.md). The other two answers are still
+# recorded every session (logs/technical_answers.csv) and shown to technical_llm.
+SIGNAL_START = {"trend": 1.0, "mean_reversion": 0.0, "momentum": 0.0}
 
 # ETFs the agent does not score
 SKIP_FAMILIES = ["cash"]   # OVERNIGHT CASH is the parking, not an investment

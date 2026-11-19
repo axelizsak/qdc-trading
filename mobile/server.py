@@ -70,8 +70,8 @@ def record(logs: Path, customer: str, event: str, state: dict | None = None, det
 
 def customer_state(logs: Path, customer: str) -> dict | None:
     """Where a customer stands: archetype, strategy and why, answers, flags, the orders they placed, whether they
-    opened complex products and the lessons they got right (lesson -> True once answered right, False before).
-    None before the coach has placed them, or after they started over."""
+    opened complex products, the lessons they got right (lesson -> True once answered right, False before) and their
+    learning streak (profiler.streak). None before the coach has placed them, or after they started over."""
     state = None
     log = read_log(logs)
     for row in log[log["customer"] == customer].itertuples():
@@ -82,7 +82,8 @@ def customer_state(logs: Path, customer: str) -> dict | None:
             state = {"archetype": row.archetype, "strategy": row.strategy, "why": why.get("archetype", ""),
                      "strategy_why": why.get("strategy", []), "answers": answers,
                      "sheet": [[profiler.QUESTIONS[q]["name"], profiler.shown(q, v)] for q, v in answers.items()],
-                     "flags": split_list(row.flags), "orders": [], "unlocked": False, "lessons": {}}
+                     "flags": split_list(row.flags), "orders": [], "unlocked": False, "lessons": {},
+                     "learned_days": []}
         elif state is not None and row.event == "order":
             state["orders"].append({**json.loads(row.detail), "time": row.time})
         elif state is not None and row.event == "unlocked":
@@ -90,6 +91,10 @@ def customer_state(logs: Path, customer: str) -> dict | None:
         elif state is not None and row.event == "lesson":
             done = json.loads(row.detail)
             state["lessons"][done["lesson"]] = state["lessons"].get(done["lesson"], False) or bool(done["right"])
+            if done["right"] and row.time[:10] not in state["learned_days"]:
+                state["learned_days"].append(row.time[:10])
+    if state is not None:
+        state["streak"] = profiler.streak(state["learned_days"], date.today().isoformat())
     return state
 
 
@@ -250,10 +255,10 @@ def portfolio(state: dict, shared: Path) -> dict:
     held = {order["ticker"] for order in state["orders"]}
     book = wallet.holdings(state["orders"], last, universe(), target)
     last_order = max((order.get("time", "")[:10] for order in state["orders"]), default="")
+    new = bool(state["orders"]) and bool(ref["version"]) and ref["version"] >= last_order
     return {**book, "history": wallet.mix_history(state["orders"], {t: points(history, t) for t in held}),
-            "proposal": {"version": ref["version"], "changes": ref["changes"],
-                         "new": bool(state["orders"]) and bool(ref["version"]) and ref["version"] >= last_order,
-                         "orders": wallet.rebalance(book["lines"], target) if book["lines"] else []}}
+            "proposal": {"version": ref["version"], "changes": ref["changes"], "new": new,
+                         "orders": wallet.proposal_orders(book["lines"], target, new)}}
 
 
 def create_app(client=None, logs: Path | None = None, shared: Path | None = None) -> Starlette:

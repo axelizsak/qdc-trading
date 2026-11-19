@@ -2,6 +2,39 @@
 
 Written by the review loop (graph/review_loop.py) from the logs and the prices: facts with their numbers, no opinion. Newest review first. The agents read it before they decide.
 
+## Review of 2026-11-19
+
+**Weights** (each session, a weight is multiplied by e^(2 x what following it earned in that session); start -> today
+
+- The technical agent's answers: trend 100% -> 100% (+0.043% a session over 1243, right 53%)
+- The four agents: macro_etf 25% -> 24% (+0.239% a session over 5, right 80%); macro_market 25% -> 25% (+0.301% a session over 7, right 71%); technical_det 25% -> 25% (+0.171% a session over 8, right 75%); technical_llm 25% -> 25% (+0.889% a session over 2, right 100%)
+- The LLM's portfolio (llm) against the code's (code): code 40% -> 40% (-0.049% a session over 2, right 50%); llm 60% -> 60% (-0.112% a session over 2, right 50%)
+
+**Where each agent is right** (each score judged on the 3 sessions that followed it; calls with a score of at least 0.1)
+
+- macro_etf: calls up right 42% (n=48), calls down right 74% (n=91)
+- macro_market: calls up right 37% (n=43), calls down right 58% (n=178)
+- technical_det: calls up right 38% (n=58), calls down right 75% (n=61)
+- technical_llm: calls up right 32% (n=25), calls down right 79% (n=29)
+
+**Largest misses of the last judged day** (18 Nov)
+
+- macro_etf +0.45 on COPPER LVG: -18.5% over 1 session
+- technical_det +0.85 on HEALTH CARE: -1.2% over 1 session
+- technical_llm +0.85 on HEALTH CARE: -1.2% over 1 session
+
+**ETF analysts by theme** (calls right / calls made, best first)
+
+- Digital assets 13/14, Precious metals 12/13, European equity 5/6, Leveraged & inverse 17/22, ..., US equity 3/5, Emerging markets 9/16, Fixed income / Bonds 8/16, Defensive sector 4/9
+
+**Macro views by factor** (views right / views judged, best first)
+
+- gold_silver 9/10, crypto 9/11, copper_metals 7/9, risk_appetite 6/8, ..., uranium 2/6, geopolitics_defence 2/8, inflation 2/11, eurusd 1/10
+
+**Macro sources**
+
+- Weak regular sources, for a person to decide: container_freight
+
 ## Review of 2026-11-18
 
 **Weights** (each session, a weight is multiplied by e^(2 x what following it earned in that session); start -> today

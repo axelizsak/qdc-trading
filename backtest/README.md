@@ -16,7 +16,7 @@ look into the future. They are judged forward only, by the learning step every m
 
 ```bash
 python -m backtest.system_backtest                                   # every variant, every window since 2022 (about 10 minutes)
-python -m backtest.system_backtest --variants current trend_only     # only these
+python -m backtest.system_backtest --variants current learned_three  # only these
 python -m backtest.system_backtest --since 2024-01-01
 python -m backtest.system_backtest --daily                           # one book over the whole history, valued every day
 ```
@@ -145,6 +145,29 @@ mean reversion, momentum ranking) weighted by what each earned since January 202
 
 The window results in sections 1 to 4 were computed on 16 November, before the learning rule. They have not been run
 again yet: about 40 minutes on two cores (`python -m backtest.system_backtest --workers 2`).
+
+**6b. The trend rule alone, and bonds back (19 November 2026, daily book).** Two changes at once: the technical
+score is the trend rule alone again (`agents/strategy_config.py`, `SIGNAL_START`), and every ETF but cash is
+scored, so the competition may now buy the accumulating bond and minimum-volatility ETFs; distributing ETFs stay out
+of the competition's trades, since their dividends are not credited (`EXCLUDE_DISTRIBUTING`). 5.0 years, 509
+decision days to 16 November 2026, 20 variants, no rule broken, about 6 minutes on 4 cores and 0.7 GB of memory.
+
+| | Sharpe | First half | Second half | Return a year | Volatility | Worst fall |
+|---|---:|---:|---:|---:|---:|---:|
+| The system now: the trend rule alone (`current`) | 1.07 | 0.53 | 1.60 | +11.2% | 9.6% | -11.3% |
+| The three answers, learned (`learned_three`, 16 to 18 November) | 0.96 | 0.31 | 1.59 | +9.9% | 9.4% | -17.6% |
+| The three answers at 1/3 each, never re-weighted (`equal_fixed`) | 0.88 | 0.34 | 1.39 | +9.1% | 9.5% | -15.5% |
+| The benchmark (WORLD) | 0.69 | 0.54 | 0.84 | +10.0% | 14.0% | -21.7% |
+
+- **Why the trend rule alone:** it is ahead of the three answers learned in both halves (+0.11 Sharpe, t +0.4: not
+  beyond luck), its worst fall is much smaller (-11% against -18%), and it is one rule instead of three weights to
+  explain. The learning rule still runs on the four agents and on the LLM's portfolio against the code's.
+- **The signal has an edge since 2022, not before:** the trend rule tested on earlier years had no real edge
+  (Achille's test of 19 November on the years before). The jury should hear it from us.
+- **All numbers are lower than on 16 November** (1.18 then, 1.07 now): the bonds and minimum-volatility ETFs now
+  compete for the money, and the distributing ETFs (BEL 20, CHINA LC, BRAZIL among them) are out.
+- **Other variants:** none beats the system now with a t-value of 2. `fewer_positions` (5 positions at most, 1.23,
+  t +1.0) and `risk_aversion_1` (1.20, t +0.9) are ahead in both halves: candidates for the team, not proof.
 
 ## The studies behind the technical rules (Achille, removed on 16 November 2026)
 

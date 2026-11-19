@@ -1,6 +1,6 @@
 <p align="center"><b>ReBel</b> · QTEM Data Challenge 2026</p>
 
-<h1 align="center">Investing that fits you.</h1>
+<h1 align="center">Investing, explained.</h1>
 
 <p align="center">
   Meet <b>Lena</b>, the AI coach inside ReBel.<br>
@@ -26,15 +26,16 @@ what happens to your money once it is invested.
 bank already knows is not asked again.
 
 **Rules set your risk level, not the AI.** Defensive, Balanced or Opportunity, from what you would do in a fall, when
-you need the money and what you know. You see why. It decides the reference portfolio you are shown and the products
-open to you. Your investor style (one of five) only changes how Lena helps you.
+you need the money and what you know. You see why. It decides the model portfolio you are shown (the same for everyone
+at that level, not a recommendation for you alone) and the products open to you. Your investor style (one of five)
+only changes how Lena helps you.
 
 **AI that explains every ETF.** A chart in %, then what our agents see today in three plain lines: the trend, the
-macro, the news, with sources and the other side of the argument. Information, not advice.
+macro, the news, with sources and the other side of the argument. Information, not a personal recommendation.
 
-**You decide, you place each order.** ReBel is execution-only. Buy one ETF, or your reference mix line by line, then
-follow your portfolio against the reference. The reference follows our agents: when it changes, you see what changed
-and the orders that would follow it, and you decide. Leveraged and crypto ETFs open only after a 3-question check. Rather
+**You decide, you place each order.** ReBel is execution-only. Buy one ETF, or the model portfolio line by line, then
+follow your portfolio against it. Each level keeps the share of each kind of asset; inside it, the ETFs follow our
+agents: when they change, you see what changed and the orders that would match it, and you decide. Leveraged and crypto ETFs open only after a 3-question check. Rather
 have someone decide for you? Belfius advice or a managed portfolio is one tap away.
 
 ## Behind the screen

@@ -164,11 +164,11 @@ def weights_on(logs: Path, day: date) -> dict[str, dict[str, float]]:
 
 
 BACKTEST = settings.ROOT / "backtest" / "results"
-CURVES = {"current": "The system: 3 signals, learned", "trend_only": "Trend rule only (before 16 Nov)"}
+CURVES = {"current": "The system: trend rule", "learned_three": "Three answers, learned (16-18 Nov)"}
 
 
 def backtest_curves() -> pd.DataFrame | None:
-    """The daily backtest's value of €START_CAPITAL in the system, in the trend rule alone and in the benchmark.
+    """The daily backtest's value of €START_CAPITAL in the system, in the three answers learned and in the benchmark.
     Columns: date, series, value_eur. None before the backtest was run."""
     path = BACKTEST / "system_backtest_daily.csv"
     if not path.exists():

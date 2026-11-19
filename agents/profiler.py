@@ -18,6 +18,7 @@ The model has one small job: when the customer types instead of tapping an answe
 import json
 import math
 import re
+from datetime import date, timedelta
 
 from data.lessons import LESSONS
 from data.profiles import ARCHETYPES
@@ -388,6 +389,19 @@ def lesson(key: str, answer) -> dict:
             "right_answer": spec["answers"][spec["right"]][0]}
 
 
+def streak(days: list[str], today: str) -> dict:
+    """The customer's learning streak: {"days": the days in a row, up to today, with a lesson answered right (a streak
+    not yet extended today still counts until the day ends), "today": a lesson was done today, "week": the last seven
+    days, oldest first, True when a lesson was done}. `days` and `today`: "YYYY-MM-DD". It counts lessons, never
+    orders: learning is what the app rewards."""
+    done, now = set(days), date.fromisoformat(today)
+    count, day = 0, now if today in done else now - timedelta(days=1)
+    while day.isoformat() in done:
+        count, day = count + 1, day - timedelta(days=1)
+    return {"days": count, "today": today in done,
+            "week": [(now - timedelta(days=back)).isoformat() in done for back in range(6, -1, -1)]}
+
+
 def shown(question: str, value) -> str:
     """An answer in words, for the sheet."""
     spec = QUESTIONS[question]
@@ -513,7 +527,8 @@ def step(customer: dict, consent: bool, answers: dict | None = None, reply: dict
                      for flag in checks(answers) if flag not in before]
     elif not answers:
         said.append(f"Hi {customer['first_name']}, I'm {COACH}, the AI inside ReBel. A few questions, about three "
-                    "minutes: I find your risk level and show you what fits it. You decide what you buy.")
+                    "minutes: your answers set your risk level, and I show you its model portfolio, the same for "
+                    "everyone at that level. You decide what you buy.")
     now = odds(seen, answers)
     question = next_question(seen, answers)
     archetype = None if question else ORDER[now.index(max(now))]

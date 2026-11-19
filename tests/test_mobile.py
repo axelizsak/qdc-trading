@@ -202,8 +202,10 @@ def test_a_lesson_is_marked_and_remembered(tmp_path):
     assert phone.post("/api/lesson", json={"customer": "lina", "lesson": "nope", "answer": "x"}).status_code == 404
     wrong = phone.post("/api/lesson", json={"customer": "lina", "lesson": "etf", "answer": "loan"}).json()
     assert wrong["right"] is False and wrong["right_answer"].startswith("A small slice") and wrong["state"]["lessons"] == {"etf": False}
+    assert wrong["state"]["streak"]["days"] == 0  # a wrong answer does not count
     right = phone.post("/api/lesson", json={"customer": "lina", "lesson": "etf", "answer": "slice"}).json()
     assert right["right"] is True and right["state"]["lessons"] == {"etf": True}
+    assert right["state"]["streak"]["days"] == 1 and right["state"]["streak"]["today"] and right["state"]["streak"]["week"][-1]
     again = phone.post("/api/lesson", json={"customer": "lina", "lesson": "etf", "answer": "loan"}).json()
     assert again["state"]["lessons"] == {"etf": True}  # once right, the lesson stays done
     assert phone.get("/api/state", params={"customer": "lina"}).json()["state"]["lessons"] == {"etf": True}
@@ -264,7 +266,9 @@ def test_the_reference_follows_its_versions_and_the_customer_gets_the_orders_to_
     follow = [{"ticker": o["ticker"], "eur": o["eur"], "side": o["side"]} for o in proposal["orders"]]
     after = phone.post("/api/order", json={"customer": "thomas", "orders": follow}).json()["portfolio"]
     assert after["proposal"]["orders"] == []  # back on the reference
-    assert {l["ticker"] for l in after["lines"]} == {"WORLD", "EUR GOVT BOND", "GOLD", "STAPLES"}
+    ref = phone.get("/api/reference", params={"customer": "thomas"}).json()
+    assert {l["ticker"] for l in after["lines"]} == {l["ticker"] for l in ref["lines"]}  # the new version's ETFs
+    assert sum(l["weight"] for l in ref["lines"] if l["sleeve"] == "bonds") == pytest.approx(0.40)  # the level holds
 
 
 def test_a_class_of_the_page_is_defined_once():

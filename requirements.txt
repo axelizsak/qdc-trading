@@ -8,8 +8,10 @@ langgraph-checkpoint-sqlite
 streamlit
 starlette
 uvicorn
+mcp>=2
 python-dotenv
 pytest
 fpdf2
+matplotlib
 scipy
 python-pptx
