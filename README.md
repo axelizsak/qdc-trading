@@ -4,7 +4,7 @@
 
 <p align="center">
   Meet <b>Lena</b>, the AI coach inside ReBel.<br>
-  Seven questions, your risk level, and AI that explains every ETF. You decide.
+  Six or seven questions, your risk level, and AI that explains every ETF. You decide.
 </p>
 
 <p align="center">
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/demo.gif" width="300" alt="The app on a phone: Lena's questions, the risk level set by rules, the reference portfolio with its chart, what the AI sees in an ETF, the customer's own orders, the portfolio, a lesson">
+  <img src="docs/demo.gif" width="300" alt="The app on a phone: Lena's questions, the risk level set by rules, the model portfolio with its chart, what the AI sees in an ETF, the customer's own orders, the portfolio, a lesson">
 </p>
 
 ## The problem
@@ -34,18 +34,22 @@ only changes how Lena helps you.
 macro, the news, with sources and the other side of the argument. Information, not a personal recommendation.
 
 **You decide, you place each order.** ReBel is execution-only. Buy one ETF, or the model portfolio line by line, then
-follow your portfolio against it. Each level keeps the share of each kind of asset; inside it, the ETFs follow our
-agents: when they change, you see what changed and the orders that would match it, and you decide. Leveraged and crypto ETFs open only after a 3-question check. Rather
-have someone decide for you? Belfius advice or a managed portfolio is one tap away.
+follow your portfolio against it. Each risk level keeps its share of shares, bonds, gold and cash; inside each share,
+the ETFs follow our agents. When they change, you see what changed and the orders that would match it, and you
+decide. Leveraged and crypto ETFs open only after a 3-question check. Rather have someone decide for you? Belfius
+advice or a managed portfolio is one tap away.
+
+**Learn as you go.** 15 one-minute lessons, the three that fit your style first, and a learning streak that counts
+lessons, never trades.
 
 ## Behind the screen
 
 Every morning, a team of AI agents does the reading nobody has time for.
 
-- **Technical agent.** The trend, the momentum and the reversals of 50 ETFs.
+- **Technical agent.** Reads the trend of 50 ETFs; an LLM weighs it against momentum and reversals.
 - **Macro / News agent.** 15 macro themes and 20 specialised analysts reading the news, every source cited.
 - **Portfolio Manager.** Turns their views into at most five orders a day.
-- **Risk Manager.** Checks the result on 22 measures and writes an independent opinion.
+- **Risk Manager.** Checks the result on 24 measures and writes an independent opinion.
 
 A human reviews every order before it is placed. After each session the system learns: the agents that were right
 count for more the next day. Every decision goes into a tamper-evident logbook.
@@ -58,7 +62,8 @@ count for more the next day. Every decision goes into a tamper-evident logbook.
 
 The same engine trades a real competition portfolio in the QTEM Data Challenge (Belfius × QuantumBlack): €10,000
 over five trading days in December 2026. The team plays the customer: it picks one of the three strategies in the
-cockpit, the agents trade within its limits, and a human approves every order. Everything the agents suggested and the humans decided is in [`logs/`](logs/).
+cockpit, the agents trade within its limits, and a human approves every order. Everything the agents suggested and
+the humans decided is in [`logs/`](logs/).
 
 ## Try it
 
@@ -70,6 +75,7 @@ customers are fictional and nothing you enter leaves your browser.
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m mobile.server        # the app, on http://localhost:8600
+streamlit run app/streamlit_app.py       # the team's cockpit, on http://localhost:8501
 ```
 
 **In Claude.** ReBel also works inside Claude, read-only: Claude reads a demo customer's portfolio, the model
