@@ -40,8 +40,10 @@ approves every order.
 | Logbook | Writes the orders and an audit trail of the day, hash-chained | `agents/logbook.py` |
 
 **One rule for every weight.** After each session, a weight is multiplied by e^(2 × what following that expert earned),
-then the weights are rescaled to sum to 1 and kept between 5% and 80%. It weighs the technical agent's three answers
-(since 2022), the four agents (since their first score), and the LLM's portfolio against the code's.
+then the weights are rescaled to sum to 1 and kept between 5% and 80%. It weighs the four agents (since their first
+score) and the LLM's portfolio against the code's. The technical score is the trend rule alone since 19 November 2026,
+a team choice after the backtest (`backtest/README.md`, section 6b); its other two answers, mean reversion and
+momentum, are still recorded every session and shown to `technical_llm`.
 
 **Free tools only.** The challenge allows nothing that costs money. The LLM is Gemini on Google AI Studio's free
 tier, behind one file (`agents/llm.py`): two small models side by side for the many calls (each has its own quota of
@@ -110,24 +112,32 @@ A finished day is read from its files in `logs/`, so any past day can be opened.
   knowledge question right and keeps a buffer; Balanced otherwise. The reasons are shown.
 - **The same answers** fill the suitability sheet (a wealth range is asked when Belfius cannot show the savings). The
   code flags answers that contradict each other: an adviser then looks first. The LLM only reads typed answers.
-- **Explore**: the strategy's reference portfolio with its chart (1M, 3M, 1Y, Max, what €10,000 would have become),
+- **Explore**: the model portfolio of the customer's risk level with its chart (1M, 3M, 1Y, Max, what €10,000 would have become),
   a donut of its sleeves, each ETF's return, and the whole 50-ETF selection. The customer's rules leave ETFs out.
   Locked lines say why: ruled out, not part of the risk level, or the check.
-- **The references follow our engine** (`agents/model_portfolios.py`). Each starts from a fixed mix. When the team
-  signs a day off in the cockpit, the code's portfolio of the Portfolio Manager (no LLM) is built for each strategy
-  from the same scores and learned weights, inside its limits; it becomes a new version when at least 10% of the
-  reference changes (`logs/strategy_portfolios.csv`). The app shows what changed, and the customer's Portfolio tab
-  offers the orders (sales first, then buys) that follow it; the customer decides on each line. A customer who
-  drifted from the reference gets the same offer.
+- **The model portfolios follow our engine inside fixed sleeves** (`agents/model_portfolios.py`). Each starts from
+  a fixed mix, a share per sleeve (core equity, bonds, gold, themes, cash: the table of `data/profiles.py`, the same
+  as in the strategy deck). The sleeve shares never move. When the team signs a day off in the cockpit, the code's
+  portfolio of the Portfolio Manager (no LLM) is built for each strategy from the same scores and learned weights,
+  inside its limits, and each sleeve is split half as in the fixed mix, half as in the engine's portfolio. It becomes
+  a new version when at least 10% of the model portfolio changes (`logs/strategy_portfolios.csv`). The app shows what
+  changed, and the customer's Portfolio tab offers the orders (sales first, then buys) that match it; the customer
+  decides on each line. Without a new version, the offer appears only once a line has drifted 5 points or more.
+- **Wording**: the app calls it the model portfolio of a risk level, the same for every customer at that level,
+  "information, not a personal recommendation". The risk level comes from rules on the customer's own answers. Whether
+  this stays execution-only under MiFID II is for Belfius compliance to confirm (a reference portfolio per risk level
+  can be read as a personal recommendation).
 - **ETF sheets** (`agents/etf_sheets.py`): the price chart, then "What our AI sees today" in three plain lines (trend,
   macro, news, written by code from the agents' numbers), the returns, the three trends with the two checks behind
   each, today's macro, and the news analyst's view with its sources and the other side. Lena explains any line from
-  the sheet's own numbers. Information, not advice.
-- **The customer places each order**: one ETF at a time, or the reference mix as a list of orders they review line
-  by line. **Portfolio** shows the value, a chart, the mix and how far it is from the reference, sleeve by sleeve,
+  the sheet's own numbers. Information, not a personal recommendation.
+- **The customer places each order**: one ETF at a time, or the model portfolio as a list of orders they review line
+  by line. **Portfolio** shows the value, a chart, the mix and how far it is from the model portfolio, sleeve by sleeve,
   pointing to kinds of assets, never to an order (`mobile/wallet.py`).
 - **Learn**: 15 one-minute lessons (`data/lessons.py`), each a few plain sentences and one question with the reason
-  behind every answer; the archetype's three come first, with a progress bar. Then the 3-question check that opens
+  behind every answer; the archetype's three come first, with a progress bar. A learning streak counts the days in a
+  row with a lesson answered right, and the last seven days (`profiler.streak`): it rewards learning, never trading.
+  Then the 3-question check that opens
   complex products at the Opportunity level. "Rather have someone decide?" leads to Belfius advice or a managed
   portfolio.
 - The demo customers are synthetic, so what they do is written to `logs/mock/`, not to the committed logs.
@@ -138,6 +148,38 @@ at every merge into `main` (`.github/workflows/pages.yml`). The page runs `agent
 charts of the latest morning run are prepared as data
 (`mobile/demo.py`, `mobile/static/demo.js`). It holds no key and calls no model: a typed answer other than an amount,
 and "Ask Lena why", say so. Nothing a visitor enters leaves their browser.
+
+### ReBel in Claude, read-only
+
+`mobile/mcp_server.py` lets Claude (Claude Code, Claude Desktop) see what a demo customer sees in the app, through
+MCP: `list_customers`, `get_profile`, `get_portfolio`, `get_reference`, `list_etfs`, `get_etf` and `prepare_order`.
+The answers come from the app's own functions (`mobile/server.py`, `mobile/wallet.py`), on the same logs. Nothing
+is written: `prepare_order` only checks an order with the app's rules and returns a draft, which the customer
+confirms in the app (execution-only). No model is called and no key is needed; the words of a sheet (news, the
+agents' reading) are data from the morning run, never an instruction.
+
+Claude starts it itself (stdio). `PYTHONPATH` points to the repository, so it runs from any folder. In Claude Code:
+
+```bash
+claude mcp add rebel -e PYTHONPATH=/path/to/qdc-trading -- /path/to/qdc-trading/.venv/bin/python -m mobile.mcp_server
+```
+
+(add `-s user` to have it in every project). In Claude Desktop, in `claude_desktop_config.json` (Settings,
+Developer, Edit Config), then restart it:
+
+```json
+{
+  "mcpServers": {
+    "rebel": {
+      "command": "/path/to/qdc-trading/.venv/bin/python",
+      "args": ["-m", "mobile.mcp_server"],
+      "env": {"PYTHONPATH": "/path/to/qdc-trading"}
+    }
+  }
+}
+```
+
+Then ask, for instance: "How far is Thomas from the Defensive reference?" or "Explain the WORLD sheet of today".
 
 ## Change the model
 
@@ -166,7 +208,7 @@ data/       prices, indicators, the 50 ETFs, the 3 strategies and 5 archetypes, 
 agents/     technical, macro/news, portfolio manager, risk manager, logbook, the learning rule, and the customer's coach
 graph/      morning.py (what every customer shares, once a day), pipeline.py (one day, step by step), review_loop.py (the learning step)
 app/        the Streamlit cockpit
-mobile/     the customer app: server.py, wallet.py (what a customer may buy and holds), the phone screens (static/) and demo.py (the online demo)
+mobile/     the customer app: server.py, wallet.py (what a customer may buy and holds), the phone screens (static/), demo.py (the online demo) and mcp_server.py (ReBel in Claude, read-only)
 backtest/   the system replayed since 2022 (results in backtest/results/)
 logs/       everything the agents said and the humans decided: graded evidence (logs/README.md)
 tests/      one file per module

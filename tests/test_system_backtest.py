@@ -58,30 +58,31 @@ def test_a_variant_changes_its_setting_only_for_its_own_run(market):
 
 def test_the_technical_weights_are_learned_from_the_sessions_before_each_decision(market):
     data, starts = market
-    current = next(v for v in sb.VARIANTS if v.name == "current")
-    with sb.overrides(current.settings):
-        frame = sb.technical_weights(data, current)
-    day = starts[1]
-    used = learning.weights_before(frame, day)
-    first = frame["date"].min()
-    assert first == min(data.sessions).isoformat() and sum(used.values()) == pytest.approx(1)
-    assert set(frame[frame["date"] == first]["weight"].round(6)) == {round(1 / 3, 6)}  # 1/3 each on the first session
-    signals = sb.technical_signals(data, current, day)
+    learned = next(v for v in sb.VARIANTS if v.name == "learned_three")
+    with sb.overrides(learned.settings):
+        frame = sb.technical_weights(data, learned)
+        day = starts[1]
+        used = learning.weights_before(frame, day)
+        first = frame["date"].min()
+        assert first == min(data.sessions).isoformat() and sum(used.values()) == pytest.approx(1)
+        assert set(frame[frame["date"] == first]["weight"].round(6)) == {round(1 / 3, 6)}  # 1/3 each on the first session
+        signals = sb.technical_signals(data, learned, day)
     answers = data.answers[day]
     assert signals["score"].tolist() == pytest.approx(technical.blend(technical.signal_scores(answers), used).tolist())
-    trend_only = next(v for v in sb.VARIANTS if v.name == "trend_only")
-    with sb.overrides(trend_only.settings):
-        only = sb.technical_signals(data, trend_only, day)
-    assert only["score"].tolist() == answers["suggested_signal"].map(tech_cfg.SIGNAL_SCORES).tolist()  # the old rule
+    current = next(v for v in sb.VARIANTS if v.name == "current")
+    with sb.overrides(current.settings):
+        only = sb.technical_signals(data, current, day)
+        assert set(sb.technical_weights(data, current)["name"]) == {"trend"}  # nothing to learn between answers
+    assert only["score"].tolist() == answers["suggested_signal"].map(tech_cfg.SIGNAL_SCORES).tolist()  # the trend rule
 
 
 def test_the_summary_has_one_row_per_variant(market):
     data, starts = market
-    variants = [v for v in sb.VARIANTS if v.name in ("current", "trend_only")]
+    variants = [v for v in sb.VARIANTS if v.name in ("current", "learned_three")]
     results = sb.run(data, starts[:2], variants, workers=1)
     assert len(results) == 4 and results["broken_rules"].sum() == 0
     summary = sb.summarise(results, variants)
-    assert summary["variant"].tolist() == ["current", "trend_only"] and (summary["windows"] == 2).all()
+    assert summary["variant"].tolist() == ["current", "learned_three"] and (summary["windows"] == 2).all()
     assert summary["mean_excess"].tolist() == pytest.approx((summary["mean_ret"] - summary["mean_bench"]).tolist())
     assert "current" in sb.show(summary)
 

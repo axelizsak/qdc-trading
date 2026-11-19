@@ -151,7 +151,7 @@ def _day(iso: str) -> str:
     return f"{date.fromisoformat(str(iso)[:10]):%d %b}"
 
 
-WEIGHT_TITLES = {"technical": "The technical agent's three answers", "agents": "The four agents",
+WEIGHT_TITLES = {"technical": "The technical agent's answers", "agents": "The four agents",
                  "portfolio": "The LLM's portfolio (llm) against the code's (code)"}
 
 

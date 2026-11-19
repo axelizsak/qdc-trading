@@ -127,8 +127,9 @@ def test_a_reference_starts_from_its_fixed_mix_then_follows_the_published_versio
     published = model_portfolios.publish(tmp_path, DAY, {"balanced": engine}, FAMILIES)
     assert list(published) == ["balanced"] and published["balanced"] >= model_portfolios.PUBLISH_TURNOVER
     now, version = model_portfolios.current(tmp_path, "balanced")
-    assert version == DAY.isoformat() and "ROBOTICS" not in now  # dust goes to cash
-    assert now["OVERNIGHT CASH"] == ("cash", pytest.approx(0.10)) and now["SEMIS"] == ("satellites", 0.2)
+    assert version == DAY.isoformat() and "ROBOTICS" not in now  # dust is shared out in its sleeve
+    assert now["OVERNIGHT CASH"] == ("cash", pytest.approx(0.05)) and now["WORLD"] == ("core_equity", pytest.approx(0.425))
+    assert now["SEMIS"][1] > start["SEMIS"][1] > now["HEALTH CARE"][1]  # the engine likes SEMIS: it gains in its sleeve
     assert sum(w for _, w in now.values()) == pytest.approx(1)
     assert model_portfolios.previous(tmp_path, "balanced", version) == start
     assert model_portfolios.current(tmp_path, "balanced", date(2026, 12, 4)) == (start, None)  # before the version
@@ -141,8 +142,31 @@ def test_a_signed_off_day_moves_the_references_and_a_stopped_one_does_not(tmp_pa
     logs = tmp_path / "logs"
     pipeline.approve_day(DAY, logs)
     found = model_portfolios.versions(logs)
-    assert set(found["strategy"]) == set(STRATEGIES) and set(found["date"]) == {DAY.isoformat()}
+    assert len(found) and set(found["date"]) == {DAY.isoformat()}  # those the engine moved by 10% or more
+    for strategy, rows in found.groupby("strategy"):
+        wanted = {s: w for s, w in STRATEGIES[strategy]["sleeves"].items() if w > 0}
+        assert rows.groupby("sleeve")["target_weight"].sum().to_dict() == pytest.approx(wanted, abs=1e-5)
     other = date(2026, 12, 10)
     pending = pipeline.run_day(other, logs)
     pipeline.resume_day(other, {"decision": "stopped", "feedback": "Fed tonight"}, logs)
     assert set(model_portfolios.versions(logs)["date"]) == {DAY.isoformat()}  # no trade, no new version
+
+
+def sleeves(reference: dict) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for sleeve, w in reference.values():
+        out[sleeve] = round(out.get(sleeve, 0.0) + w, 6)
+    return out
+
+
+@pytest.mark.parametrize("strategy", list(STRATEGIES))
+def test_a_reference_keeps_the_share_of_each_sleeve_whatever_the_engine_does(strategy):
+    """The risk level is the table of the deck (data/profiles.py): the engine only moves the ETFs inside a sleeve."""
+    engine = pd.Series({"STOXX SHORT": 0.30, "BITCOIN": 0.20, "SEMIS": 0.30, "EUROPE 600": 0.15, "OVERNIGHT CASH": 0.05})
+    out = model_portfolios.follow(engine, strategy, FAMILIES)
+    wanted = {s: w for s, w in STRATEGIES[strategy]["sleeves"].items() if w > 0}
+    assert sleeves(out) == pytest.approx(wanted, abs=1e-5) and all(w >= model_portfolios.MIN_LINE for _, w in out.values())
+    held = pd.Series({t: w for t, (_, w) in out.items()})
+    assert complex_share(held) <= STRATEGIES[strategy]["limits"]["complex_max"] + 1e-6
+    assert out["GOLD"] == ("gold", wanted["gold"])  # the engine holds no gold: the fixed mix's split stays
+    assert out["EUROPE 600"][1] > model_portfolios.weights(strategy)["EUROPE 600"][1]  # it gains inside core equity

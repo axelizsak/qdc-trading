@@ -1,0 +1,51 @@
+ticker,theme,group,first,last,years,complete,ret_year,vol_year
+WORLD,Global equity (benchmark),Broad equity,2023-11-20,2026-11-18,3.0000,True,0.1755,0.1326
+S&P 500,US equity,Broad equity,2023-11-20,2026-11-18,3.0000,True,0.1840,0.1435
+EUROPE 600,European equity,Broad equity,2024-02-19,2026-11-18,2.7500,False,0.1370,0.1309
+EURO STOXX 50,European equity,Broad equity,2023-11-20,2026-11-18,3.0000,True,0.1544,0.1550
+IBEX 35,European equity,Broad equity,2024-04-16,2026-11-18,2.5900,False,0.3121,0.1663
+BEL 20,Home market,Broad equity,2023-11-20,2026-11-18,3.0000,True,0.2086,0.1371
+EMMKT,Emerging markets,Broad equity,2023-11-20,2026-11-18,3.0000,True,0.1548,0.1756
+CHINA LC,Emerging markets,Broad equity,2023-11-20,2026-11-18,3.0000,True,0.0950,0.2426
+INDIA,Emerging markets,Broad equity,2023-11-20,2026-11-18,3.0000,True,0.0538,0.1698
+KOREA,Emerging markets,Broad equity,2023-11-20,2026-11-18,3.0000,True,0.3213,0.3526
+BRAZIL,Emerging markets,Broad equity,2023-11-20,2026-11-18,3.0000,True,0.0199,0.2600
+CHINA A,Emerging markets,Broad equity,2023-11-20,2026-11-18,3.0000,True,0.0604,0.2193
+WORLD SMALL CAP,Size & style factors,Broad equity,2023-11-20,2026-11-18,3.0000,True,0.1599,0.1542
+WORLD MIN VOL,Size & style factors,Broad equity,2023-11-20,2026-11-18,3.0000,True,0.1126,0.1553
+DIVIDEND LEADERS,Size & style factors,Broad equity,2023-11-20,2026-11-18,3.0000,True,0.2218,0.1106
+NASDAQ INCOME,Income strategies,Broad equity,2024-11-04,2026-11-18,2.0400,False,0.0712,0.1662
+NASDAQ,Equity / Tech,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.1943,0.1909
+SEMIS,Equity / Tech,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.3970,0.3589
+CYBERSEC,Equity / Tech,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.2885,0.2703
+BIOTECH,Equity / Tech,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.2280,0.2015
+ROBOTICS,Equity / Tech,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.1653,0.2635
+SPACE,Frontier tech,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.4531,0.3922
+QUANTUM,Frontier tech,Sectors and themes,2025-05-26,2026-11-18,1.4800,False,0.0562,0.3074
+HEALTH CARE,Health care,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.1189,0.1431
+EURO BANKS,Financials,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.4272,0.2290
+DEFENSE,Defensive sector,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.2773,0.2299
+STAPLES,Defensive sector,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.1162,0.1198
+URANIUM,Energy transition,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.1558,0.3719
+CLEAN ENERGY,Energy transition,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.1348,0.2359
+HYDROGEN,Energy transition,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.2308,0.1677
+WORLD ENERGY,Energy & commodities,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.1642,0.2122
+OIL & GAS E&P,Energy & commodities,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.0892,0.2650
+COPPER MINERS,Industrial & strategic metals,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,0.2322,0.3593
+RARE EARTHS,Industrial & strategic metals,Sectors and themes,2023-11-20,2026-11-18,3.0000,True,-0.0771,0.3835
+HIGHY BOND,Fixed income / Bonds,"Bonds, gold and cash",2023-11-20,2026-11-18,3.0000,True,0.0494,0.0357
+US TREASURY 20Y,Fixed income / Bonds,"Bonds, gold and cash",2023-11-20,2026-11-11,2.9800,True,0.0117,0.1181
+GLOBAL AGG BOND,Fixed income / Bonds,"Bonds, gold and cash",2023-11-20,2026-11-18,3.0000,True,0.0192,0.0425
+EUR GOVT BOND,Fixed income / Bonds,"Bonds, gold and cash",2023-11-20,2026-11-18,3.0000,True,0.0165,0.0476
+GOLD,Precious metals,"Bonds, gold and cash",2023-11-20,2026-11-18,3.0000,True,0.2353,0.1935
+GOLD MINERS,Precious metals,"Bonds, gold and cash",2023-11-20,2026-11-18,3.0000,True,0.3862,0.3823
+SILVER MINERS,Precious metals,"Bonds, gold and cash",2023-11-20,2026-11-18,3.0000,True,0.3843,0.4384
+OVERNIGHT CASH,Money market (cash),"Bonds, gold and cash",2025-03-17,2026-11-18,1.6700,False,0.0254,0.0035
+STOXX SHORT,Leveraged & inverse,Complex products,2023-11-20,2026-11-18,3.0000,True,-0.2405,0.3095
+COPPER LVG,Leveraged & inverse,Complex products,2023-11-20,2026-11-18,3.0000,True,-0.0562,0.8123
+PALLADIUM LVG,Leveraged & inverse,Complex products,2023-11-20,2026-11-18,3.0000,True,-0.3301,0.8848
+NASDAQ 3X,Leveraged & inverse,Complex products,2025-11-19,2026-11-18,1.0000,False,0.0737,0.5625
+S&P 500 SHORT,Leveraged & inverse,Complex products,2023-11-20,2026-11-18,3.0000,True,-0.0961,0.2032
+EURO STOXX 2X,Leveraged & inverse,Complex products,2023-11-20,2026-11-18,3.0000,True,0.2506,0.3105
+BITCOIN,Digital assets,Complex products,2025-03-24,2026-11-18,1.6500,False,-0.2332,0.3973
+CRYPTO EQUITY,Digital assets,Complex products,2023-11-20,2026-11-18,3.0000,True,0.2701,0.6716

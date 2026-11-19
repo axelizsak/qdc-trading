@@ -21,6 +21,7 @@ CLOSE, FAR = 0.05, 0.15  # a sleeve this close to the reference is fine; beyond 
 MIN_ORDER_EUR = 1
 MIN_PROPOSAL = 0.01  # an order to follow the reference is proposed only above this share of the portfolio...
 MIN_PROPOSAL_EUR = 10  # ...and this amount
+DRIFT = 0.05  # with no new version, the orders to match the model portfolio are offered once a line is this far off
 SIDES = ("BUY", "SELL")
 
 
@@ -120,11 +121,11 @@ def holdings(orders: list[dict], last: dict[str, float], etfs: dict[str, dict], 
             state = "ok" if abs(gap) <= CLOSE else "watch" if abs(gap) <= FAR else "gap"
             health.append({"sleeve": key, "name": name, "held": held[key], "target": target[key], "state": state})
             if gap < -CLOSE:
-                ideas.append(f"{name}: about {round(target[key] * 100)}% would match your reference, you hold "
+                ideas.append(f"{name}: about {round(target[key] * 100)}% is in the model portfolio, you hold "
                              f"{round(held[key] * 100)}%")
             elif gap > CLOSE:
                 ideas.append(f"{name}: {round(held[key] * 100)}% of what you hold, against {round(target[key] * 100)}% "
-                             "in your reference")
+                             "in the model portfolio")
     return {"lines": lines, "invested": round(invested, 2), "value": round(value, 2),
             "gain": value / invested - 1 if invested else 0.0,
             "sleeves": [{"key": key, "name": name, "weight": held[key]} for key, name in SLEEVES.items() if held[key]],
@@ -202,3 +203,11 @@ def rebalance(held: list[dict], reference: list[dict], extra_eur: float = 0.0) -
             orders.append({"ticker": ticker, "side": "BUY" if gap > 0 else "SELL", "eur": round(abs(gap), 2),
                            "now": round(now.get(ticker, 0.0) / total, 4), "target": round(target.get(ticker, 0.0) / total, 4)})
     return sorted(orders, key=lambda o: (o["side"] != "SELL", -o["eur"]))
+
+
+def proposal_orders(lines: list[dict], reference: list[dict], new: bool) -> list[dict]:
+    """The orders the portfolio offers (`rebalance`): all of them when the model portfolio has a new version since the
+    customer's last order (`new`); otherwise only once one line is DRIFT or more away from it, so small moves of the
+    market do not nag the customer."""
+    orders = rebalance(lines, reference) if lines else []
+    return orders if new or any(abs(o["now"] - o["target"]) >= DRIFT for o in orders) else []

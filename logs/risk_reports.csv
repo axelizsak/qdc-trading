@@ -47,3 +47,27 @@ date,metric,value,limit,status,comment
 2026-11-18,down_capture,-0.16433323514160497,1.1,ok,On WORLD's falling days the portfolio takes -16% of the loss. Reference level 1.1 (warn above).
 2026-11-18,prob_below_benchmark,0.5035,0.6,ok,"50.3% chance of ending behind WORLD; median +1.2% against +1.2%. Over the 26 trading days to 23 Dec, keeping today's weights (2000 paths from the last 60 days resampled in blocks of 5, average return moved toward 5% a year). Reference level 60% (warn above)."
 2026-11-18,macro_tilt,-0.003853882163428344,,ok,"Today's Macro/News views, if each played out at full strength, would move the portfolio by -0.4% (positive: the views favour it). No reference level."
+2026-11-19,orders,4.0,5.0,ok,4 orders for the day. Hard rule: at most 5.
+2026-11-19,cash_reserve,1.791790545485654e-06,0.01,warning,Cash after the orders EUR 0 (0.0% of the portfolio). Reference level 1% (warn below).
+2026-11-19,largest_position,0.22650952259354526,0.3,ok,EUROPE 600 holds 22.7% of the portfolio. Reference level 30% (warn above).
+2026-11-19,largest_group,0.5554143290511241,0.5,warning,"Group 'europe' (BEL 20, EUROPE 600, IBEX 35, STOXX SHORT) holds 55.5%. Reference level 50% (warn above)."
+2026-11-19,effective_positions,6.286668662510982,3.0,ok,"9 positions, worth 6.3 equal ones. Reference level 3 (warn below)."
+2026-11-19,largest_risk_share,0.4289227353052029,0.4,warning,"Share of the portfolio's variance: STAPLES 42.9%, BEL 20 31.0%, EUROPE 600 26.2%. Reference level 40% (warn above)."
+2026-11-19,independent_bets,2.5366375516452093,2.0,ok,"The positions amount to 2.5 independent bets, given how they move together. Reference level 2 (warn below)."
+2026-11-19,volatility,0.054889913016997444,0.2,ok,"Estimated at 5.5% a year (last 60 days, today's weights held constant). Reference level 20% (warn above)."
+2026-11-19,drawdown,-0.014036955984621069,-0.1,ok,"Worst fall from a peak -1.4% (last 60 days, today's weights held constant). Reference level -10% (warn below)."
+2026-11-19,leveraged_share,0.14103891973602647,0.15,ok,Leveraged or inverse: STOXX SHORT 14.1%. Reference level 15% (warn above).
+2026-11-19,gross_exposure,1.1410371279454812,1.0,warning,"Market exposure 1.14x the portfolio value, counting each ETF's leverage. Reference level 1 (warn above)."
+2026-11-19,liquidity,0.00046944750426817367,0.1,ok,"Largest order against average daily volume: WORLD MIN VOL at 0.0% (on-exchange volume only, so the share of the whole market is smaller). Reference level 10% (warn above)."
+2026-11-19,dividend_payers,0.15812693218785456,0.0,warning,"Distributing ETFs after the orders, dividends not credited: BEL 20 (held, 15.8%, ex-dividend 09 Dec, about 0.9% of its price). Reference level 0% (warn above)."
+2026-11-19,prob_below_start,0.2325,0.55,ok,"23.2% chance of ending below today's value; median outcome +1.2%. Over the 25 trading days to 23 Dec, keeping today's weights (2000 paths from the last 60 days resampled in blocks of 5, average return moved toward 5% a year). Reference level 55% (warn above)."
+2026-11-19,worst_case_5pct,-0.01549100023513244,-0.08,ok,"In the worst 5% of paths the portfolio returns -1.5% or less. Over the 25 trading days to 23 Dec, keeping today's weights (2000 paths from the last 60 days resampled in blocks of 5, average return moved toward 5% a year). Reference level -8% (warn below)."
+2026-11-19,factor_shock_loss,-0.009592429502461773,-0.05,ok,"eurusd is the factor the portfolio leans on most (-0.19): a full-strength rise in it moves the portfolio by -1.0%. Next: fed_us_rates -0.14, growth_recession +0.13. Reference level -5% (warn below)."
+2026-11-19,volatility_vs_benchmark,0.4630414657386229,1.3,ok,Portfolio 5.5% against WORLD 11.9% a year. Reference level 1.3 (warn above).
+2026-11-19,drawdown_vs_benchmark,0.35906913519655026,1.3,ok,Worst fall -1.4% against WORLD -3.9%. Reference level 1.3 (warn above).
+2026-11-19,beta,0.17253260355226743,1.3,ok,Moves 0.17 times WORLD's daily changes on average. Reference level 1.3 (warn above).
+2026-11-19,tracking_error,0.11052691220352687,0.1,warning,The return gap to WORLD varies by 11.1% a year. Reference level 10% (warn above).
+2026-11-19,up_capture,0.2874577906854252,0.7,warning,On WORLD's rising days the portfolio keeps 29% of the gain. Reference level 0.7 (warn below).
+2026-11-19,down_capture,0.03569781192914279,1.1,ok,On WORLD's falling days the portfolio takes 4% of the loss. Reference level 1.1 (warn above).
+2026-11-19,prob_below_benchmark,0.4655,0.6,ok,"46.6% chance of ending behind WORLD; median +1.2% against +0.9%. Over the 25 trading days to 23 Dec, keeping today's weights (2000 paths from the last 60 days resampled in blocks of 5, average return moved toward 5% a year). Reference level 60% (warn above)."
+2026-11-19,macro_tilt,-0.007882017342593941,,ok,"Today's Macro/News views, if each played out at full strength, would move the portfolio by -0.8% (positive: the views favour it). No reference level."

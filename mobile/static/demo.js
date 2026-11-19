@@ -65,9 +65,9 @@ def call(module, name, args):
     const target = await run("wallet", "decorate", ref.lines, now.strategy, now.unlocked, rules(now));
     const out = await run("wallet", "holdings", now.orders, last, etfs, target);
     const lastOrder = now.orders.reduce((latest, o) => (o.time.slice(0, 10) > latest ? o.time.slice(0, 10) : latest), "");
+    const fresh = Boolean(now.orders.length && ref.version && ref.version >= lastOrder);
     return { ...out, history: await run("wallet", "mix_history", now.orders, held),
-      proposal: { version: ref.version, changes: ref.changes, new: Boolean(now.orders.length && ref.version && ref.version >= lastOrder),
-        orders: out.lines.length ? await run("wallet", "rebalance", out.lines, target) : [] } };
+      proposal: { version: ref.version, changes: ref.changes, new: fresh, orders: await run("wallet", "proposal_orders", out.lines, target, fresh) } };
   };
 
   const routes = {
@@ -84,7 +84,8 @@ def call(module, name, args):
       }
       if (turn.archetype) {
         saved[body.customer] = { archetype: turn.archetype, strategy: turn.strategy, why: turn.why, strategy_why: turn.strategy_why,
-          answers: turn.answers, sheet: turn.sheet, flags: turn.flags, orders: [], unlocked: false, lessons: {} };
+          answers: turn.answers, sheet: turn.sheet, flags: turn.flags, orders: [], unlocked: false, lessons: {}, learned_days: [],
+          streak: null };
       }
       return turn;
     },
@@ -139,6 +140,9 @@ def call(module, name, args):
       if (!(await prepared).start.lessons[lesson]) throw problem(404, "unknown lesson");
       const result = await run("profiler", "lesson", lesson, answer ?? null);
       now.lessons[lesson] = Boolean(now.lessons[lesson]) || result.right;
+      const today = new Date().toISOString().slice(0, 10);
+      if (result.right && !now.learned_days.includes(today)) now.learned_days.push(today);
+      now.streak = await run("profiler", "streak", now.learned_days, today);
       return { ...result, state: now };
     },
     "/api/reset": async (_, { customer }) => {

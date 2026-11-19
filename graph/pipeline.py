@@ -852,9 +852,10 @@ def finished_in_logs(as_of: date, logs: Path) -> bool:
 
 
 def day_status(as_of: date, logs: Path | None = None) -> tuple[str, dict, dict | None]:
-    """Read-only: ("not started" | "waiting for approval" | "done", saved state, pause payload or None).
-    The payload's "gate" says which review is waiting: orders, risk or summary. A day finished in the logs is done,
-    even on a machine that never ran it (its state is then empty: read the logs)."""
+    """Read-only: ("not started" | "running" | "waiting for approval" | "done", saved state, pause payload or None).
+    The payload's "gate" says which review is waiting: orders, risk or summary. "running": the agents are between two
+    steps (the day was started from the command line or another window). A day finished in the logs is done, even on
+    a machine that never ran it (its state is then empty: read the logs)."""
     logs = Path(logs) if logs else default_logs_dir()
     with open_graph(logs) as graph:
         snapshot = graph.get_state(thread(as_of, logs))
@@ -862,6 +863,8 @@ def day_status(as_of: date, logs: Path | None = None) -> tuple[str, dict, dict |
         return ("done" if finished_in_logs(as_of, logs) else "not started"), {}, None
     if snapshot.interrupts:
         return "waiting for approval", snapshot.values, snapshot.interrupts[0].value
+    if snapshot.next:
+        return "running", snapshot.values, None
     return "done", snapshot.values, None
 
 

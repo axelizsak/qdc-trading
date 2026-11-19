@@ -7,6 +7,7 @@ import pytest
 
 from agents import learning, logbook, macro_tape
 from agents import portfolio_config as pm_cfg
+from agents import strategy_config as tech_cfg
 from data import config as settings
 from data.features import compute_features
 from data.mock import mock_prices
@@ -100,6 +101,7 @@ def test_the_technical_answers_are_recorded_once_and_learned_session_by_session(
     prices = mock_prices(end=DAY.isoformat(), days=300, seed=4)
     features = compute_features(prices)
     monkeypatch.setattr(settings, "LEARNING_START", date(2026, 11, 23))
+    monkeypatch.setattr(tech_cfg, "SIGNAL_START", {s: 1 / 3 for s in settings.TECHNICAL_SIGNALS})  # three to weigh
     result = review_loop.review(date(2026, 12, 3), prices, tmp_path, features)
     answers = review_loop.load_answers(tmp_path / review_loop.ANSWERS)
     assert sorted(answers["date"].unique()) == ["2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27",
@@ -161,7 +163,7 @@ def test_the_day_starts_with_the_learning_and_the_agents_get_its_weights(tmp_pat
     monkeypatch.setitem(pipeline.MOCK, "technical", technical)
     pending = pipeline.run_day(DAY, logs)
     assert pending["incidents"] == []
-    assert f"## Review of {DAY}" in seen["lessons"] and seen["weights"] == pytest.approx({s: 1 / 3 for s in settings.TECHNICAL_SIGNALS})
+    assert f"## Review of {DAY}" in seen["lessons"] and seen["weights"] == pytest.approx({"trend": 1.0})
     assert (logs / "lessons.md").exists() and (logs / review_loop.WEIGHTS_FILE).exists()
     used = pipeline.day_status(DAY, logs)[1]["agent_weights"]  # the four agents scored: 25% each to start
     assert used["technical_det"] > 0.25 > used["macro_market"] and sum(used.values()) == pytest.approx(1)

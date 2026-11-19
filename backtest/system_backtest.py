@@ -69,14 +69,18 @@ class Variant:
     settings: dict = field(default_factory=dict)  # {"portfolio_config.TIMING_WEIGHT": 0.0}
 
 
+THIRDS = {"trend": 1 / 3, "mean_reversion": 1 / 3, "momentum": 1 / 3}
 VARIANTS = [
-    Variant("current", "the system as it is: the technical answers weighted by what each earned since the start"),
+    Variant("current", "the system as it is: the trend rule alone gives the technical score (since 19 November 2026)"),
     # How the technical answers are weighted
-    Variant("trend_only", "only the trend rule counts (the system before 16 November 2026)",
-            {"strategy_config.SIGNAL_START": {"trend": 1.0, "mean_reversion": 0.0, "momentum": 0.0}}),
-    Variant("equal_fixed", "the three answers at 1/3 each, never re-weighted", {"config.LEARNING_SPEED": 0.0}),
-    Variant("learn_slower", "learning speed 1 instead of 2", {"config.LEARNING_SPEED": 1.0}),
-    Variant("learn_faster", "learning speed 5 instead of 2", {"config.LEARNING_SPEED": 5.0}),
+    Variant("learned_three", "the three answers from 1/3 each, weighted by what each earned (16 to 18 November 2026)",
+            {"strategy_config.SIGNAL_START": THIRDS}),
+    Variant("equal_fixed", "the three answers at 1/3 each, never re-weighted",
+            {"strategy_config.SIGNAL_START": THIRDS, "config.LEARNING_SPEED": 0.0}),
+    Variant("learn_slower", "the three answers learned at speed 1 instead of 2",
+            {"strategy_config.SIGNAL_START": THIRDS, "config.LEARNING_SPEED": 1.0}),
+    Variant("learn_faster", "the three answers learned at speed 5 instead of 2",
+            {"strategy_config.SIGNAL_START": THIRDS, "config.LEARNING_SPEED": 5.0}),
     # The score of each trend signal
     Variant("watch_negative", "a 'watch' signal scores -0.5 instead of 0",
             {"strategy_config.SIGNAL_SCORES": {"buy": 1.0, "watch": -0.5, "neutral": 0.0, "avoid": -1.0}}),

@@ -138,7 +138,7 @@ def day_label(status: str, state: dict, pending: dict | None) -> str:
         return pipeline.GATE_NAMES[pending["gate"]]
     if status == "done":
         return "no trade today" if state.get("outcome") == "stopped" else "approved"
-    return status
+    return "agents running" if status == "running" else status
 
 
 def incident_text(incident: dict) -> str:

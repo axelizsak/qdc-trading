@@ -318,3 +318,12 @@ def test_the_customers_rules_are_the_last_answer():
     typed = FakeModel({"answers": [], "amount": None, "say": ""})
     none = profiler.step(THOMAS, True, answers, {"question": "rules", "text": "no, nothing"}, typed)
     assert none["answers"]["rules"] == [] and none["sheet"][-1] == ["Never invest in", "nothing ruled out"] and none["archetype"]
+
+
+def test_the_learning_streak_counts_days_in_a_row_with_a_lesson():
+    week = ["2026-11-14", "2026-11-16", "2026-11-17", "2026-11-18"]
+    assert profiler.streak(week, "2026-11-18") == {"days": 3, "today": True,
+                                                   "week": [False, False, True, False, True, True, True]}
+    assert profiler.streak(week, "2026-11-19")["days"] == 3  # not done yet today: the streak still stands
+    assert profiler.streak(week, "2026-11-20") == {"days": 0, "today": False, "week": [True, False, True, True, True, False, False]}
+    assert profiler.streak([], "2026-11-20")["days"] == 0

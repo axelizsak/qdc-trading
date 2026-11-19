@@ -468,3 +468,18 @@ def test_the_fill_rule_is_one_setting_that_every_module_follows(logs, monkeypatc
     assert pipeline.load_book(logs, prices, date(2026, 12, 10))[1] == pytest.approx(10_000 - 10 * last_before["WORLD"])
     monkeypatch.setattr(settings, "FILL_AT_PREVIOUS_CLOSE", False)
     assert pipeline.load_book(logs, prices, date(2026, 12, 10))[1] == pytest.approx(10_000 - 10 * own_day["WORLD"])
+
+
+def test_a_day_between_two_steps_reads_running_not_done(logs, monkeypatch):
+    """The cockpit once said "approved" while the agents were still running the day from the command line."""
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    @contextmanager
+    def halfway(_logs):
+        yield SimpleNamespace(get_state=lambda cfg: SimpleNamespace(values={"date": DAY.isoformat(), "round": 1},
+                                                                     interrupts=(), next=("portfolio",)))
+
+    monkeypatch.setattr(pipeline, "open_graph", halfway)
+    status, state, pending = pipeline.day_status(DAY, logs)
+    assert (status, pending) == ("running", None) and state["round"] == 1

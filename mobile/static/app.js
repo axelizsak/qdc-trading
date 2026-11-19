@@ -46,7 +46,7 @@ const HERO_ART = `<svg viewBox="0 0 390 190" preserveAspectRatio="none" fill="no
   <path class="stroke" d="${LINE}"/></svg>`;
 
 const blank = () => ({ consent: true, answers: {}, question: null, picked: [], odds: null, seen: [], sheet: [], flags: [],
-  left: null, archetype: null, why: "", strategy: null, strategy_why: [], orders: [], unlocked: false, lessons: {},
+  left: null, archetype: null, why: "", strategy: null, strategy_why: [], orders: [], unlocked: false, lessons: {}, streak: null,
   reference: null, etfs: null, portfolio: null, tab: "explore", busy: false });
 // lessonBook: every lesson as the server sends it; lessons: this customer's progress, lesson -> answered right.
 const state = { customers: [], strategies: {}, archetypes: {}, sleeves: {}, coreEtfs: {}, quiz: [], lessonBook: {}, traded: "",
@@ -111,7 +111,7 @@ const ticks = (items, icon = ICON.check) => h("ul", { class: "ticks" }, items.ma
 const delta = (x, digits = 1) => h("span", { class: `delta is-${tone(x)}` }, signed(x, digits));
 const note = (text) => h("p", { class: "fine" }, text);
 const PAST = "Past performance is not a reliable indicator of future results.";
-const NOT_ADVICE = "Information, not advice: you decide and place each order.";
+const NOT_ADVICE = "Information, not a personal recommendation: you decide and place each order.";
 
 function initials(ticker) {
   const words = ticker.replace(/[^A-Za-z0-9 ]/g, "").split(" ").filter(Boolean);
@@ -224,10 +224,10 @@ function renderWelcome() {
     h("div", { class: "welcome-top" },
       h("p", { class: "wordmark" }, "ReBel"),
       h("h2", { class: "display welcome-title" },
-        ...(back ? ["Welcome back, ", h("em", {}, `${c.first_name}.`)] : ["Investing that fits ", h("em", {}, "you.")])),
+        ...(back ? ["Welcome back, ", h("em", {}, `${c.first_name}.`)] : ["Investing, ", h("em", {}, "explained.")])),
       h("p", { class: "welcome-sub" }, back
         ? `${strategy().label} risk level · ${state.orders.length ? `${state.orders.length} order${state.orders.length > 1 ? "s" : ""} placed` : "nothing invested yet"}.`
-        : `Three minutes with ${state.coach}. Your risk level, what fits it, and AI that explains every ETF. You decide.`)),
+        : `Three minutes with ${state.coach}. Your risk level, its model portfolio, and AI that explains every ETF. You decide.`)),
     h("div", { class: "hero-art", icon: HERO_ART }),
     h("div", { class: "grow" }),
     h("div", { class: "welcome-bottom" },
@@ -331,7 +331,7 @@ async function turn(reply) {
     const again = Boolean(reply) && next.question?.id === reply.question;  // not understood: the same question stays
     Object.assign(state, { answers: next.answers, question: next.question, picked: [], odds: next.odds, seen: next.seen,
       sheet: next.sheet, flags: next.flags, left: next.left, archetype: next.archetype, why: next.why,
-      strategy: next.strategy, strategy_why: next.strategy_why, orders: [], unlocked: false, lessons: {} });
+      strategy: next.strategy, strategy_why: next.strategy_why, orders: [], unlocked: false, lessons: {}, streak: null });
     setTyping(false);
     for (const line of next.said) addBubble("coach", line);
     if (next.question && !again) {
@@ -396,7 +396,7 @@ function renderReveal() {
       h("p", { class: "fine pad-x" }, "Your risk level decides what you are shown and what you can buy. Your style only decides how we help."),
       h("div", { style: "height:14px" })),
     h("div", { class: "footer" },
-      h("button", { class: "btn btn-primary", type: "button", onclick: () => openMain("explore") }, `See what fits ${s.label}`),
+      h("button", { class: "btn btn-primary", type: "button", onclick: () => openMain("explore") }, `See the ${s.label} model portfolio`),
       h("button", { class: "btn btn-text", type: "button", onclick: startOver }, "Redo the questions")));
 }
 
@@ -428,15 +428,15 @@ function renderMain() {
 const pageHead = (title, aside) => h("div", { class: "page-head" }, h("h2", { class: "display" }, title), aside || null);
 const strategyBadge = () => h("span", { class: `badge s-${state.strategy}` }, `${strategy().label} · level ${strategy().level} of 3`);
 
-// Portfolio: what the customer holds, its value and its mix against the reference.
+// Portfolio: what the customer holds, its value and its mix against the model portfolio of their risk level.
 function portfolioTab() {
   const p = state.portfolio;
   if (!p.lines.length) {
     return h("div", {}, pageHead("Portfolio", strategyBadge()),
       h("div", { class: "empty" }, h("div", { class: "empty-art", icon: ICON.pie }),
         h("b", {}, "Nothing invested yet"),
-        h("p", {}, `Your ${strategy().label} reference shows a mix that fits your risk level. You choose what to buy, ETF by ETF.`),
-        h("button", { class: "btn btn-primary", type: "button", onclick: () => { state.tab = "explore"; renderMain(); } }, "See your reference")),
+        h("p", {}, `The ${strategy().label} model portfolio is the same for every ${strategy().label} customer: a mix to compare with, not a recommendation for you. You choose what to buy, ETF by ETF.`),
+        h("button", { class: "btn btn-primary", type: "button", onclick: () => { state.tab = "explore"; renderMain(); } }, "See the model portfolio")),
       h("div", { class: "section" }, handoffCard()));
   }
   const gain = p.value - p.invested;
@@ -448,21 +448,21 @@ function portfolioTab() {
     p.history && p.history.length > 1 ? h("div", { class: "card-flat" }, lineChart(p.history, {
       caption: "What the ETFs you hold today, in today's units, did before. " + PAST })) : null,
     section("Your mix", h("div", { class: "panel" }, donut(sleeveParts(p.sleeves), eur.format(p.value), `${p.lines.length} ETF${p.lines.length > 1 ? "s" : ""}`, p.value))),
-    section("Against your reference", h("div", { class: "panel" },
+    section(`Against the ${strategy().label} model portfolio`, h("div", { class: "panel" },
       h("div", { class: "health" }, p.health.map((row) => h("div", { class: `health-row is-${row.state}` },
         h("span", { class: "k" }, row.name),
         h("span", { class: "bars" }, h("i", { class: "held", style: `width:${Math.min(row.held, 1) * 100}%` }), h("i", { class: "target", style: `left:${Math.min(row.target, 1) * 100}%` })),
         h("span", { class: "v" }, `${pct(row.held)} / ${pct(row.target)}`),
         h("span", { class: "state" }, { ok: "OK", watch: "Watch", gap: "Gap" }[row.state])))),
-      p.ideas.length ? h("div", { class: "ideas" }, h("b", {}, "To get closer to your reference, look at"), ticks(p.ideas, ICON.spark),
-        note("Kinds of assets to look at, never an order. You pick the ETFs, or none.")) : h("p", { class: "fine" }, "You are close to your reference."))),
+      p.ideas.length ? h("div", { class: "ideas" }, h("b", {}, "Where you differ from it"), ticks(p.ideas, ICON.spark),
+        note("Kinds of assets to look at, never an order. You pick the ETFs, or none.")) : h("p", { class: "fine" }, "You are close to the model portfolio."))),
     section("Holdings", h("div", { class: "lines" }, p.lines.map((line) => h("button", { class: "line", type: "button", onclick: () => openEtf(line.ticker) },
       token(line), h("span", { class: "name" }, h("b", {}, line.ticker), h("small", {}, `${pct(line.weight)} · ${line.theme}`)),
       h("span", { class: "figures" }, h("b", {}, eur2.format(line.value)), delta(line.gain)))))),
     h("div", { class: "section" }, handoffCard()));
 }
 
-// Explore: the strategy's reference portfolio (information), then every ETF of the universe.
+// Explore: the model portfolio of the customer's risk level (information), then every ETF of the universe.
 function exploreTab() {
   const ref = state.reference, s = strategy();
   const open = ref.lines.filter((l) => !l.lock), locked = ref.lines.filter((l) => l.lock);
@@ -474,14 +474,14 @@ function exploreTab() {
   return h("div", {},
     pageHead("Explore", strategyBadge()),
     h("div", { class: `ref-card s-${state.strategy}` },
-      h("p", { class: "eyebrow" }, "Your reference portfolio"),
-      h("b", {}, `${s.label}`), h("p", {}, `A mix that fits ${s.fits}, the same for every ${s.label} customer.`),
+      h("p", { class: "eyebrow" }, "Model portfolio of your risk level"),
+      h("b", {}, `${s.label}`), h("p", {}, `Made for ${s.fits}. The same for every ${s.label} customer: information, not a recommendation for you alone.`),
       h("p", { class: "ref-version" }, h("span", { icon: ICON.spark }), ref.version
         ? `Updated ${day(ref.version)} by our agents, within the ${s.label} limits.`
         : `The starting mix. Our agents update it within the ${s.label} limits after each day we review.`)),
     ref.changes && ref.changes.length ? section(`What changed on ${day(ref.version)}`, changesPanel(ref.changes)) : null,
     h("div", { class: "card-flat" }, lineChart(ref.history, { money: ref.amount || 10000,
-      caption: `The ${s.label} reference, put back to its weights each month. ${PAST}` })),
+      caption: `The ${s.label} model portfolio, put back to its weights each month. ${PAST}` })),
     section("Where the money goes", h("div", { class: "panel" }, donut(sleeveParts(ref.sleeves), "100%", `${ref.lines.length} ETFs`, ref.amount || null))),
     ...Object.keys(state.sleeves).map((key) => refSleeve(ref.lines, key)),
     ref.left_out.length ? section("Your rules", h("div", { class: "panel" },
@@ -532,6 +532,7 @@ function learnTab() {
         h("button", { class: "btn btn-primary", type: "button", onclick: quizSheet }, "Take the 3-question check"));
   return h("div", {},
     pageHead("Learn", h("span", { class: `badge p-${state.archetype}` }, a.label)),
+    streakCard(),
     h("div", { class: `style-card p-${state.archetype}` }, h("p", { class: "eyebrow" }, "Your investor style"),
       h("b", {}, a.label), h("p", {}, a.tagline)),
     section(`${state.coach} helps you first with`,
@@ -542,6 +543,20 @@ function learnTab() {
     section("More to learn", h("div", { class: "lessons" }, others.map((key) => lessonRow(key)))),
     section("Products", check),
     h("div", { class: "section" }, handoffCard()));
+}
+
+/** The learning streak: the days in a row with a lesson answered right, and the last seven days. It rewards
+ * learning, never trading: no order counts. */
+function streakCard() {
+  const s = state.streak || { days: 0, today: false, week: [false, false, false, false, false, false, false] };
+  const names = ["S", "M", "T", "W", "T", "F", "S"], today = new Date().getDay();
+  const hint = s.today ? "Today's lesson is done. Come back tomorrow to keep it going."
+    : s.days ? "One lesson today keeps your streak going." : "One lesson a day starts a streak.";
+  return h("div", { class: s.days ? "streak is-on" : "streak" },
+    h("span", { class: "streak-n" }, h("b", {}, String(s.days)), h("small", {}, s.days === 1 ? "day" : "days")),
+    h("span", { class: "grow" }, h("b", {}, "Learning streak"), h("small", {}, hint),
+      h("span", { class: "streak-week" }, s.week.map((done, i) => h("i", { class: done ? "is-done" : "",
+        title: done ? "lesson done" : "no lesson" }, names[(today - 6 + i + 7) % 7])))));
 }
 
 /** One lesson in a list: its number (a tick once answered right), its title, then a minute or "Done". */
@@ -565,7 +580,7 @@ function lessonSheet(key) {
         chip.classList.add("is-on");
         try {
           const out = await api("/api/lesson", { customer: state.id, lesson: key, answer: c.value });
-          state.lessons = out.state.lessons;
+          Object.assign(state, { lessons: out.state.lessons, streak: out.state.streak });
           chip.classList.replace("is-on", out.right ? "is-right" : "is-wrong");
           feedback.className = `lesson-feedback ${out.right ? "is-good" : "is-wait"}`;
           const why = out.why.replace(/^(Right|No): /, "");
@@ -656,12 +671,12 @@ function renderEtf(etf, line, sheet) {
         h("small", {}, [sheet.theme, sheet.isin].filter(Boolean).join(" · ")))),
       sheet.missing ? h("p", { class: "note" }, sheet.missing) : null,
       sheet.history ? h("div", { class: "card-flat" }, lineChart(sheet.history, { price: true })) : null,
-      line ? h("p", { class: "in-ref" }, `${pct(line.weight)} of your ${strategy().label} reference · ${eur.format(line.eur)} of your ${eur.format(state.reference.amount)}`) : null,
+      line ? h("p", { class: "in-ref" }, `${pct(line.weight)} of the ${strategy().label} model portfolio · ${eur.format(line.eur)} of your ${eur.format(state.reference.amount)}`) : null,
       sheet.reading && sheet.reading.length ? h("div", { class: "section" }, h("div", { class: "ai-card" },
         h("div", { class: "ai-head" }, h("span", { class: "orb small" }), h("b", {}, "What our AI sees today"), h("small", {}, day(sheet.as_of))),
         h("ul", { class: "ai-lines" }, sheet.reading.map((r) => h("li", { class: `is-${r.tone}` },
           h("span", { class: "ai-arrow" }, TONE[r.tone]), h("span", {}, h("b", {}, r.topic), r.text)))),
-        h("p", { class: "fine" }, "Written by code from the agents' numbers. Information, not advice."))) : null,
+        h("p", { class: "fine" }, "Written by code from the agents' numbers. Information, not a personal recommendation."))) : null,
       tiles("returns", "Returns"), tiles("trend", "Trend · tap one"), tiles("macro", "Macro today · tap one"), detail,
       news ? section("In the news", h("div", { class: "panel news" },
         h("div", { class: "news-head" }, h("span", { class: `lean is-${lean[1]}` }, `${TONE[lean[1]]} ${lean[0]}`),
@@ -718,18 +733,18 @@ function changesPanel(changes, limit = 5) {
   return h("div", { class: "panel changes" }, rows, more);
 }
 
-/** On the portfolio: the reference changed (or the portfolio drifted), and the orders that would follow it. */
+/** On the portfolio: the model portfolio changed (or the portfolio drifted from it), and the orders that would match it. */
 function proposalCard(proposal) {
   if (!proposal || !proposal.orders.length) return null;
   const n = proposal.orders.length;
-  const title = proposal.new ? `Your ${strategy().label} reference changed on ${day(proposal.version)}`
-    : `You have drifted from your ${strategy().label} reference`;
+  const title = proposal.new ? `The ${strategy().label} model portfolio changed on ${day(proposal.version)}`
+    : `You have drifted from the ${strategy().label} model portfolio`;
   return h("div", { class: "section" }, h("div", { class: "proposal" },
     h("div", { class: "proposal-head" }, h("span", { class: "orb small" }), h("b", {}, title)),
     proposal.new && proposal.changes.length ? changesPanel(proposal.changes, 3) : null,
-    h("p", {}, `${n} order${n > 1 ? "s" : ""} would bring you back to it. Our agents' update for every ${strategy().label} customer: you decide each line.`),
+    h("p", {}, `${n} order${n > 1 ? "s" : ""} would match it again. The same update for every ${strategy().label} customer, not a recommendation for you: you decide each line.`),
     h("button", { class: "btn btn-primary", type: "button", onclick: () => ordersSheet(
-      proposal.new ? "Follow your updated reference" : "Get back to your reference",
+      proposal.new ? "Match the updated model portfolio" : "Match the model portfolio again",
       "Untick what you do not want: each line is your own order. Sales come first, they fund the buys.", proposal.orders) },
       `See the ${n} order${n > 1 ? "s" : ""}`)));
 }
@@ -777,12 +792,12 @@ function ordersSheet(title, intro, orders, footnote = null) {
     h("div", { class: "stack" }, place, h("button", { class: "btn btn-text", type: "button", onclick: closeSheet }, "Cancel")));
 }
 
-/** The reference mix as orders the customer reviews line by line: untick any, then place them. */
+/** The model portfolio as orders the customer reviews line by line: untick any, then place them. */
 function basketSheet() {
   const ref = state.reference;
   const locked = ref.lines.filter((l) => l.lock);
   ordersSheet("Buy this mix yourself",
-    `Your ${strategy().label} reference for ${eur.format(ref.amount)}. Untick what you do not want: each line is your own order.`,
+    `The ${strategy().label} model portfolio for ${eur.format(ref.amount)}. Untick what you do not want: each line is your own order.`,
     ref.lines.filter((l) => !l.lock).map((l) => ({ ticker: l.ticker, eur: l.eur, side: "BUY", sleeve: l.sleeve })),
     locked.length ? h("p", { class: "fine" }, `Locked, not included: ${locked.map((l) => `${l.ticker} (${l.lock.toLowerCase()})`).join(", ")}.`) : null);
 }
@@ -915,7 +930,8 @@ function sync() {
       ["Orders placed", String(state.orders.length)],
       ["Invested", eur.format(sum(state.orders, (o) => o.eur))],
       ["Complex products", strategy().complex ? (state.unlocked ? "unlocked by the check" : "locked until the check") : "not at this level"],
-      ["Lessons right", `${Object.values(state.lessons || {}).filter(Boolean).length} of ${Object.keys(state.lessonBook).length}`]])) : "");
+      ["Lessons right", `${Object.values(state.lessons || {}).filter(Boolean).length} of ${Object.keys(state.lessonBook).length}`],
+      ["Learning streak", `${state.streak ? state.streak.days : 0} day${state.streak && state.streak.days === 1 ? "" : "s"}`]])) : "");
   $("people").replaceChildren(...state.customers.map((c) =>
     h("button", { class: c.id === state.id ? "person is-on" : "person", type: "button", onclick: () => selectCustomer(c.id) },
       avatar(c), h("span", {}, h("b", {}, `${c.first_name}, ${c.age}`), h("small", {}, c.status)))));
