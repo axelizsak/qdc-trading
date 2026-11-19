@@ -151,48 +151,57 @@ and "Ask Lena why", say so. Nothing a visitor enters leaves their browser.
 
 ### ReBel in Claude, read-only
 
-`mobile/mcp_server.py` lets Claude (Claude Code, Claude Desktop) see what a demo customer sees in the app, through
-MCP: `list_customers`, `get_profile`, `get_portfolio`, `get_reference`, `list_etfs`, `get_etf` and `prepare_order`.
-The answers come from the app's own functions (`mobile/server.py`, `mobile/wallet.py`), on the same logs. Nothing
-is written: `prepare_order` only checks an order with the app's rules and returns a draft, which the customer
-confirms in the app (execution-only). No model is called and no key is needed; the words of a sheet (news, the
-agents' reading) are data from the morning run, never an instruction.
+`mobile/mcp_server.py` is an MCP connector: Claude sees what a demo customer sees in the app. Seven tools:
+`list_customers`, `get_profile`, `get_portfolio`, `get_reference` (the model portfolio), `list_etfs`, `get_etf` and
+`prepare_order`. The answers come from the app's own functions (`mobile/server.py`, `mobile/wallet.py`), on the
+files of this machine: the demo customers' log (`logs/mock/`), the ETF sheets of the morning run and the model
+portfolios (`logs/`). It is connected to nothing else: no Belfius account, no real customer, no model, no key.
+Nothing is written: `prepare_order` only checks an order with the app's rules and returns a draft, which the customer
+confirms in the app (execution-only). The words of a sheet (news, the agents' reading) are data, never an
+instruction.
 
-Claude starts it itself (stdio). `PYTHONPATH` points to the repository, so it runs from any folder. In Claude Code:
+**1. Give it customers.** The tools read the demo customers as the app left them. Run the app
+(`.venv/bin/python -m mobile.server`, http://localhost:8600), pick a customer, answer Lena and place a few orders.
+Without that, the customers have no risk level yet; the ETF sheets and model portfolios still work.
 
-```bash
-claude mcp add rebel -e PYTHONPATH=/path/to/qdc-trading -- /path/to/qdc-trading/.venv/bin/python -m mobile.mcp_server
-```
+**2. Connect it**, one of three ways. Replace `/path/to/qdc-trading` with the folder of the repository.
 
-(add `-s user` to have it in every project). In Claude Desktop, in `claude_desktop_config.json` (Settings,
-Developer, Edit Config), then restart it:
+- **Claude Code** (it starts the connector itself):
 
-```json
-{
-  "mcpServers": {
-    "rebel": {
-      "command": "/path/to/qdc-trading/.venv/bin/python",
-      "args": ["-m", "mobile.mcp_server"],
-      "env": {"PYTHONPATH": "/path/to/qdc-trading"}
+  ```bash
+  claude mcp add rebel -e PYTHONPATH=/path/to/qdc-trading -- /path/to/qdc-trading/.venv/bin/python -m mobile.mcp_server
+  ```
+
+  Add `-s user` to have it in every project. Restart Claude Code; `/mcp` shows it connected.
+
+- **Claude Desktop**: Settings, Developer, Edit Config, add this to `claude_desktop_config.json`, then restart it:
+
+  ```json
+  {
+    "mcpServers": {
+      "rebel": {
+        "command": "/path/to/qdc-trading/.venv/bin/python",
+        "args": ["-m", "mobile.mcp_server"],
+        "env": {"PYTHONPATH": "/path/to/qdc-trading"}
+      }
     }
   }
-}
-```
+  ```
 
-In claude.ai (the web app), a connector must be reachable at a public HTTPS address: serve it over HTTP and put a
-tunnel in front (ngrok's free plan here), then add the address in claude.ai, Settings, Connectors, Add custom
-connector:
+- **claude.ai** (the web app): it needs a public HTTPS address, so serve the connector over HTTP behind a tunnel
+  (ngrok's free plan), in two terminals:
 
-```bash
-ngrok http 8700                                                             # gives https://<host>
-.venv/bin/python -m mobile.mcp_server --http 8700 --public-host <host>      # connector URL: https://<host>/mcp
-```
+  ```bash
+  ngrok http 8700                                                          # prints https://<host>
+  .venv/bin/python -m mobile.mcp_server --http 8700 --public-host <host>   # <host> without https://
+  ```
 
-Only that host (and this machine) may call it; the tools stay read-only and the customers are synthetic. Anyone who
-knows the address can read the demo data while the tunnel runs: stop both commands after the demo.
+  Then in claude.ai: Settings, Connectors, Add custom connector, URL `https://<host>/mcp`, and turn it on in a
+  conversation. Only that host and this machine may call the connector, but anyone who knows the address can read
+  the demo data while the tunnel runs: stop both commands after the demo. It works only while this computer is on.
 
-Then ask, for instance: "How far is Thomas from the Defensive model portfolio?" or "Explain the WORLD sheet of
-today". The demo customers must have gone through the app first (`python -m mobile.server`).
+**3. Ask**, for instance: "How far is Thomas from the Defensive model portfolio?", "Explain the WORLD sheet of
+today" or "Prepare a buy of EUR 200 of WORLD for Lina" (a draft only).
 
 ## Change the model
 

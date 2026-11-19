@@ -72,6 +72,10 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m mobile.server        # the app, on http://localhost:8600
 ```
 
+**In Claude.** ReBel also works inside Claude, read-only: Claude reads a demo customer's portfolio, the model
+portfolios and every ETF sheet, and can only draft an order, which the customer confirms in the app. Claude Code,
+Claude Desktop or claude.ai: [how to connect it](docs/technical.md#rebel-in-claude-read-only).
+
 How it is built, how a trading day runs and how to change the model: [technical documentation](docs/technical.md).
 
 ## Team
