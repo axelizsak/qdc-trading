@@ -19,6 +19,8 @@ python -m backtest.system_backtest                                   # every var
 python -m backtest.system_backtest --variants current learned_three  # only these
 python -m backtest.system_backtest --since 2024-01-01
 python -m backtest.system_backtest --daily                           # one book over the whole history, valued every day
+python -m backtest.agent_answers_backtest                            # the technical agent alone (section 6c)
+python -m backtest.report_figures                                    # the mid-term report's figures, in docs/midterm/
 ```
 
 **Daily mode (`--daily`).** The windows answer "what would our competition result have been". The daily mode
@@ -168,6 +170,29 @@ decision days to 16 November 2026, 20 variants, no rule broken, about 6 minutes 
   compete for the money, and the distributing ETFs (BEL 20, CHINA LC, BRAZIL among them) are out.
 - **Other variants:** none beats the system now with a t-value of 2. `fewer_positions` (5 positions at most, 1.23,
   t +1.0) and `risk_aversion_1` (1.20, t +0.9) are ahead in both halves: candidates for the team, not proof.
+
+**6c. The technical agent alone (Achille, 19 November 2026).** `python -m backtest.agent_answers_backtest`: the
+agent's own answers logged since January 2022 (`logs/technical_answers.csv`), without the Portfolio Manager. Every 12
+sessions, the 5 ETFs with the best score at equal weight (leveraged, inverse and cash left out), entered at the next
+close. The result depends on the day this calendar starts, so all 12 starts are run. The three answers' learned
+weights come from `results/technical_weights_three_answers.csv` (`logs/weights.csv` before the trend rule alone).
+
+| | Sharpe, average of 12 calendars | Lowest | Highest | Next session, a day (t) |
+|---|---:|---:|---:|---:|
+| The trend rule alone | 1.01 | 0.74 | 1.33 | +4.9 bp (+2.7) |
+| The three answers, learned | 0.56 | 0.31 | 0.80 | +3.4 bp (+2.3) |
+| Mean reversion alone | 0.68 | 0.39 | 1.00 | -1.3 bp (-0.6) |
+| Momentum alone | 0.67 | 0.51 | 0.84 | +2.6 bp (+1.6) |
+| All ETFs at equal weight | 0.90 | 0.81 | 1.03 | |
+
+- **The trend rule is the only answer with an edge on its own** (t +2.7 day by day), and learning the three together
+  dilutes it with mean reversion, which loses. This confirms the choice of 19 November.
+- **"1.33 against 0.79" was the best of the 12 calendars** (the one starting on 3 January 2022): quote the average,
+  1.01 against 0.56.
+- **The trend rule barely beats holding every ETF at equal weight** (1.01 against 0.90): it controls risk more than it
+  adds return, as the system backtest says.
+- This Sharpe ratio is the return a year over the volatility a year, without the cash rate: it is not comparable
+  with sections 5, 6 and 6b, measured above the overnight rate.
 
 ## The studies behind the technical rules (Achille, removed on 16 November 2026)
 

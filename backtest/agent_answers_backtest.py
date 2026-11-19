@@ -4,7 +4,8 @@ weights of its three answers (backtest/results/technical_weights_three_answers.c
 Question: is the trend rule alone better than the three answers (trend, mean reversion, momentum) blended with the
 learned weights?
 
-Scores exactly as agents/technical.py (signal_scores):
+Scores from the agent's own function (agents/technical.py, signal_scores), on every ETF of the day; the leveraged,
+inverse and cash ETFs are left out only after:
     trend          = suggested_signal: buy +1, watch 0, neutral 0, avoid -1
     mean_reversion = mr_setup: buy +1, avoid -1, otherwise 0
     momentum       = rank of momentum_13612 among the ETFs of the day, scaled to -1 .. +1
@@ -18,47 +19,52 @@ Two tests:
     for every possible start (0 .. HOLD-1) and the average is reported. Leveraged, inverse and cash ETFs are left out.
 
 Usage:
-    python -m backtest.agent_answers_backtest data/cache/prices_ohlc_since_2005.csv
-    python -m backtest.agent_answers_backtest data/cache/prices_ohlc_since_2005.csv --hold 4
+    python -m backtest.agent_answers_backtest                     # prices fetched by the data agent (network)
+    python -m backtest.agent_answers_backtest prices.csv --hold 4 # or a price file: date, ticker, adj_close_eur
 
-Result on 19 Nov 2026 (hold 12, average of 12 calendars): Sharpe 1.02 trend only, 0.57 learned blend,
-0.92 all ETFs at equal weight. The best single calendar gives 1.33 vs 0.79, the worst 0.74 vs 0.37.
+The Sharpe ratio here is the return a year over the volatility a year, without the cash rate: it is not comparable
+with the system backtest's (backtest/system_backtest.py), which is measured above the overnight rate.
+
+Result on 19 Nov 2026 (hold 12, average of 12 calendars, prices fetched by the data agent): Sharpe 1.01 trend only,
+0.56 learned blend, 0.90 all ETFs at equal weight. The best single calendar gives 1.33 vs 0.77, the worst 0.74 vs
+0.31 (backtest/README.md, section 6c).
 """
 
 import argparse
+from datetime import date
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from agents import technical
+
 ROOT = Path(__file__).resolve().parent.parent
 LOGS = ROOT / "logs"
-# The learned weights of the three answers, 3 Jan 2022 to 18 Nov 2026. logs/weights.csv only keeps the trend rule
-# since 19 Nov 2026 (the technical score is the trend rule alone), so the three-answer history is kept here.
+# The learned weights of the three answers, 3 Jan 2022 to 18 Nov 2026: the technical rows of logs/weights.csv as they
+# were in commit 7c8bef7, the last one before the trend rule alone. logs/weights.csv only keeps the trend rule since
+# 19 Nov 2026, so the three-answer history is kept here.
 THREE_ANSWER_WEIGHTS = ROOT / "backtest" / "results" / "technical_weights_three_answers.csv"
 TOP = 5
 LEFT_OUT = ["STOXX SHORT", "EURO STOXX 2X", "S&P 500 SHORT", "COPPER LVG", "PALLADIUM LVG", "NASDAQ 3X",
             "OVERNIGHT CASH"]
-TREND_SCORES = {"buy": 1.0, "watch": 0.0, "neutral": 0.0, "avoid": -1.0}
-MEAN_REVERSION_SCORES = {"buy": 1.0, "avoid": -1.0, "none": 0.0, "n/a": 0.0}
+PRICES_FROM = date(2021, 6, 1)  # the fetched prices start here: the first answers are of 3 Jan 2022
 STRATEGIES = ["Trend only", "Mean reversion only", "Momentum only", "Learned blend (the 3 answers)"]
 
 
 def load_answers() -> pd.DataFrame:
     """The agent's answers with one score column per strategy."""
     answers = pd.read_csv(LOGS / "technical_answers.csv", keep_default_na=False, na_values=[""])
+    return with_scores(answers, pd.read_csv(THREE_ANSWER_WEIGHTS))
+
+
+def with_scores(answers: pd.DataFrame, weights: pd.DataFrame) -> pd.DataFrame:
+    """`answers` (Technical answers format) with the three scores and one column per strategy, without LEFT_OUT.
+    `weights`: date, name, weight, the learned weights of the three answers."""
+    answers = answers.join(technical.signal_scores(answers))  # ranked among every ETF of the day, as the agent does
     answers = answers[~answers["ticker"].isin(LEFT_OUT)].copy()
 
-    answers["trend"] = answers["suggested_signal"].map(TREND_SCORES).astype(float)
-    answers["mean_reversion"] = answers["mr_setup"].map(MEAN_REVERSION_SCORES).fillna(0.0).astype(float)
-
-    momentum = pd.to_numeric(answers["momentum_13612"], errors="coerce")
-    rank = momentum.groupby(answers["date"]).rank()
-    count = momentum.groupby(answers["date"]).transform("count")
-    answers["momentum"] = (2 * (rank - 1) / (count - 1) - 1).where(count > 1).fillna(0.0)
-
     # the weights known before day D are the last row strictly before D
-    weights = pd.read_csv(THREE_ANSWER_WEIGHTS)
     weights = weights.pivot(index="date", columns="name", values="weight").sort_index()
     days = sorted(answers["date"].unique())
     # after the last recorded day the weights stay as they were on 18 Nov 2026
@@ -134,12 +140,16 @@ def sharpe(period_returns: pd.Series, hold: int) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("prices", help="price file with date, ticker, adj_close_eur")
+    parser.add_argument("prices", nargs="?", help="price file with date, ticker, adj_close_eur (default: fetched)")
     parser.add_argument("--hold", type=int, default=12)
     args = parser.parse_args()
 
     answers = load_answers()
-    raw = pd.read_csv(args.prices, parse_dates=["date"])
+    if args.prices:
+        raw = pd.read_csv(args.prices, parse_dates=["date"])
+    else:
+        from data import data_agent
+        raw = data_agent.fetch_prices(PRICES_FROM, date.today()).assign(date=lambda p: pd.to_datetime(p["date"]))
     prices = raw.pivot(index="date", columns="ticker", values="adj_close_eur").sort_index()
 
     print("1. Day by day, next session, 2022 to today")
@@ -154,10 +164,10 @@ def main() -> None:
             row[name] = sharpe(periods[name], args.hold)
         results.append(row)
     by_calendar = pd.DataFrame(results).set_index("calendar starts on")
-    print(f"\n2a. Portfolio, one row per calendar (the first one, 3 Jan 2022, gives the 1.33 vs 0.79 first quoted)")
+    print("\n2a. Portfolio, one row per calendar (the first one, 3 Jan 2022, gives the 1.33 vs 0.79 first quoted)")
     print(by_calendar[["All ETFs, equal weight", "Trend only", "Learned blend (the 3 answers)"]].round(2).to_string())
-    table = by_calendar
-    summary = pd.DataFrame({"Sharpe, average": table.mean(), "lowest": table.min(), "highest": table.max()})
+    summary = pd.DataFrame({"Sharpe, average": by_calendar.mean(), "lowest": by_calendar.min(),
+                            "highest": by_calendar.max()})
     print(f"\n2b. Portfolio: top {TOP} by score, held {args.hold} sessions, every start of the calendar "
           f"({args.hold} calendars), Sharpe without the cash rate")
     print(summary.round(2).to_string())
