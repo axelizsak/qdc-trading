@@ -149,10 +149,16 @@ def main() -> None:
     results = []
     for start in range(args.hold):
         periods = portfolio(answers, prices, args.hold, start)
-        results.append({name: sharpe(periods[name], args.hold) for name in columns})
-    table = pd.DataFrame(results)
+        row = {"calendar starts on": periods.index[0].date()}
+        for name in columns:
+            row[name] = sharpe(periods[name], args.hold)
+        results.append(row)
+    by_calendar = pd.DataFrame(results).set_index("calendar starts on")
+    print(f"\n2a. Portfolio, one row per calendar (the first one, 3 Jan 2022, gives the 1.33 vs 0.79 first quoted)")
+    print(by_calendar[["All ETFs, equal weight", "Trend only", "Learned blend (the 3 answers)"]].round(2).to_string())
+    table = by_calendar
     summary = pd.DataFrame({"Sharpe, average": table.mean(), "lowest": table.min(), "highest": table.max()})
-    print(f"\n2. Portfolio: top {TOP} by score, held {args.hold} sessions, every start of the calendar "
+    print(f"\n2b. Portfolio: top {TOP} by score, held {args.hold} sessions, every start of the calendar "
           f"({args.hold} calendars), Sharpe without the cash rate")
     print(summary.round(2).to_string())
 
